@@ -80,7 +80,7 @@ func (d *DB) Conn(ctx context.Context) (*sql.Conn, error) {
 
 func buildDSN(path string) string {
 	q := url.Values{}
-	q.Set("_journal", "WAL")
-	q.Set("_busy_timeout", fmt.Sprintf("%d", busyTimeoutMs))
+	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMs))
+	q.Add("_pragma", "journal_mode(WAL)")
 	return "file:" + path + "?" + q.Encode()
 }
