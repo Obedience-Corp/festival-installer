@@ -128,4 +128,3 @@ func loadMigrations() ([]migration, error) {
 	}
 	return out, nil
 }
-

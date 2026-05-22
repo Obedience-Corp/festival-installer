@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -42,14 +43,9 @@ func OpenDB(ctx context.Context, home string) (*DB, error) {
 		return nil, errpkg.Wrap("E_DB_PING", err, "cannot reach "+path)
 	}
 
-	var mode string
-	if err := sqlDB.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode); err != nil {
+	if err := ensureWAL(ctx, sqlDB); err != nil {
 		_ = sqlDB.Close()
-		return nil, errpkg.Wrap("E_DB_PRAGMA", err, "cannot read journal_mode")
-	}
-	if mode != "wal" {
-		_ = sqlDB.Close()
-		return nil, errpkg.New("E_DB_WAL", "expected journal_mode=wal, got "+mode)
+		return nil, err
 	}
 
 	db := &DB{sql: sqlDB, path: path}
@@ -81,6 +77,29 @@ func (d *DB) Conn(ctx context.Context) (*sql.Conn, error) {
 func buildDSN(path string) string {
 	q := url.Values{}
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMs))
-	q.Add("_pragma", "journal_mode(WAL)")
 	return "file:" + path + "?" + q.Encode()
+}
+
+// ensureWAL sets journal_mode=WAL with retries. SQLite returns the current
+// mode (not an error) when it can't switch due to a lock conflict, so this
+// loop tolerates concurrent first-opens racing to convert a fresh DB.
+func ensureWAL(ctx context.Context, db *sql.DB) error {
+	const (
+		maxAttempts = 25
+		baseDelay   = 20 * time.Millisecond
+	)
+	var mode string
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return errpkg.Wrap("E_DB_CTX", err, "context cancelled during WAL setup")
+		}
+		if err := db.QueryRowContext(ctx, "PRAGMA journal_mode=WAL").Scan(&mode); err != nil {
+			return errpkg.Wrap("E_DB_PRAGMA", err, "cannot set journal_mode")
+		}
+		if mode == "wal" {
+			return nil
+		}
+		time.Sleep(baseDelay)
+	}
+	return errpkg.New("E_DB_WAL", "expected journal_mode=wal after retries, got "+mode)
 }
