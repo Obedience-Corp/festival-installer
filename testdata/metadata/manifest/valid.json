@@ -1,0 +1,12 @@
+{
+  "id": "obedience-corp/fest",
+  "version": "1.2.3",
+  "channel": "latest",
+  "artifacts": [
+    {
+      "platform": "darwin/arm64",
+      "url": "https://x.example/fest-1.2.3-darwin-arm64.tar.gz",
+      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    }
+  ]
+}

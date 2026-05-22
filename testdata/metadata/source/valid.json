@@ -1,0 +1,12 @@
+{
+  "id": "official-obey",
+  "name": "Official Obey Marketplace",
+  "indexUrl": "https://marketplace.obey.example/index.json",
+  "keys": {
+    "k1": {
+      "algorithm": "ed25519",
+      "publicKey": "MCowBQYDK2VwAyEA"
+    }
+  },
+  "ttlSeconds": 3600
+}

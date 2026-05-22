@@ -1,0 +1,6 @@
+{
+  "name": "missing id field",
+  "indexUrl": "https://x.example/i.json",
+  "keys": {},
+  "ttlSeconds": 60
+}

@@ -1,0 +1,7 @@
+{
+  "source": "official-obey",
+  "updatedAt": "2026-05-22T04:30:00Z",
+  "packages": [
+    { "id": "obedience-corp/fest", "channels": [] }
+  ]
+}
