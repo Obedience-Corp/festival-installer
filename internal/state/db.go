@@ -78,10 +78,6 @@ func (d *DB) Conn(ctx context.Context) (*sql.Conn, error) {
 	return conn, nil
 }
 
-func (d *DB) migrate(ctx context.Context) error {
-	return nil
-}
-
 func buildDSN(path string) string {
 	q := url.Values{}
 	q.Set("_journal", "WAL")
