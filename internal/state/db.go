@@ -66,6 +66,12 @@ func (d *DB) Close(ctx context.Context) error {
 	return nil
 }
 
+// Raw exposes the underlying *sql.DB for callers that need to compose with
+// database/sql APIs (e.g. the receipts CRUD). Prefer Conn for new code.
+func (d *DB) Raw() *sql.DB {
+	return d.sql
+}
+
 func (d *DB) Conn(ctx context.Context) (*sql.Conn, error) {
 	conn, err := d.sql.Conn(ctx)
 	if err != nil {
