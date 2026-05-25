@@ -1,0 +1,12 @@
+{
+  "id": "obedience-corp/fest",
+  "version": "not-semver",
+  "channel": "latest",
+  "artifacts": [
+    {
+      "platform": "darwin/arm64",
+      "url": "https://x.example/a.tar.gz",
+      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    }
+  ]
+}
