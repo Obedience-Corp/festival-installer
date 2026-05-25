@@ -58,4 +58,3 @@ func TestParseVerifiedSource_EndToEnd(t *testing.T) {
 		t.Fatalf("expected ErrSignatureInvalid for tampered doc, got %v", err)
 	}
 }
-

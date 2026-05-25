@@ -219,7 +219,7 @@ func TestConcurrentWrite_Serializes(t *testing.T) {
 				errs[i] = err
 				return
 			}
-			defer db.Close(ctx)
+			defer func() { _ = db.Close(ctx) }()
 
 			r := sampleReceipt()
 			r.PackageID = "pkg/" + string(rune('a'+i))

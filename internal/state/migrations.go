@@ -54,7 +54,7 @@ func applyIfPending(ctx context.Context, db *sql.DB, m migration) error {
 	if err != nil {
 		return errpkg.Wrap("E_MIGRATE_CONN", err, "acquire conn for "+m.name)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return errpkg.Wrap("E_MIGRATE_TX", err, "begin immediate for "+m.name)
