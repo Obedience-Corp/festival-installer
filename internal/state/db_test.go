@@ -108,7 +108,7 @@ func TestOpenDB_ConcurrentOpenSerializes(t *testing.T) {
 				errs[i] = err
 				return
 			}
-			defer db.Close(ctx)
+			defer func() { _ = db.Close(ctx) }()
 
 			conn, err := db.Conn(ctx)
 			if err != nil {
@@ -135,7 +135,7 @@ func TestDB_ConnReturnsUsableConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Conn: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var one int
 	if err := conn.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {

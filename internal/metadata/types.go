@@ -5,12 +5,12 @@ import "time"
 // Source describes a marketplace source: an identifier, the URL where its
 // index lives, and the set of pinned verification keys.
 type Source struct {
-	ID         string                  `json:"id"`
-	Name       string                  `json:"name"`
-	IndexURL   string                  `json:"indexUrl"`
-	Keys       map[string]SourceKey    `json:"keys"`
-	TTLSeconds int                     `json:"ttlSeconds"`
-	Extensions map[string]any          `json:"extensions,omitempty"`
+	ID         string               `json:"id"`
+	Name       string               `json:"name"`
+	IndexURL   string               `json:"indexUrl"`
+	Keys       map[string]SourceKey `json:"keys"`
+	TTLSeconds int                  `json:"ttlSeconds"`
+	Extensions map[string]any       `json:"extensions,omitempty"`
 }
 
 type SourceKey struct {

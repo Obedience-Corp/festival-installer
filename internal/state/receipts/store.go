@@ -24,7 +24,7 @@ func Write(ctx context.Context, db *sql.DB, r Receipt) error {
 	if err != nil {
 		return errpkg.Wrap("E_RECEIPT_CONN", err, "acquire conn for write")
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return errpkg.Wrap("E_RECEIPT_TX", err, "begin write tx")
@@ -151,7 +151,7 @@ func List(ctx context.Context, db *sql.DB, f Filter) ([]Receipt, error) {
 	if err != nil {
 		return nil, errpkg.Wrap("E_RECEIPT_LIST", err, "select package ids")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {
@@ -199,7 +199,7 @@ func loadFiles(ctx context.Context, db *sql.DB, packageID string) ([]OwnedFile, 
 	if err != nil {
 		return nil, errpkg.Wrap("E_RECEIPT_FILES_LOAD", err, "select owned files")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []OwnedFile
 	for rows.Next() {
@@ -227,7 +227,7 @@ func loadMetadata(ctx context.Context, db *sql.DB, packageID string) (map[string
 	if err != nil {
 		return nil, errpkg.Wrap("E_RECEIPT_META_LOAD", err, "select metadata")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := map[string]string{}
 	for rows.Next() {

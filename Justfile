@@ -2,6 +2,7 @@ set dotenv-load := false
 
 mod release '.justfiles/build.just'
 mod testing '.justfiles/test.just'
+mod tools '.justfiles/tools.just'
 
 binary := "obey-installer"
 bin_dir := "bin"
@@ -20,6 +21,10 @@ build:
 test:
     go test ./...
 
+# Run the installer (e.g. `just run version`, `just run install foo`)
+run *ARGS:
+    go run ./cmd/{{binary}} {{ARGS}}
+
 # Format code
 fmt:
     go fmt ./...
@@ -28,9 +33,17 @@ fmt:
 vet:
     go vet ./...
 
-# Run linter
+# Run linter (install with: just tools install-golangci-lint)
 lint:
+    @just tools require-golangci-lint
     golangci-lint run ./...
+
+# Combined pre-commit gate: fmt + vet + lint + test
+check: fmt vet lint test
+
+# What CI runs: full check plus cross-platform release build
+ci: check
+    just release all
 
 # Download and tidy dependencies
 tidy:
@@ -44,3 +57,4 @@ install:
 # Clean build artifacts
 clean:
     rm -rf {{bin_dir}}
+    rm -f coverage.out coverage.html

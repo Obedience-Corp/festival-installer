@@ -107,7 +107,7 @@ func TestAcquireRelease_HappyPath(t *testing.T) {
 func TestSecondAcquireBlocksUntilRelease(t *testing.T) {
 	home := t.TempDir()
 	cmd := spawnHelper(t, "hold", home)
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	l, err := lock.NewFileLock(home)
 	if err != nil {
@@ -132,8 +132,8 @@ func TestSecondAcquireBlocksUntilRelease(t *testing.T) {
 func TestAcquire_ContextCancel(t *testing.T) {
 	home := t.TempDir()
 	cmd := spawnHelper(t, "hold", home)
-	defer cmd.Process.Kill()
-	defer cmd.Wait()
+	defer func() { _ = cmd.Process.Kill() }()
+	defer func() { _ = cmd.Wait() }()
 
 	l, err := lock.NewFileLock(home)
 	if err != nil {
@@ -180,7 +180,7 @@ func TestFilePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire: %v", err)
 	}
-	defer rel()
+	defer func() { _ = rel() }()
 
 	locksDir := filepath.Join(home, "locks")
 	dirInfo, err := os.Stat(locksDir)

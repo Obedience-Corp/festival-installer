@@ -12,7 +12,7 @@ import (
 // TestGenerateFixtures regenerates expected.canonical.json files from input.json
 // in every testdata/canonical/*/ directory. Run with:
 //
-//   go test -tags fixtures -run TestGenerateFixtures ./internal/verify/
+//	go test -tags fixtures -run TestGenerateFixtures ./internal/verify/
 //
 // Keep this gated behind a build tag so normal `go test` runs don't write to
 // the working tree.
