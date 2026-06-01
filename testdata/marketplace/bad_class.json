@@ -1,0 +1,13 @@
+{
+  "id": "obedience-corp/official",
+  "name": "Bad Class Marketplace",
+  "schema_version": "1",
+  "packages": [
+    {
+      "id": "obedience-corp/fest",
+      "display_name": "Fest",
+      "class": "widget",
+      "manifest_path": "packages/fest/obey-package.json"
+    }
+  ]
+}

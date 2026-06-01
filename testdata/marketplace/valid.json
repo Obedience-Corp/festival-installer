@@ -1,0 +1,28 @@
+{
+  "id": "obedience-corp/official",
+  "name": "Obedience Corp Official Marketplace",
+  "description": "First-party packages for the Festival stack.",
+  "homepage": "https://obediencecorp.com",
+  "schema_version": "1",
+  "namespace": "obedience-corp",
+  "packages": [
+    {
+      "id": "obedience-corp/fest",
+      "display_name": "Fest",
+      "class": "tool",
+      "summary": "Festival planning and execution engine.",
+      "host_runtimes": ["fest-cli", "fest-extension"],
+      "channels": ["latest", "stable"],
+      "manifest_path": "packages/fest/obey-package.json"
+    },
+    {
+      "id": "acme/fest-jira-export",
+      "display_name": "Fest Jira Export",
+      "class": "plugin",
+      "summary": "Export festival tasks to Jira.",
+      "host_runtimes": ["fest-cli"],
+      "channels": ["latest"],
+      "manifest_path": "packages/fest-jira-export/obey-package.json"
+    }
+  ]
+}
