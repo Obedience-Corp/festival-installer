@@ -96,40 +96,95 @@ func RemoveMarketplace(ctx context.Context, name string) error {
 	})
 }
 
-func ListMarketplaces(ctx context.Context) ([]Source, error) {
-	var out []Source
+type ListView struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Commit   string `json:"commit"`
+	Packages int    `json:"packages"`
+	Err      string `json:"error,omitempty"`
+}
+
+type RefreshView struct {
+	Name      string `json:"name"`
+	OldCommit string `json:"old_commit"`
+	NewCommit string `json:"new_commit"`
+	Changed   bool   `json:"changed"`
+	Err       string `json:"error,omitempty"`
+}
+
+func ListMarketplaces(ctx context.Context) ([]ListView, error) {
+	var views []ListView
 	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
 		sources, err := List(ctx, db.Raw())
 		if err != nil {
 			return err
 		}
-		out = sources
+		for _, src := range sources {
+			view := ListView{Name: src.Name, URL: src.URL, Commit: src.Commit}
+			dest, derr := CloneDir(ctx, src.Name)
+			if derr != nil {
+				view.Err = derr.Error()
+				views = append(views, view)
+				continue
+			}
+			m, merr := LoadMarketplace(ctx, dest)
+			if merr != nil {
+				view.Err = merr.Error()
+				views = append(views, view)
+				continue
+			}
+			view.Packages = len(m.Packages)
+			views = append(views, view)
+		}
 		return nil
 	})
-	return out, err
+	return views, err
 }
 
-func RefreshMarketplace(ctx context.Context, name string) (Source, error) {
-	var refreshed Source
+func RefreshMarketplaces(ctx context.Context, name string) ([]RefreshView, error) {
+	var views []RefreshView
 	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
-		src, err := Get(ctx, db.Raw(), name)
-		if err != nil {
-			return err
+		var targets []Source
+		if name != "" {
+			src, err := Get(ctx, db.Raw(), name)
+			if err != nil {
+				return err
+			}
+			targets = []Source{src}
+		} else {
+			all, err := List(ctx, db.Raw())
+			if err != nil {
+				return err
+			}
+			targets = all
 		}
-		dest, err := CloneDir(ctx, name)
-		if err != nil {
-			return err
+
+		for _, src := range targets {
+			view := RefreshView{Name: src.Name, OldCommit: src.Commit, NewCommit: src.Commit}
+			dest, derr := CloneDir(ctx, src.Name)
+			if derr != nil {
+				view.Err = derr.Error()
+				views = append(views, view)
+				continue
+			}
+			commit, perr := Pull(ctx, dest)
+			if perr != nil {
+				view.Err = perr.Error()
+				views = append(views, view)
+				continue
+			}
+			if commit != src.Commit {
+				if uerr := UpdateCommit(ctx, db.Raw(), src.Name, commit); uerr != nil {
+					view.Err = uerr.Error()
+					views = append(views, view)
+					continue
+				}
+				view.NewCommit = commit
+				view.Changed = true
+			}
+			views = append(views, view)
 		}
-		commit, err := Pull(ctx, dest)
-		if err != nil {
-			return err
-		}
-		if err := UpdateCommit(ctx, db.Raw(), name, commit); err != nil {
-			return err
-		}
-		src.Commit = commit
-		refreshed = src
 		return nil
 	})
-	return refreshed, err
+	return views, err
 }
