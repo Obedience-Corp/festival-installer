@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Obedience-Corp/obey-installer/internal/cli"
 )
 
 var version = "0.0.0-dev"
@@ -26,7 +28,6 @@ func main() {
 		{"list", "List installed packages"},
 		{"update", "Update installed packages"},
 		{"uninstall", "Remove installed packages"},
-		{"marketplace", "Manage marketplaces"},
 		{"doctor", "Diagnose installer state"},
 	}
 	for _, s := range stubs {
@@ -41,6 +42,8 @@ func main() {
 		}
 		root.AddCommand(cmd)
 	}
+
+	root.AddCommand(cli.NewMarketplaceCommand())
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
