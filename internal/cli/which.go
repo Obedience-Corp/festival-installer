@@ -68,11 +68,18 @@ func NewWhichCommand() *cobra.Command {
 
 func resolveWhich(ctx context.Context, tool string) (whichResult, error) {
 	r := whichResult{Tool: tool}
-	if binDir, err := state.BinDir(ctx); err == nil {
-		managed := filepath.Join(binDir, tool)
-		if fi, err := os.Stat(managed); err == nil && !fi.IsDir() {
+	binDir, err := state.BinDir(ctx)
+	if err != nil {
+		return r, err
+	}
+	managed := filepath.Join(binDir, tool)
+	switch fi, statErr := os.Stat(managed); {
+	case statErr == nil:
+		if !fi.IsDir() {
 			r.Managed = managed
 		}
+	case !os.IsNotExist(statErr):
+		return r, errpkg.Wrap("E_MANAGED_STAT", statErr, "stat managed binary "+managed)
 	}
 	if active, err := exec.LookPath(tool); err == nil {
 		r.Path = active

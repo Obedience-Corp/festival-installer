@@ -108,6 +108,21 @@ func TestWhich_NotFound(t *testing.T) {
 	}
 }
 
+func TestWhich_HomeMisconfigured(t *testing.T) {
+	binDir := t.TempDir()
+	fakeBinary(t, binDir, "camp")
+	t.Setenv("PATH", binDir)
+	t.Setenv("OBEY_INSTALLER_HOME", "relative/not/absolute")
+
+	_, _, err := runWhich(t, "camp")
+	if err == nil {
+		t.Fatal("expected error when OBEY_INSTALLER_HOME is not absolute")
+	}
+	if !strings.Contains(err.Error(), "E_HOME_NOT_ABS") {
+		t.Fatalf("expected E_HOME_NOT_ABS, got: %v", err)
+	}
+}
+
 func TestWhich_ShowAll(t *testing.T) {
 	home := t.TempDir()
 	managedBin := filepath.Join(home, "bin")
