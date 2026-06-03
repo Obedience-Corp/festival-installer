@@ -44,6 +44,7 @@ func main() {
 	}
 
 	root.AddCommand(cli.NewMarketplaceCommand())
+	root.AddCommand(cli.NewWhichCommand())
 
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

@@ -25,6 +25,14 @@ func Home(ctx context.Context) (string, error) {
 	return filepath.Join(userHome, ".obey", "installer"), nil
 }
 
+func BinDir(ctx context.Context) (string, error) {
+	home, err := Home(ctx)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "bin"), nil
+}
+
 func EnsureHome(ctx context.Context, mode os.FileMode) error {
 	path, err := Home(ctx)
 	if err != nil {
