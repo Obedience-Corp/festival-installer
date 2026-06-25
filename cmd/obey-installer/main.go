@@ -25,7 +25,6 @@ func main() {
 	}{
 		{"browse", "Browse available packages"},
 		{"list", "List installed packages"},
-		{"update", "Update installed packages"},
 		{"uninstall", "Remove installed packages"},
 		{"doctor", "Diagnose installer state"},
 	}
@@ -43,6 +42,7 @@ func main() {
 	}
 
 	root.AddCommand(cli.NewInstallCommand())
+	root.AddCommand(cli.NewUpdateCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
 

@@ -44,6 +44,10 @@ func SelectArtifact(rel metadata.Release, goos, goarch string) (metadata.Artifac
 	return metadata.Artifact{}, errpkg.Wrap("E_NO_ARTIFACT_FOR_PLATFORM", ErrNoArtifactForPlatform, "os="+goos+" arch="+goarch+" in release "+rel.Version)
 }
 
+func VersionLess(a, b string) bool {
+	return lessSemver(a, b)
+}
+
 func lessSemver(a, b string) bool {
 	coreA, preA := splitVersion(a)
 	coreB, preB := splitVersion(b)

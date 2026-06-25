@@ -106,6 +106,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root := &cobra.Command{Use: "obey-installer", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewInstallCommand())
+	root.AddCommand(cli.NewUpdateCommand())
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
