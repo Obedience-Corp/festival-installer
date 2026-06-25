@@ -123,8 +123,8 @@ func TestActivateExtension_SymlinkRejected(t *testing.T) {
 	}
 
 	_, err := fest.ActivateExtension(context.Background(), staged, extensionEntry(), featureOn)
-	if err == nil || !strings.Contains(err.Error(), "E_EXTENSION_UNSAFE") {
-		t.Fatalf("expected E_EXTENSION_UNSAFE, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "E_TREE_UNSAFE") {
+		t.Fatalf("expected E_TREE_UNSAFE, got %v", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(cfg, "marketplace", "extensions", "demo")); !os.IsNotExist(statErr) {
 		t.Fatal("nothing should remain after a rejected unsafe tree")
