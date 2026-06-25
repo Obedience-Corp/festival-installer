@@ -43,6 +43,7 @@ func main() {
 	root.AddCommand(cli.NewInstallCommand())
 	root.AddCommand(cli.NewUpdateCommand())
 	root.AddCommand(cli.NewUninstallCommand())
+	root.AddCommand(cli.NewShellInitCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
 
