@@ -28,6 +28,20 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1 }
           },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["package", "runtime"],
+              "properties": {
+                "package": { "type": "string", "minLength": 1 },
+                "runtime": { "type": "string", "minLength": 1 },
+                "version_constraint": { "type": "string" },
+                "required_features": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
           "channels": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 }

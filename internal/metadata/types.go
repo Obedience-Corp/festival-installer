@@ -27,8 +27,13 @@ type Index struct {
 }
 
 type IndexEntry struct {
-	ID       string   `json:"id"`
-	Channels []string `json:"channels"`
+	ID           string          `json:"id"`
+	Channels     []string        `json:"channels"`
+	Class        string          `json:"class,omitempty"`
+	DisplayName  string          `json:"display_name,omitempty"`
+	Summary      string          `json:"summary,omitempty"`
+	HostRuntimes []string        `json:"host_runtimes,omitempty"`
+	Targets      []RuntimeTarget `json:"targets,omitempty"`
 }
 
 // PackageManifest describes an installable package and its published releases.

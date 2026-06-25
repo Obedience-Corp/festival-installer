@@ -58,6 +58,41 @@ func TestParseIndex_Valid(t *testing.T) {
 	}
 }
 
+func TestParseIndex_EnrichedFields(t *testing.T) {
+	raw := read(t, "..", "..", "testdata", "metadata", "index", "valid.json")
+	idx, err := metadata.ParseIndex(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("ParseIndex: %v", err)
+	}
+	var plugin metadata.IndexEntry
+	for _, e := range idx.Packages {
+		if e.Class == "plugin" {
+			plugin = e
+		}
+	}
+	if plugin.ID == "" {
+		t.Fatal("expected a plugin entry")
+	}
+	if len(plugin.Targets) != 1 || plugin.Targets[0].Runtime != "fest-cli" {
+		t.Fatalf("unexpected targets: %+v", plugin.Targets)
+	}
+	if plugin.DisplayName == "" || plugin.Summary == "" {
+		t.Fatalf("expected display_name/summary, got %+v", plugin)
+	}
+}
+
+func TestParseIndex_BadTargetRejected(t *testing.T) {
+	raw := read(t, "..", "..", "testdata", "metadata", "index", "bad_target.json")
+	_, err := metadata.ParseIndex(context.Background(), raw)
+	if !errors.Is(err, metadata.ErrSchemaInvalid) {
+		t.Fatalf("expected ErrSchemaInvalid, got %v", err)
+	}
+	var se *metadata.SchemaError
+	if !errors.As(err, &se) {
+		t.Fatalf("expected *SchemaError, got %T", err)
+	}
+}
+
 func TestParseIndex_EmptyChannelsRejected(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "empty_channels.json")
 	_, err := metadata.ParseIndex(context.Background(), raw)

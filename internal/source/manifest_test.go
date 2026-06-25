@@ -36,6 +36,21 @@ func TestParseMarketplace_Valid(t *testing.T) {
 	}
 }
 
+func TestParseMarketplace_PluginTargetsRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	m, err := source.ParseMarketplace(ctx, readFixture(t, "valid.json"))
+	if err != nil {
+		t.Fatalf("ParseMarketplace: %v", err)
+	}
+	plugin := m.Packages[1]
+	if plugin.Class != "plugin" {
+		t.Fatalf("expected plugin entry, got %+v", plugin)
+	}
+	if len(plugin.Targets) != 1 || plugin.Targets[0].Runtime != "fest-cli" || plugin.Targets[0].VersionConstraint != ">=0.4.0" {
+		t.Fatalf("targets did not round-trip: %+v", plugin.Targets)
+	}
+}
+
 func TestParseMarketplace_InvalidVariants(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
