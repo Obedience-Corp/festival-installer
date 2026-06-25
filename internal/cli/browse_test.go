@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,9 +52,7 @@ func TestBrowse_ProductKindFilterJSON(t *testing.T) {
 		t.Fatalf("browse: %v", err)
 	}
 	var res browseJSON
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	var ids []string
 	for _, g := range res.Groups {
 		for _, p := range g.Packages {
@@ -97,9 +94,7 @@ func TestBrowse_AllGroupedJSON(t *testing.T) {
 		t.Fatalf("browse: %v", err)
 	}
 	var res browseJSON
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	groups := map[string]bool{}
 	for _, g := range res.Groups {
 		groups[g.HostRuntime] = true

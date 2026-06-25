@@ -62,7 +62,7 @@ func NewInstallCommand() *cobra.Command {
 				res = r
 			}
 			if asJSON {
-				return jsonout.Print(cmd.OutOrStdout(), res)
+				return jsonout.Success(cmd.OutOrStdout(), "install", res, nil)
 			}
 			return renderInstallResult(cmd.OutOrStdout(), res)
 		},

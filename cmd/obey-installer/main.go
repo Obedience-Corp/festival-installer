@@ -24,7 +24,6 @@ func main() {
 		use, short string
 	}{
 		{"list", "List installed packages"},
-		{"doctor", "Diagnose installer state"},
 	}
 	for _, s := range stubs {
 		cmd := &cobra.Command{
@@ -44,6 +43,7 @@ func main() {
 	root.AddCommand(cli.NewUninstallCommand())
 	root.AddCommand(cli.NewShellInitCommand())
 	root.AddCommand(cli.NewBrowseCommand())
+	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
 

@@ -49,7 +49,7 @@ func NewBrowseCommand() *cobra.Command {
 			}
 			res := buildBrowseResult(pkgs, product, kind)
 			if asJSON {
-				return jsonout.Print(cmd.OutOrStdout(), res)
+				return jsonout.Success(cmd.OutOrStdout(), "browse", res, nil)
 			}
 			return renderBrowseTable(cmd.OutOrStdout(), res)
 		},

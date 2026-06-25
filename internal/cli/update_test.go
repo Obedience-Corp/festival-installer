@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,9 +60,7 @@ func TestUpdate_UnmanagedExternalLeftUntouched(t *testing.T) {
 	var res struct {
 		Action string `json:"action"`
 	}
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	if res.Action != "unmanaged" {
 		t.Fatalf("expected unmanaged, got %q", res.Action)
 	}
@@ -100,9 +97,7 @@ func TestUpdate_CurrentNoOp(t *testing.T) {
 		Action  string `json:"action"`
 		Version string `json:"version"`
 	}
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	if res.Action != "current" || res.Version != "0.2.10" {
 		t.Fatalf("expected current 0.2.10, got %+v", res)
 	}
@@ -144,9 +139,7 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 		Version string `json:"version"`
 		From    string `json:"from"`
 	}
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	if res.Action != "upgraded" || res.Version != "0.2.10" || res.From != "0.2.9" {
 		t.Fatalf("expected upgraded 0.2.9 -> 0.2.10, got %+v", res)
 	}
@@ -186,9 +179,7 @@ func TestUpdate_LiveReceiptDisagreementPrefersLive(t *testing.T) {
 		Action  string `json:"action"`
 		Version string `json:"version"`
 	}
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	if res.Action != "current" || res.Version != "0.3.0" {
 		t.Fatalf("expected current at live 0.3.0, got %+v", res)
 	}

@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -38,9 +37,7 @@ func TestUninstall_RemovesOwnedFilesOnly(t *testing.T) {
 	var res struct {
 		Removed []string `json:"removed"`
 	}
-	if jErr := json.Unmarshal([]byte(out), &res); jErr != nil {
-		t.Fatalf("decode: %v\n%s", jErr, out)
-	}
+	dataOf(t, out, &res)
 	if len(res.Removed) != 2 {
 		t.Fatalf("expected 2 removed, got %v", res.Removed)
 	}

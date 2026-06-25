@@ -55,7 +55,7 @@ func NewUninstallCommand() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return jsonout.Print(cmd.OutOrStdout(), res)
+				return jsonout.Success(cmd.OutOrStdout(), "uninstall", res, nil)
 			}
 			return renderUninstallResult(cmd.OutOrStdout(), res)
 		},

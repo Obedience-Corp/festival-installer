@@ -29,6 +29,23 @@ func sha256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func dataOf(t *testing.T, out string, target any) {
+	t.Helper()
+	var env struct {
+		OK   bool            `json:"ok"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	if !env.OK {
+		t.Fatalf("envelope not ok: %s", out)
+	}
+	if err := json.Unmarshal(env.Data, target); err != nil {
+		t.Fatalf("decode data: %v\n%s", err, out)
+	}
+}
+
 func buildSuiteTarGz(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -110,6 +127,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewUninstallCommand())
 	root.AddCommand(cli.NewShellInitCommand())
 	root.AddCommand(cli.NewBrowseCommand())
+	root.AddCommand(cli.NewDoctorCommand())
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
@@ -148,9 +166,7 @@ func TestInstallFestival_E2E(t *testing.T) {
 		Channel string   `json:"channel"`
 		Files   []string `json:"files"`
 	}
-	if err := json.Unmarshal([]byte(out), &res); err != nil {
-		t.Fatalf("decode install json: %v\n%s", err, out)
-	}
+	dataOf(t, out, &res)
 	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 2 {
 		t.Fatalf("unexpected install result: %+v", res)
 	}
