@@ -36,20 +36,30 @@ func NewInstallCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
-			switch target {
-			case "festival", "camp", "fest":
-			default:
-				return errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, or fest)")
-			}
 			if err := validateChannel(channel); err != nil {
 				return err
 			}
-			if target == "camp" || target == "fest" {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "installing the festival suite (camp + fest); camp and fest are not published independently")
-			}
-			res, err := installFestival(cmd.Context(), channel)
-			if err != nil {
-				return err
+			var res installResult
+			if host, name, ok := pluginHost(target); ok {
+				r, err := installPlugin(cmd.Context(), host, name, channel)
+				if err != nil {
+					return err
+				}
+				res = r
+			} else {
+				switch target {
+				case "festival", "camp", "fest":
+				default:
+					return errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, fest, or a camp-*/fest-* plugin)")
+				}
+				if target == "camp" || target == "fest" {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "installing the festival suite (camp + fest); camp and fest are not published independently")
+				}
+				r, err := installFestival(cmd.Context(), channel)
+				if err != nil {
+					return err
+				}
+				res = r
 			}
 			if asJSON {
 				return jsonout.Print(cmd.OutOrStdout(), res)

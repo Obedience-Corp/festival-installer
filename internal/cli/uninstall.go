@@ -36,12 +36,21 @@ func NewUninstallCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
-			switch target {
-			case "festival", "camp", "fest":
-			default:
-				return errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, or fest)")
+			packageID := festivalPackageID
+			if host, name, ok := pluginHost(target); ok {
+				id, err := resolvePluginPackageID(cmd.Context(), host, name)
+				if err != nil {
+					return err
+				}
+				packageID = id
+			} else {
+				switch target {
+				case "festival", "camp", "fest":
+				default:
+					return errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, or a camp-*/fest-* plugin)")
+				}
 			}
-			res, err := uninstallFestival(cmd.Context())
+			res, err := uninstallPackage(cmd.Context(), packageID)
 			if err != nil {
 				return err
 			}
@@ -55,7 +64,7 @@ func NewUninstallCommand() *cobra.Command {
 	return cmd
 }
 
-func uninstallFestival(ctx context.Context) (uninstallResult, error) {
+func uninstallPackage(ctx context.Context, packageID string) (uninstallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return uninstallResult{}, errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
 	}
@@ -84,9 +93,9 @@ func uninstallFestival(ctx context.Context) (uninstallResult, error) {
 	}
 	defer func() { _ = db.Close(ctx) }()
 
-	rec, err := receipts.Get(ctx, db.Raw(), festivalPackageID)
+	rec, err := receipts.Get(ctx, db.Raw(), packageID)
 	if errors.Is(err, receipts.ErrNotFound) {
-		return uninstallResult{Package: festivalPackageID, Note: "not installed (no receipt); nothing to uninstall"}, nil
+		return uninstallResult{Package: packageID, Note: "not installed (no receipt); nothing to uninstall"}, nil
 	}
 	if err != nil {
 		return uninstallResult{}, err
@@ -103,10 +112,10 @@ func uninstallFestival(ctx context.Context) (uninstallResult, error) {
 		removed = append(removed, f.Path)
 	}
 
-	if err := receipts.Delete(ctx, db.Raw(), festivalPackageID); err != nil {
+	if err := receipts.Delete(ctx, db.Raw(), packageID); err != nil {
 		return uninstallResult{}, err
 	}
-	return uninstallResult{Package: festivalPackageID, Removed: removed}, nil
+	return uninstallResult{Package: packageID, Removed: removed}, nil
 }
 
 func assertWithinManagedBin(path, binDir string) error {
