@@ -23,7 +23,6 @@ func main() {
 	stubs := []struct {
 		use, short string
 	}{
-		{"install", "Install a package"},
 		{"browse", "Browse available packages"},
 		{"list", "List installed packages"},
 		{"update", "Update installed packages"},
@@ -43,6 +42,7 @@ func main() {
 		root.AddCommand(cmd)
 	}
 
+	root.AddCommand(cli.NewInstallCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
 
