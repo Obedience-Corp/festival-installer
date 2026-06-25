@@ -75,6 +75,9 @@ func newMarketplaceListCommand() *cobra.Command {
 		Short: "List added marketplaces",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := source.EnsureOfficialSeed(cmd.Context()); err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not seed official marketplace: %v\n", err)
+			}
 			views, err := source.ListMarketplaces(cmd.Context())
 			if err != nil {
 				return err
@@ -110,6 +113,9 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 		Short: "Refresh one or all marketplaces",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := source.EnsureOfficialSeed(cmd.Context()); err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not seed official marketplace: %v\n", err)
+			}
 			var name string
 			if len(args) == 1 {
 				name = args[0]

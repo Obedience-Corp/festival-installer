@@ -34,7 +34,7 @@ func rejectNonFinite(v reflect.Value) error {
 		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return ErrNonFiniteNumber
 		}
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		if !v.IsNil() {
 			return rejectNonFinite(v.Elem())
 		}
