@@ -4,9 +4,10 @@
   "class": "product",
   "display_name": "Festival",
   "summary": "Camp + Fest planning and execution suite",
+  "stray_top_level_key": "should be rejected",
   "releases": [
     {
-      "version": "1.2",
+      "version": "0.2.10",
       "channel": "stable",
       "published_at": "2026-06-08T00:00:00Z",
       "compatibility": { "os": ["darwin", "linux"], "arch": ["amd64", "arm64"] },

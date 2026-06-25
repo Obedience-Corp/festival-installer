@@ -1,12 +1,40 @@
 {
-  "id": "obedience-corp/fest",
-  "version": "1.2.3",
-  "channel": "latest",
-  "artifacts": [
+  "schema_version": 1,
+  "id": "obedience-corp/festival",
+  "class": "product",
+  "display_name": "Festival",
+  "summary": "Camp + Fest planning and execution suite",
+  "provides_binaries": ["camp", "fest"],
+  "host_runtimes": [
+    { "runtime": "camp-cli", "display_name": "Camp CLI plugins", "features": [] },
+    { "runtime": "fest-cli", "display_name": "Fest CLI plugins", "features": [] }
+  ],
+  "releases": [
     {
-      "platform": "darwin/arm64",
-      "url": "https://x.example/fest-1.2.3-darwin-arm64.tar.gz",
-      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      "version": "0.2.10",
+      "channel": "stable",
+      "published_at": "2026-06-08T00:00:00Z",
+      "components": { "camp": "0.2.11", "fest": "0.4.5" },
+      "provides_binaries": ["camp", "fest"],
+      "compatibility": { "os": ["darwin", "linux"], "arch": ["amd64", "arm64"] },
+      "dependencies": [],
+      "artifacts": [
+        {
+          "kind": "suite-archive",
+          "os": "darwin",
+          "arch": "all",
+          "url": "https://github.com/Obedience-Corp/festival/releases/download/v0.2.10/festival-0.2.10-macOS-all.tar.gz",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "festival-0.2.10-macOS-all.tar.gz",
+          "binaries": ["camp", "fest"]
+        }
+      ],
+      "install": {
+        "entries": [
+          { "kind": "binary", "source": "camp", "executable_name": "camp" },
+          { "kind": "binary", "source": "fest", "executable_name": "fest" }
+        ]
+      }
     }
   ]
 }
