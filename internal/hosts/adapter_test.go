@@ -3,10 +3,13 @@ package hosts
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
 )
 
 type fakeRunner struct {
@@ -59,6 +62,36 @@ func TestDetectInstalled_PresentVersionErrors(t *testing.T) {
 	}
 	if !installed || version != "" {
 		t.Fatalf("expected installed with empty version, got installed=%v version=%q", installed, version)
+	}
+}
+
+func TestActivateAndRemove(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	ctx := context.Background()
+
+	staged := filepath.Join(t.TempDir(), "blob")
+	if err := os.WriteFile(staged, []byte("fest-demo-bytes"), 0o644); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+
+	a := NewAdapter("fest")
+	recs, err := a.Activate(ctx, staged, metadata.InstallEntry{Kind: "binary", Source: "fest-demo", ExecutableName: "fest-demo"}, ScopeUser)
+	if err != nil {
+		t.Fatalf("Activate: %v", err)
+	}
+	if len(recs) != 1 || filepath.Base(recs[0].Path) != "fest-demo" {
+		t.Fatalf("unexpected records: %+v", recs)
+	}
+	if fi, statErr := os.Stat(recs[0].Path); statErr != nil || fi.Mode().Perm() != 0o755 {
+		t.Fatalf("activated binary wrong: err=%v", statErr)
+	}
+
+	if err := a.Remove(ctx, receipts.Receipt{OwnedFiles: recs}); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if _, statErr := os.Stat(recs[0].Path); !os.IsNotExist(statErr) {
+		t.Fatalf("expected removal, stat err=%v", statErr)
 	}
 }
 
