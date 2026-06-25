@@ -107,6 +107,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewInstallCommand())
 	root.AddCommand(cli.NewUpdateCommand())
+	root.AddCommand(cli.NewUninstallCommand())
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
