@@ -109,6 +109,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewUpdateCommand())
 	root.AddCommand(cli.NewUninstallCommand())
 	root.AddCommand(cli.NewShellInitCommand())
+	root.AddCommand(cli.NewBrowseCommand())
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
