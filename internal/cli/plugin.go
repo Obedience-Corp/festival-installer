@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -62,13 +63,45 @@ func findPlugin(pkgs []source.BrowsePackage, host, name string) (source.BrowsePa
 	}
 }
 
-func selectBinaryArtifact(rel metadata.Release, goos, goarch string) (metadata.Artifact, error) {
+func selectPluginArtifact(rel metadata.Release, goos, goarch string) (metadata.Artifact, error) {
 	for _, art := range rel.Artifacts {
-		if art.Kind == "binary" && art.OS == goos && art.Arch == goarch {
+		if art.OS == goos && art.Arch == goarch && isPluginArtifactKind(art.Kind) {
 			return art, nil
 		}
 	}
-	return metadata.Artifact{}, errpkg.New("E_NO_ARTIFACT", "no binary artifact for "+goos+"/"+goarch)
+	return metadata.Artifact{}, errpkg.New("E_NO_ARTIFACT", "no plugin artifact for "+goos+"/"+goarch)
+}
+
+func isPluginArtifactKind(kind string) bool {
+	switch kind {
+	case "binary", "tar.gz", "suite-archive":
+		return true
+	default:
+		return false
+	}
+}
+
+func isArchiveArtifact(kind string) bool {
+	return kind == "tar.gz" || kind == "suite-archive"
+}
+
+func pluginBinaryInArchive(extractDir string, entry metadata.InstallEntry, execName string) (string, error) {
+	name := entry.Source
+	if name == "" {
+		name = execName
+	}
+	if err := shared.ValidateSegment(name); err != nil {
+		return "", err
+	}
+	p := filepath.Join(extractDir, name)
+	fi, err := os.Stat(p)
+	if err != nil {
+		return "", errpkg.New("E_PLUGIN_BINARY_MISSING", "binary "+name+" not found in plugin archive")
+	}
+	if fi.IsDir() {
+		return "", errpkg.New("E_PLUGIN_BINARY_MISSING", name+" in the plugin archive is a directory, not a binary")
+	}
+	return p, nil
 }
 
 func entryExecutableName(e metadata.InstallEntry) string {
@@ -125,7 +158,7 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	if err != nil {
 		return installResult{}, err
 	}
-	art, err := selectBinaryArtifact(rel, runtime.GOOS, runtime.GOARCH)
+	art, err := selectPluginArtifact(rel, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return installResult{}, err
 	}
@@ -165,16 +198,31 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	if err := artifacts.VerifySHA256(ctx, staged, art.Sha256); err != nil {
 		return installResult{}, err
 	}
-	hash, err := artifacts.SHA256(ctx, staged)
-	if err != nil {
-		return installResult{}, err
-	}
+
 	execName := entryExecutableName(entry)
 	if err := shared.ValidateSegment(execName); err != nil {
 		return installResult{}, err
 	}
+
+	binaryPath := staged
+	if isArchiveArtifact(art.Kind) {
+		extractDir := filepath.Join(tx.StagingDir(), "extracted")
+		if err := artifacts.ExtractTarGz(ctx, staged, extractDir); err != nil {
+			return installResult{}, err
+		}
+		inner, err := pluginBinaryInArchive(extractDir, entry, execName)
+		if err != nil {
+			return installResult{}, err
+		}
+		binaryPath = inner
+	}
+
+	hash, err := artifacts.SHA256(ctx, binaryPath)
+	if err != nil {
+		return installResult{}, err
+	}
 	dst := filepath.Join(binDir, execName)
-	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: staged, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: binaryPath, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 		return installResult{}, err
 	}
 	if _, err := tx.Commit(ctx, installer.ReceiptInfo{

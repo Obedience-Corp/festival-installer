@@ -67,8 +67,76 @@ func pluginManifestSourceOnly(url, sha string) string {
 }`, runtime.GOOS, runtime.GOARCH, runtime.GOOS, runtime.GOARCH, url, sha)
 }
 
+func pluginManifestArchive(url, sha string) string {
+	return fmt.Sprintf(`{
+  "schema_version": 1,
+  "id": "acme/fest-demo",
+  "class": "plugin",
+  "display_name": "Fest Demo",
+  "summary": "Demo fest plugin",
+  "host_runtimes": [{"runtime": "fest-cli"}],
+  "targets": [{"package": "obedience-corp/festival", "runtime": "fest-cli", "version_constraint": ">=0.4.0"}],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "channel": "stable",
+      "published_at": "2026-06-08T00:00:00Z",
+      "compatibility": {"os": [%q], "arch": [%q]},
+      "dependencies": [],
+      "artifacts": [{"kind": "tar.gz", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "fest-demo.tar.gz"}],
+      "install": {"entries": [{"kind": "binary", "source": "fest-demo", "executable_name": "fest-demo"}]}
+    }
+  ]
+}`, runtime.GOOS, runtime.GOARCH, runtime.GOOS, runtime.GOARCH, url, sha)
+}
+
 func fixturePluginMarketplace(t *testing.T, url, sha string) string {
 	return fixturePluginMarketplaceManifest(t, pluginManifest(url, sha))
+}
+
+func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+
+	binBody := "#!/bin/sh\necho fest-demo\n"
+	tarball := buildSuiteTarGz(t, map[string]string{
+		"fest-demo":                  binBody,
+		"README.md":                  "readme",
+		"completions/fest-demo.bash": "comp",
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixturePluginMarketplaceManifest(t, pluginManifestArchive(srv.URL+"/fest-demo.tar.gz", sha256Hex(tarball)))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "acme"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	pathDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pathDir, "fest"), []byte("#!/bin/sh\necho fest 0.4.5\n"), 0o755); err != nil {
+		t.Fatalf("write fake fest: %v", err)
+	}
+	managedBin := filepath.Join(home, "bin")
+	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
+
+	if _, errOut, err := runInstaller(t, "install", "fest-demo"); err != nil {
+		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
+	}
+
+	landed := filepath.Join(managedBin, "fest-demo")
+	got, err := os.ReadFile(landed)
+	if err != nil {
+		t.Fatalf("expected extracted binary at %s: %v", landed, err)
+	}
+	if string(got) != binBody {
+		t.Fatalf("managed bin should be the EXTRACTED binary, not the archive: %q", got)
+	}
+	fi, _ := os.Stat(landed)
+	if fi.Mode()&0o111 == 0 {
+		t.Fatalf("extracted binary should be executable, mode=%v", fi.Mode())
+	}
 }
 
 func fixturePluginMarketplaceManifest(t *testing.T, manifest string) string {
