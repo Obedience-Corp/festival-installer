@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -30,6 +32,11 @@ type ReceiptInfo struct {
 	ManifestURL string
 }
 
+type placedFile struct {
+	dest   string
+	backup string
+}
+
 type Transaction struct {
 	db         *sql.DB
 	stagingDir string
@@ -37,7 +44,7 @@ type Transaction struct {
 
 	mu        sync.Mutex
 	staged    []StagedFile
-	placed    []string
+	placed    []placedFile
 	committed bool
 	done      bool
 }
@@ -94,12 +101,18 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 	}
 
 	owned := make([]receipts.OwnedFile, 0, len(t.staged))
-	for _, f := range t.staged {
-		if err := artifacts.AtomicMove(ctx, f.StagedPath, f.DestPath); err != nil {
+	for i, f := range t.staged {
+		backup, err := t.backupExisting(i, f.DestPath)
+		if err != nil {
 			t.removePlaced()
 			return receipts.Receipt{}, err
 		}
-		t.placed = append(t.placed, f.DestPath)
+		if err := artifacts.AtomicMove(ctx, f.StagedPath, f.DestPath); err != nil {
+			t.restoreBackup(f.DestPath, backup)
+			t.removePlaced()
+			return receipts.Receipt{}, err
+		}
+		t.placed = append(t.placed, placedFile{dest: f.DestPath, backup: backup})
 		if f.Mode != 0 {
 			if err := os.Chmod(f.DestPath, f.Mode); err != nil {
 				t.removePlaced()
@@ -139,9 +152,33 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	return nil
 }
 
+func (t *Transaction) backupExisting(i int, dest string) (string, error) {
+	if _, err := os.Lstat(dest); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", errpkg.Wrap("E_INSTALL_BACKUP", err, "inspect existing "+dest)
+	}
+	backup := filepath.Join(t.stagingDir, "backup-"+strconv.Itoa(i))
+	if err := os.Rename(dest, backup); err != nil {
+		return "", errpkg.Wrap("E_INSTALL_BACKUP", err, "back up existing "+dest)
+	}
+	return backup, nil
+}
+
+func (t *Transaction) restoreBackup(dest, backup string) {
+	if backup == "" {
+		return
+	}
+	_ = os.Remove(dest)
+	_ = os.Rename(backup, dest)
+}
+
 func (t *Transaction) removePlaced() {
-	for _, p := range t.placed {
-		_ = os.Remove(p)
+	for i := len(t.placed) - 1; i >= 0; i-- {
+		p := t.placed[i]
+		_ = os.Remove(p.dest)
+		t.restoreBackup(p.dest, p.backup)
 	}
 	t.placed = nil
 }

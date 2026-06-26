@@ -166,6 +166,103 @@ func TestCommit_FailureRollsBackEverything(t *testing.T) {
 	}
 }
 
+func TestCommit_UpgradeReplacesPriorBinary(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	dst := filepath.Join(binDir, "camp")
+	if err := os.WriteFile(dst, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp: %v", err)
+	}
+
+	tx, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	src := stageBlob(t, tx.StagingDir(), "camp", "new-camp")
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: src, DestPath: dst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	if _, err := tx.Commit(ctx, installer.ReceiptInfo{PackageID: "obedience-corp/festival", Version: "0.3.0", Channel: "stable", Source: "official-obey"}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read upgraded camp: %v", err)
+	}
+	if string(got) != "new-camp" {
+		t.Fatalf("camp = %q, want new-camp after upgrade", got)
+	}
+	entries, err := os.ReadDir(binDir)
+	if err != nil {
+		t.Fatalf("read bin: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "backup-") {
+			t.Fatalf("backup leaked into bin dir: %s", e.Name())
+		}
+	}
+}
+
+func TestCommit_FailureRestoresPriorBinaries(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	campDst := filepath.Join(binDir, "camp")
+	festDst := filepath.Join(binDir, "fest")
+	if err := os.WriteFile(campDst, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp: %v", err)
+	}
+	if err := os.WriteFile(festDst, []byte("old-fest"), 0o755); err != nil {
+		t.Fatalf("seed fest: %v", err)
+	}
+
+	tx, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	good := stageBlob(t, tx.StagingDir(), "camp", "new-camp")
+	badSrc := filepath.Join(tx.StagingDir(), "missing")
+
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: good, DestPath: campDst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage good: %v", err)
+	}
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: badSrc, DestPath: festDst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage bad: %v", err)
+	}
+
+	if _, err := tx.Commit(ctx, installer.ReceiptInfo{PackageID: "obedience-corp/festival", Version: "0.3.0", Channel: "stable", Source: "official-obey"}); err == nil {
+		t.Fatal("expected commit to fail on missing staged file")
+	}
+
+	gotCamp, err := os.ReadFile(campDst)
+	if err != nil {
+		t.Fatalf("prior camp should be restored: %v", err)
+	}
+	if string(gotCamp) != "old-camp" {
+		t.Fatalf("camp = %q, want prior binary restored", gotCamp)
+	}
+	gotFest, err := os.ReadFile(festDst)
+	if err != nil {
+		t.Fatalf("prior fest should be restored: %v", err)
+	}
+	if string(gotFest) != "old-fest" {
+		t.Fatalf("fest = %q, want prior binary restored", gotFest)
+	}
+	if _, err := receipts.Get(ctx, db.Raw(), "obedience-corp/festival"); !errors.Is(err, receipts.ErrNotFound) {
+		t.Fatalf("expected no receipt after failed commit, got %v", err)
+	}
+}
+
 func TestSecondBeginBlockedWhileLockHeld(t *testing.T) {
 	home := t.TempDir()
 	cmd := spawnLockHelper(t, home)

@@ -107,12 +107,43 @@ const installMarketplaceRoot = `{
 }
 `
 
+func productManifestUnsafeEntry(url, sha, source, execName string) string {
+	return fmt.Sprintf(`{
+  "schema_version": 1,
+  "id": "obedience-corp/festival",
+  "class": "product",
+  "display_name": "Festival",
+  "summary": "Camp + Fest suite",
+  "provides_binaries": ["camp"],
+  "releases": [
+    {
+      "version": "0.2.10",
+      "channel": "stable",
+      "published_at": "2026-06-08T00:00:00Z",
+      "components": {"camp": "0.2.11"},
+      "compatibility": {"os": [%q], "arch": [%q]},
+      "dependencies": [],
+      "artifacts": [
+        {"kind": "suite-archive", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "festival.tar.gz", "binaries": ["camp"]}
+      ],
+      "install": {"entries": [
+        {"kind": "binary", "source": %q, "executable_name": %q}
+      ]}
+    }
+  ]
+}`, runtime.GOOS, runtime.GOARCH, runtime.GOOS, runtime.GOARCH, url, sha, source, execName)
+}
+
 func fixtureInstallMarketplace(t *testing.T, artifactURL, artifactSha string) string {
+	return fixtureInstallMarketplaceManifest(t, productManifest(artifactURL, artifactSha))
+}
+
+func fixtureInstallMarketplaceManifest(t *testing.T, manifest string) string {
 	t.Helper()
 	dir := t.TempDir()
 	git(t, dir, "init", "-b", "main")
 	writeFile(t, filepath.Join(dir, "obey-marketplace.json"), installMarketplaceRoot)
-	writeFile(t, filepath.Join(dir, "packages", "obedience-corp", "festival", "obey-package.json"), productManifest(artifactURL, artifactSha))
+	writeFile(t, filepath.Join(dir, "packages", "obedience-corp", "festival", "obey-package.json"), manifest)
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "init")
 	return dir
@@ -235,6 +266,39 @@ func TestInstallFestival_ChecksumMismatchRollsBack(t *testing.T) {
 	}
 	if _, err := receipts.Get(ctx, mustDB(t, ctx, home), festivalPackageIDForTest); err == nil {
 		t.Fatal("no receipt should exist after a failed install")
+	}
+}
+
+func TestInstallFestival_RejectsUnsafeInstallEntry(t *testing.T) {
+	cases := map[string]struct{ source, execName string }{
+		"source escapes extract dir":    {source: "../escape", execName: "camp"},
+		"executable name not a segment": {source: "camp", execName: "../evil"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("OBEY_INSTALLER_HOME", home)
+			ctx := context.Background()
+
+			tarball := buildSuiteTarGz(t, map[string]string{"camp": "camp"})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write(tarball)
+			}))
+			t.Cleanup(srv.Close)
+
+			repo := fixtureInstallMarketplaceManifest(t, productManifestUnsafeEntry(srv.URL+"/festival.tar.gz", sha256Hex(tarball), tc.source, tc.execName))
+			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+				t.Fatalf("marketplace add: %v\n%s", err, errOut)
+			}
+
+			if _, _, err := runInstaller(t, "install", "festival"); err == nil {
+				t.Fatal("expected install to reject an unsafe install entry")
+			}
+			binDir, _ := state.BinDir(ctx)
+			if _, err := os.Stat(filepath.Join(binDir, "camp")); !os.IsNotExist(err) {
+				t.Fatalf("camp should not be installed after rejection, stat err=%v", err)
+			}
+		})
 	}
 }
 

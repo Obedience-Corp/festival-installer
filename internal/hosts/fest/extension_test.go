@@ -131,6 +131,22 @@ func TestActivateExtension_SymlinkRejected(t *testing.T) {
 	}
 }
 
+func TestActivateExtension_RejectsUnsafeExtensionName(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("FEST_CONFIG_DIR", cfg)
+	staged := stagedExtension(t, true)
+
+	entry := metadata.InstallEntry{Kind: "extension_dir", ExtensionName: "../escape"}
+	_, err := fest.ActivateExtension(context.Background(), staged, entry, featureOn)
+	if err == nil || !strings.Contains(err.Error(), "E_HOST_UNSAFE_NAME") {
+		t.Fatalf("expected E_HOST_UNSAFE_NAME, got %v", err)
+	}
+	escaped := filepath.Join(cfg, "marketplace", "escape")
+	if _, statErr := os.Stat(escaped); statErr == nil {
+		t.Fatalf("extension escaped its root to %s", escaped)
+	}
+}
+
 func TestRemoveExtension_RemovesOwnedAndPrunes(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("FEST_CONFIG_DIR", cfg)

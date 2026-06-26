@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/hosts"
 	"github.com/Obedience-Corp/obey-installer/internal/hosts/camp"
 	"github.com/Obedience-Corp/obey-installer/internal/hosts/fest"
+	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
 	"github.com/Obedience-Corp/obey-installer/internal/installer"
 	"github.com/Obedience-Corp/obey-installer/internal/metadata"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
@@ -70,23 +71,31 @@ func selectBinaryArtifact(rel metadata.Release, goos, goarch string) (metadata.A
 	return metadata.Artifact{}, errpkg.New("E_NO_ARTIFACT", "no binary artifact for "+goos+"/"+goarch)
 }
 
+func entryExecutableName(e metadata.InstallEntry) string {
+	if e.ExecutableName != "" {
+		return e.ExecutableName
+	}
+	return e.Source
+}
+
 func binaryEntry(rel metadata.Release, want string) (metadata.InstallEntry, error) {
 	for _, e := range rel.Install.Entries {
 		if e.Kind != "binary" {
 			continue
 		}
-		name := e.ExecutableName
-		if name == "" {
-			name = e.Source
-		}
-		if name == want {
+		if entryExecutableName(e) == want {
 			return e, nil
 		}
 	}
 	return metadata.InstallEntry{}, errpkg.New("E_PLUGIN_ENTRY", "no binary install-entry named "+want+" in the plugin manifest")
 }
 
-func firstTarget(targets []metadata.RuntimeTarget) metadata.RuntimeTarget {
+func selectTarget(targets []metadata.RuntimeTarget, host string) metadata.RuntimeTarget {
+	for _, tgt := range targets {
+		if tgt.Runtime == host || strings.HasPrefix(tgt.Runtime, host+"-") {
+			return tgt
+		}
+	}
 	if len(targets) > 0 {
 		return targets[0]
 	}
@@ -125,7 +134,7 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 		return installResult{}, err
 	}
 
-	if err := chooseAdapter(host).ValidateCompatibility(ctx, firstTarget(pkg.Targets)); err != nil {
+	if err := chooseAdapter(host).ValidateCompatibility(ctx, selectTarget(pkg.Targets, host)); err != nil {
 		return installResult{}, err
 	}
 
@@ -160,7 +169,11 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	if err != nil {
 		return installResult{}, err
 	}
-	dst := filepath.Join(binDir, entry.ExecutableName)
+	execName := entryExecutableName(entry)
+	if err := shared.ValidateSegment(execName); err != nil {
+		return installResult{}, err
+	}
+	dst := filepath.Join(binDir, execName)
 	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: staged, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 		return installResult{}, err
 	}

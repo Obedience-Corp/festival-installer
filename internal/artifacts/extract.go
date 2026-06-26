@@ -49,7 +49,7 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 			return errpkg.Wrap("E_ARTIFACT_TAR", err, "read tar header")
 		}
 
-		target, err := safeJoin(absDest, hdr.Name)
+		target, err := SafeJoin(absDest, hdr.Name)
 		if err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 				return errpkg.Wrap("E_ARTIFACT_CLOSE", err, "close "+target)
 			}
 		case tar.TypeSymlink, tar.TypeLink:
-			if _, err := safeJoin(absDest, hdr.Linkname); err != nil {
+			if _, err := SafeJoin(absDest, hdr.Linkname); err != nil {
 				return errpkg.Wrap("E_ARTIFACT_UNSAFE_PATH", ErrUnsafePath, "link target escapes dest: "+hdr.Linkname)
 			}
 			return errpkg.Wrap("E_ARTIFACT_UNSAFE_PATH", ErrUnsafePath, "link members not permitted: "+hdr.Name)
@@ -86,7 +86,7 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 	return nil
 }
 
-func safeJoin(absDest, name string) (string, error) {
+func SafeJoin(absDest, name string) (string, error) {
 	clean := filepath.Clean(name)
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || clean == ".." {
 		return "", errpkg.Wrap("E_ARTIFACT_UNSAFE_PATH", ErrUnsafePath, name)

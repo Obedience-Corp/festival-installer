@@ -11,6 +11,7 @@ import (
 
 	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
 	"github.com/Obedience-Corp/obey-installer/internal/installer"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
@@ -150,7 +151,13 @@ func installFestival(ctx context.Context, channel string) (installResult, error)
 		if destName == "" {
 			destName = srcName
 		}
-		stagedBin := filepath.Join(extractDir, filepath.FromSlash(srcName))
+		if err := shared.ValidateSegment(destName); err != nil {
+			return installResult{}, err
+		}
+		stagedBin, err := artifacts.SafeJoin(extractDir, filepath.FromSlash(srcName))
+		if err != nil {
+			return installResult{}, err
+		}
 		hash, err := artifacts.SHA256(ctx, stagedBin)
 		if err != nil {
 			return installResult{}, err

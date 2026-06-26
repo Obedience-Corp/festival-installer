@@ -39,6 +39,9 @@ func TargetPath(entry metadata.InstallEntry) (string, error) {
 	if entry.ExtensionName == "" {
 		return "", errpkg.New("E_EXTENSION_NAME_EMPTY", "install entry missing extension_name")
 	}
+	if err := shared.ValidateSegment(entry.ExtensionName); err != nil {
+		return "", err
+	}
 	root, err := extensionsRoot()
 	if err != nil {
 		return "", err

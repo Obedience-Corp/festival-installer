@@ -44,12 +44,39 @@ func pluginManifest(url, sha string) string {
 }`, runtime.GOOS, runtime.GOARCH, runtime.GOOS, runtime.GOARCH, url, sha)
 }
 
+func pluginManifestSourceOnly(url, sha string) string {
+	return fmt.Sprintf(`{
+  "schema_version": 1,
+  "id": "acme/fest-demo",
+  "class": "plugin",
+  "display_name": "Fest Demo",
+  "summary": "Demo fest plugin",
+  "host_runtimes": [{"runtime": "fest-cli"}],
+  "targets": [{"package": "obedience-corp/festival", "runtime": "fest-cli", "version_constraint": ">=0.4.0"}],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "channel": "stable",
+      "published_at": "2026-06-08T00:00:00Z",
+      "compatibility": {"os": [%q], "arch": [%q]},
+      "dependencies": [],
+      "artifacts": [{"kind": "binary", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "fest-demo"}],
+      "install": {"entries": [{"kind": "binary", "source": "fest-demo"}]}
+    }
+  ]
+}`, runtime.GOOS, runtime.GOARCH, runtime.GOOS, runtime.GOARCH, url, sha)
+}
+
 func fixturePluginMarketplace(t *testing.T, url, sha string) string {
+	return fixturePluginMarketplaceManifest(t, pluginManifest(url, sha))
+}
+
+func fixturePluginMarketplaceManifest(t *testing.T, manifest string) string {
 	t.Helper()
 	dir := t.TempDir()
 	git(t, dir, "init", "-b", "main")
 	writeFile(t, filepath.Join(dir, "obey-marketplace.json"), pluginMarketplaceRoot)
-	writeFile(t, filepath.Join(dir, "packages", "fest-demo", "obey-package.json"), pluginManifest(url, sha))
+	writeFile(t, filepath.Join(dir, "packages", "fest-demo", "obey-package.json"), manifest)
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "init")
 	return dir
@@ -107,6 +134,46 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 	}
 	if _, err := os.Stat(landed); !os.IsNotExist(err) {
 		t.Fatalf("expected %s removed after uninstall", landed)
+	}
+}
+
+func TestInstallFestPlugin_OmittedExecutableNameLandsAtSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+
+	binBody := "#!/bin/sh\necho fest-demo\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(binBody))
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixturePluginMarketplaceManifest(t, pluginManifestSourceOnly(srv.URL+"/fest-demo", sha256Hex([]byte(binBody))))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "acme"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	pathDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pathDir, "fest"), []byte("#!/bin/sh\necho fest 0.4.5\n"), 0o755); err != nil {
+		t.Fatalf("write fake fest: %v", err)
+	}
+	managedBin := filepath.Join(home, "bin")
+	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
+
+	if _, errOut, err := runInstaller(t, "install", "fest-demo"); err != nil {
+		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
+	}
+
+	landed := filepath.Join(managedBin, "fest-demo")
+	fi, err := os.Stat(landed)
+	if err != nil {
+		t.Fatalf("expected %s to land when executable_name is omitted: %v", landed, err)
+	}
+	if fi.IsDir() {
+		t.Fatalf("%s should be the binary, not a directory", landed)
+	}
+	got, _ := os.ReadFile(landed)
+	if string(got) != binBody {
+		t.Fatalf("installed plugin content mismatch: %q", got)
 	}
 }
 

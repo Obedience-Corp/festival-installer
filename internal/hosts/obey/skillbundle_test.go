@@ -153,6 +153,21 @@ func TestActivate_SymlinkRejected(t *testing.T) {
 	}
 }
 
+func TestActivate_RejectsUnsafeSlug(t *testing.T) {
+	root := campaignDir(t)
+	h := obey.New(root, false)
+
+	entry := metadata.InstallEntry{Kind: "skill_bundle", SkillSlug: "../escape"}
+	_, err := h.Activate(context.Background(), stagedBundle(t, validSkillMd()), entry)
+	if err == nil || !strings.Contains(err.Error(), "E_HOST_UNSAFE_NAME") {
+		t.Fatalf("expected E_HOST_UNSAFE_NAME, got %v", err)
+	}
+	escaped := filepath.Join(root, ".campaign", "escape")
+	if _, statErr := os.Stat(escaped); statErr == nil {
+		t.Fatalf("skill escaped its root to %s", escaped)
+	}
+}
+
 func TestActivateThenRemove(t *testing.T) {
 	root := campaignDir(t)
 	h := obey.New(root, false)

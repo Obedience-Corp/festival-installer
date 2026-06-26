@@ -62,6 +62,9 @@ func (h *Host) TargetPath(entry metadata.InstallEntry) (string, error) {
 	if entry.SkillSlug == "" {
 		return "", errpkg.New("E_SKILL_SLUG_EMPTY", "install entry missing skill_slug")
 	}
+	if err := shared.ValidateSegment(entry.SkillSlug); err != nil {
+		return "", err
+	}
 	return filepath.Join(h.skillsRoot(), entry.SkillSlug), nil
 }
 
