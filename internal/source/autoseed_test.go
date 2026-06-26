@@ -1,7 +1,9 @@
 package source
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -102,6 +104,55 @@ func markerRecorded(t *testing.T, ctx context.Context) bool {
 		t.Fatalf("SeedMarkerExists: %v", err)
 	}
 	return ok
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+	fn()
+	os.Stderr = orig
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
+}
+
+func TestEnsureOfficialSeed_FirstSeedIsSilent(t *testing.T) {
+	seedHome(t)
+	ctx := seedTestCtx(t)
+	fixture := seedFixtureRepo(t)
+
+	prev := officialMarketplaceURL
+	officialMarketplaceURL = fixture
+	t.Cleanup(func() { officialMarketplaceURL = prev })
+
+	stderr := captureStderr(t, func() {
+		if err := EnsureOfficialSeed(ctx); err != nil {
+			t.Fatalf("EnsureOfficialSeed: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("first successful seed must not write to stderr, got %q", stderr)
+	}
+
+	names := sourceNames(t, ctx)
+	if len(names) != 1 || names[0] != state.OfficialSeedKey {
+		t.Fatalf("expected only %q after seed, got %v", state.OfficialSeedKey, names)
+	}
+	if !markerRecorded(t, ctx) {
+		t.Fatal("seed marker should be recorded after a successful seed")
+	}
 }
 
 func TestAutoseed_FreshStateSeedsOnce(t *testing.T) {

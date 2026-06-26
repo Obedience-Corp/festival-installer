@@ -2,23 +2,15 @@ package source
 
 import (
 	"context"
-	"fmt"
-	"os"
 
 	"github.com/Obedience-Corp/obey-installer/internal/state"
 )
 
-const officialMarketplaceURL = "https://github.com/Obedience-Corp/marketplace.git"
+var officialMarketplaceURL = "https://github.com/Obedience-Corp/marketplace.git"
 
 func EnsureOfficialSeed(ctx context.Context) error {
-	added, err := seedFromURL(ctx, officialMarketplaceURL)
-	if err != nil {
-		return err
-	}
-	if added {
-		fmt.Fprintln(os.Stderr, "seeded official marketplace (official-obey)")
-	}
-	return nil
+	_, err := seedFromURL(ctx, officialMarketplaceURL)
+	return err
 }
 
 func seedFromURL(ctx context.Context, gitURL string) (bool, error) {
