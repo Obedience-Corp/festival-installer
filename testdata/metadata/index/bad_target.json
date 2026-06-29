@@ -1,0 +1,12 @@
+{
+  "source": "official-obey",
+  "updatedAt": "2026-05-22T04:30:00Z",
+  "packages": [
+    {
+      "id": "acme/fest-demo",
+      "channels": ["latest"],
+      "class": "plugin",
+      "targets": [{ "package": "obedience-corp/festival" }]
+    }
+  ]
+}

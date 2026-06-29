@@ -141,6 +141,36 @@ func ListMarketplaces(ctx context.Context) ([]ListView, error) {
 	return views, err
 }
 
+type BrowsePackage struct {
+	Source  string     `json:"source"`
+	Package PackageRef `json:"package"`
+}
+
+func AllPackages(ctx context.Context) ([]BrowsePackage, error) {
+	var out []BrowsePackage
+	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
+		sources, err := List(ctx, db.Raw())
+		if err != nil {
+			return err
+		}
+		for _, src := range sources {
+			dest, derr := CloneDir(ctx, src.Name)
+			if derr != nil {
+				return derr
+			}
+			m, merr := LoadMarketplace(ctx, dest)
+			if merr != nil {
+				return errpkg.Wrap("E_BROWSE_LOAD", merr, "load marketplace "+src.Name)
+			}
+			for _, p := range m.Packages {
+				out = append(out, BrowsePackage{Source: src.Name, Package: p})
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
 func RefreshMarketplaces(ctx context.Context, name string) ([]RefreshView, error) {
 	var views []RefreshView
 	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {

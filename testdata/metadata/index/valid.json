@@ -2,7 +2,22 @@
   "source": "official-obey",
   "updatedAt": "2026-05-22T04:30:00Z",
   "packages": [
-    { "id": "obedience-corp/fest", "channels": ["latest", "rc"] },
-    { "id": "obedience-corp/camp", "channels": ["latest"] }
+    {
+      "id": "obedience-corp/fest",
+      "channels": ["latest", "rc"],
+      "class": "tool",
+      "display_name": "Fest",
+      "summary": "Festival planning and execution engine.",
+      "host_runtimes": ["fest-cli"]
+    },
+    {
+      "id": "acme/fest-demo",
+      "channels": ["latest"],
+      "class": "plugin",
+      "display_name": "Fest Demo",
+      "summary": "Demo fest plugin.",
+      "host_runtimes": ["fest-cli"],
+      "targets": [{ "package": "obedience-corp/festival", "runtime": "fest-cli", "version_constraint": ">=0.4.0" }]
+    }
   ]
 }

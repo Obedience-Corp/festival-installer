@@ -21,6 +21,7 @@
       "class": "plugin",
       "summary": "Export festival tasks to Jira.",
       "host_runtimes": ["fest-cli"],
+      "targets": [{ "package": "obedience-corp/festival", "runtime": "fest-cli", "version_constraint": ">=0.4.0" }],
       "channels": ["latest"],
       "manifest_path": "packages/fest-jira-export/obey-package.json"
     }

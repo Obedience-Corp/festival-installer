@@ -18,6 +18,24 @@
             "type": "array",
             "minItems": 1,
             "items": { "type": "string", "minLength": 1 }
+          },
+          "class": { "type": "string", "enum": ["product", "tool", "plugin", "bundle"] },
+          "display_name": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string" },
+          "host_runtimes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["package", "runtime"],
+              "properties": {
+                "package": { "type": "string", "minLength": 1 },
+                "runtime": { "type": "string", "minLength": 1 },
+                "version_constraint": { "type": "string" },
+                "required_features": { "type": "array", "items": { "type": "string" } }
+              }
+            }
           }
         }
       }

@@ -23,12 +23,7 @@ func main() {
 	stubs := []struct {
 		use, short string
 	}{
-		{"install", "Install a package"},
-		{"browse", "Browse available packages"},
 		{"list", "List installed packages"},
-		{"update", "Update installed packages"},
-		{"uninstall", "Remove installed packages"},
-		{"doctor", "Diagnose installer state"},
 	}
 	for _, s := range stubs {
 		cmd := &cobra.Command{
@@ -43,6 +38,12 @@ func main() {
 		root.AddCommand(cmd)
 	}
 
+	root.AddCommand(cli.NewInstallCommand())
+	root.AddCommand(cli.NewUpdateCommand())
+	root.AddCommand(cli.NewUninstallCommand())
+	root.AddCommand(cli.NewShellInitCommand())
+	root.AddCommand(cli.NewBrowseCommand())
+	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
 
