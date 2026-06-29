@@ -70,6 +70,11 @@ func selectPluginArtifact(rel metadata.Release, goos, goarch string) (metadata.A
 			return art, nil
 		}
 	}
+	for _, art := range rel.Artifacts {
+		if art.OS == goos && art.Arch == "all" && isPluginArtifactKind(art.Kind) {
+			return art, nil
+		}
+	}
 	return metadata.Artifact{}, errpkg.New("E_NO_ARTIFACT", "no plugin artifact for "+goos+"/"+goarch)
 }
 

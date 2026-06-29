@@ -101,6 +101,25 @@ func TestMarshal_RejectsNonFinite(t *testing.T) {
 	}
 }
 
+func TestMarshal_RejectsNonFiniteBehindPointer(t *testing.T) {
+	nan := math.NaN()
+	inf := math.Inf(+1)
+	cases := []struct {
+		name string
+		v    any
+	}{
+		{"NaN_pointer_field", struct{ V *float64 }{V: &nan}},
+		{"Inf_pointer_in_map", map[string]any{"p": &inf}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := verify.Marshal(tc.v); !errors.Is(err, verify.ErrNonFiniteNumber) {
+				t.Fatalf("expected ErrNonFiniteNumber for non-finite behind a *T pointer, got %v", err)
+			}
+		})
+	}
+}
+
 func BenchmarkMarshal10K(b *testing.B) {
 	// Build a synthetic ~10KB document of nested map/array.
 	v := map[string]any{}

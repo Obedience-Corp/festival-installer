@@ -38,3 +38,24 @@ func TestEntryExecutableName_FallsBackToSource(t *testing.T) {
 		t.Fatalf("explicit executable_name should win, got %q", got)
 	}
 }
+
+func TestSelectPluginArtifact_ExactThenAllFallback(t *testing.T) {
+	rel := metadata.Release{Artifacts: []metadata.Artifact{
+		{Kind: "tar.gz", OS: "darwin", Arch: "all", URL: "u-darwin-all"},
+		{Kind: "binary", OS: "linux", Arch: "amd64", URL: "u-linux-amd64"},
+	}}
+
+	exact, err := selectPluginArtifact(rel, "linux", "amd64")
+	if err != nil || exact.URL != "u-linux-amd64" {
+		t.Fatalf("exact match: %+v err=%v", exact, err)
+	}
+
+	fallback, err := selectPluginArtifact(rel, "darwin", "arm64")
+	if err != nil || fallback.URL != "u-darwin-all" {
+		t.Fatalf("expected arch=all fallback for a universal plugin artifact, got %+v err=%v", fallback, err)
+	}
+
+	if _, err := selectPluginArtifact(rel, "windows", "amd64"); err == nil {
+		t.Fatal("expected error for an unsupported platform")
+	}
+}

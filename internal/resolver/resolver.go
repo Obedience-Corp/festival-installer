@@ -53,6 +53,13 @@ type Source struct {
 	Priority int
 }
 
+// SourceIndex resolves packages backed by a static package manifest. Packages
+// backed only by a PackageRef.ReleaseSource (no manifest_path) are NOT handled
+// here: this resolver is not yet wired into any command, and the install CLI
+// resolves release_source plugins directly (see installPlugin). When the CLI
+// adopts this resolver, the SourceIndex adapter must synthesize a manifest for
+// release_source refs (or such refs must be excluded by selection) before they
+// reach Manifest, which would otherwise fail with a missing-manifest error.
 type SourceIndex interface {
 	EnabledSources(ctx context.Context) ([]Source, error)
 	Packages(ctx context.Context, sourceID string) ([]source.PackageRef, error)
