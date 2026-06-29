@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -92,6 +93,103 @@ func pluginManifestArchive(url, sha string) string {
 
 func fixturePluginMarketplace(t *testing.T, url, sha string) string {
 	return fixturePluginMarketplaceManifest(t, pluginManifest(url, sha))
+}
+
+func gitReleaseRepo(t *testing.T, tag string) string {
+	t.Helper()
+	dir := t.TempDir()
+	git(t, dir, "init", "-b", "main")
+	writeFile(t, filepath.Join(dir, "README.md"), "plugin")
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "init")
+	git(t, dir, "tag", tag)
+	return dir
+}
+
+func TestInstallPlugin_GitReleaseSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+
+	pluginRepo := gitReleaseRepo(t, "v0.1.0")
+
+	binBody := "#!/bin/sh\necho fest-demo\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"fest-demo": binBody, "README.md": "r"})
+	osMap := map[string]string{"darwin": "macOS", "linux": "linux"}
+	archMap := map[string]string{"amd64": "x86_64", "arm64": "arm64"}
+	assetName := fmt.Sprintf("fest-demo-0.1.0-%s-%s.tar.gz", osMap[runtime.GOOS], archMap[runtime.GOARCH])
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/checksums"):
+			_, _ = fmt.Fprintf(w, "%s  %s\n", sha256Hex(tarball), assetName)
+		case strings.HasSuffix(r.URL.Path, assetName):
+			_, _ = w.Write(tarball)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	root := fmt.Sprintf(`{
+  "id": "acme/plugins",
+  "name": "Acme Plugins",
+  "schema_version": "1",
+  "packages": [
+    {
+      "id": "acme/fest-demo",
+      "display_name": "Fest Demo",
+      "class": "plugin",
+      "host_runtimes": ["fest-cli"],
+      "targets": [{"package": "obedience-corp/festival", "runtime": "fest-cli"}],
+      "channels": ["stable"],
+      "release_source": {
+        "type": "git",
+        "repo": %q,
+        "asset_url": "%s/dl/fest-demo-{version}-{os}-{arch}.tar.gz",
+        "checksums_url": "%s/dl/checksums"
+      }
+    }
+  ]
+}`, pluginRepo, srv.URL, srv.URL)
+
+	mktDir := t.TempDir()
+	git(t, mktDir, "init", "-b", "main")
+	writeFile(t, filepath.Join(mktDir, "obey-marketplace.json"), root)
+	git(t, mktDir, "add", ".")
+	git(t, mktDir, "commit", "-m", "init")
+
+	if _, errOut, err := runInstaller(t, "marketplace", "add", mktDir, "--name", "acme"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	pathDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pathDir, "fest"), []byte("#!/bin/sh\necho fest 0.4.5\n"), 0o755); err != nil {
+		t.Fatalf("write fake fest: %v", err)
+	}
+	managedBin := filepath.Join(home, "bin")
+	sep := string(os.PathListSeparator)
+	t.Setenv("PATH", pathDir+sep+managedBin+sep+os.Getenv("PATH"))
+
+	out, errOut, err := runInstaller(t, "install", "fest-demo", "--json")
+	if err != nil {
+		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
+	}
+	var res struct {
+		Version string `json:"version"`
+	}
+	dataOf(t, out, &res)
+	if res.Version != "0.1.0" {
+		t.Fatalf("expected resolved version 0.1.0 from git tag, got %q", res.Version)
+	}
+
+	landed := filepath.Join(managedBin, "fest-demo")
+	got, err := os.ReadFile(landed)
+	if err != nil {
+		t.Fatalf("expected extracted binary at %s: %v", landed, err)
+	}
+	if string(got) != binBody {
+		t.Fatalf("managed bin should be the extracted binary: %q", got)
+	}
 }
 
 func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {

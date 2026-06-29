@@ -15,6 +15,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
 	"github.com/Obedience-Corp/obey-installer/internal/installer"
 	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	"github.com/Obedience-Corp/obey-installer/internal/release"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
 	"github.com/Obedience-Corp/obey-installer/internal/state"
 )
@@ -85,11 +86,7 @@ func isArchiveArtifact(kind string) bool {
 	return kind == "tar.gz" || kind == "suite-archive"
 }
 
-func pluginBinaryInArchive(extractDir string, entry metadata.InstallEntry, execName string) (string, error) {
-	name := entry.Source
-	if name == "" {
-		name = execName
-	}
+func locateArchiveBinary(extractDir, name string) (string, error) {
 	if err := shared.ValidateSegment(name); err != nil {
 		return "", err
 	}
@@ -102,6 +99,77 @@ func pluginBinaryInArchive(extractDir string, entry metadata.InstallEntry, execN
 		return "", errpkg.New("E_PLUGIN_BINARY_MISSING", name+" in the plugin archive is a directory, not a binary")
 	}
 	return p, nil
+}
+
+type pluginSpec struct {
+	packageID       string
+	source          string
+	version         string
+	artifactURL     string
+	sha256          string
+	isArchive       bool
+	binaryInArchive string
+	execName        string
+	target          metadata.RuntimeTarget
+}
+
+func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, channel string) (pluginSpec, error) {
+	manifest, err := source.LoadPackageManifest(ctx, bp.Source, bp.Package.ID)
+	if err != nil {
+		return pluginSpec{}, err
+	}
+	rel, err := installer.SelectRelease(manifest, channel)
+	if err != nil {
+		return pluginSpec{}, err
+	}
+	art, err := selectPluginArtifact(rel, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return pluginSpec{}, err
+	}
+	entry, err := binaryEntry(rel, host+"-"+name)
+	if err != nil {
+		return pluginSpec{}, err
+	}
+	execName := entryExecutableName(entry)
+	binIn := entry.Source
+	if binIn == "" {
+		binIn = execName
+	}
+	return pluginSpec{
+		packageID:       bp.Package.ID,
+		source:          bp.Source,
+		version:         rel.Version,
+		artifactURL:     art.URL,
+		sha256:          art.Sha256,
+		isArchive:       isArchiveArtifact(art.Kind),
+		binaryInArchive: binIn,
+		execName:        execName,
+		target:          selectTarget(bp.Package.Targets, host),
+	}, nil
+}
+
+func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string) (pluginSpec, error) {
+	rs := bp.Package.ReleaseSource
+	resolved, err := release.NewResolver().Resolve(ctx, *rs, channel, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return pluginSpec{}, err
+	}
+	execName := host + "-" + name
+	binIn := rs.Binary
+	if binIn == "" {
+		binIn = execName
+	}
+	return pluginSpec{
+		packageID:       bp.Package.ID,
+		source:          bp.Source,
+		version:         resolved.Version,
+		artifactURL:     resolved.URL,
+		sha256:          resolved.Sha256,
+		isArchive:       resolved.IsArchive,
+		binaryInArchive: binIn,
+		execName:        execName,
+		target:          selectTarget(bp.Package.Targets, host),
+	}, nil
 }
 
 func entryExecutableName(e metadata.InstallEntry) string {
@@ -148,29 +216,27 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	if err != nil {
 		return installResult{}, err
 	}
-	pkg := bp.Package
 
-	manifest, err := source.LoadPackageManifest(ctx, bp.Source, pkg.ID)
-	if err != nil {
-		return installResult{}, err
+	var spec pluginSpec
+	if bp.Package.ReleaseSource != nil {
+		spec, err = specFromGit(ctx, bp, host, name, channel)
+	} else {
+		spec, err = specFromManifest(ctx, bp, host, name, channel)
 	}
-	rel, err := installer.SelectRelease(manifest, channel)
-	if err != nil {
-		return installResult{}, err
-	}
-	art, err := selectPluginArtifact(rel, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		return installResult{}, err
-	}
-	entry, err := binaryEntry(rel, host+"-"+name)
 	if err != nil {
 		return installResult{}, err
 	}
 
-	if err := chooseAdapter(host).ValidateCompatibility(ctx, selectTarget(pkg.Targets, host)); err != nil {
+	if err := chooseAdapter(host).ValidateCompatibility(ctx, spec.target); err != nil {
 		return installResult{}, err
 	}
+	return activatePlugin(ctx, spec, channel)
+}
 
+func activatePlugin(ctx context.Context, spec pluginSpec, channel string) (installResult, error) {
+	if err := shared.ValidateSegment(spec.execName); err != nil {
+		return installResult{}, err
+	}
 	home, err := state.Home(ctx)
 	if err != nil {
 		return installResult{}, err
@@ -191,26 +257,21 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	staged, err := artifacts.NewDownloader().Download(ctx, art.URL, tx.StagingDir())
+	staged, err := artifacts.NewDownloader().Download(ctx, spec.artifactURL, tx.StagingDir())
 	if err != nil {
 		return installResult{}, err
 	}
-	if err := artifacts.VerifySHA256(ctx, staged, art.Sha256); err != nil {
-		return installResult{}, err
-	}
-
-	execName := entryExecutableName(entry)
-	if err := shared.ValidateSegment(execName); err != nil {
+	if err := artifacts.VerifySHA256(ctx, staged, spec.sha256); err != nil {
 		return installResult{}, err
 	}
 
 	binaryPath := staged
-	if isArchiveArtifact(art.Kind) {
+	if spec.isArchive {
 		extractDir := filepath.Join(tx.StagingDir(), "extracted")
 		if err := artifacts.ExtractTarGz(ctx, staged, extractDir); err != nil {
 			return installResult{}, err
 		}
-		inner, err := pluginBinaryInArchive(extractDir, entry, execName)
+		inner, err := locateArchiveBinary(extractDir, spec.binaryInArchive)
 		if err != nil {
 			return installResult{}, err
 		}
@@ -221,25 +282,25 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 	if err != nil {
 		return installResult{}, err
 	}
-	dst := filepath.Join(binDir, execName)
+	dst := filepath.Join(binDir, spec.execName)
 	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: binaryPath, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 		return installResult{}, err
 	}
 	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
-		PackageID:   pkg.ID,
-		Version:     rel.Version,
+		PackageID:   spec.packageID,
+		Version:     spec.version,
 		Channel:     channel,
-		Source:      bp.Source,
-		ManifestURL: art.URL,
+		Source:      spec.source,
+		ManifestURL: spec.artifactURL,
 	}); err != nil {
 		return installResult{}, err
 	}
 
 	return installResult{
-		Package: pkg.ID,
-		Version: rel.Version,
+		Package: spec.packageID,
+		Version: spec.version,
 		Channel: channel,
-		Source:  bp.Source,
+		Source:  spec.source,
 		Files:   []string{dst},
 	}, nil
 }

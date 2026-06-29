@@ -15,7 +15,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "display_name", "class", "manifest_path"],
+        "required": ["id", "display_name", "class"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "display_name": { "type": "string", "minLength": 1 },
@@ -46,7 +46,21 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1 }
           },
-          "manifest_path": { "type": "string", "minLength": 1 }
+          "manifest_path": { "type": "string", "minLength": 1 },
+          "release_source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "repo", "asset_url", "checksums_url"],
+            "properties": {
+              "type": { "type": "string", "enum": ["git"] },
+              "repo": { "type": "string", "minLength": 1 },
+              "asset_url": { "type": "string", "minLength": 1 },
+              "checksums_url": { "type": "string", "minLength": 1 },
+              "binary": { "type": "string" },
+              "os": { "type": "object", "additionalProperties": { "type": "string" } },
+              "arch": { "type": "object", "additionalProperties": { "type": "string" } }
+            }
+          }
         }
       }
     },
