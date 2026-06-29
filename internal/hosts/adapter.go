@@ -72,7 +72,7 @@ func (a *Adapter) ValidateCompatibility(ctx context.Context, target metadata.Run
 	if !installed {
 		return errpkg.New("E_HOST_ABSENT", a.bin+" is not installed")
 	}
-	if target.VersionConstraint == "" || version == "" {
+	if target.VersionConstraint == "" || !isSemver(version) {
 		return nil
 	}
 	ok, cerr := satisfies(version, target.VersionConstraint)
@@ -109,11 +109,34 @@ func (a *Adapter) Remove(ctx context.Context, r receipts.Receipt) error {
 func parseVersion(out string) string {
 	for f := range strings.FieldsSeq(out) {
 		f = strings.TrimPrefix(f, "v")
-		if len(f) > 0 && f[0] >= '0' && f[0] <= '9' && strings.Contains(f, ".") {
+		if isSemver(f) {
 			return f
 		}
 	}
-	return strings.TrimSpace(out)
+	return ""
+}
+
+func isSemver(v string) bool {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 3 {
+		return false
+	}
+	if !allDigits(parts[0]) || !allDigits(parts[1]) {
+		return false
+	}
+	return len(parts[2]) > 0 && parts[2][0] >= '0' && parts[2][0] <= '9'
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func satisfies(version, constraint string) (bool, error) {

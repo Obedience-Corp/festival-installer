@@ -107,6 +107,7 @@ func TestValidateCompatibility(t *testing.T) {
 		{"unsatisfied", fakeRunner{path: "/b/camp", out: []byte("camp 0.3.0")}, metadata.RuntimeTarget{Runtime: "camp-cli", VersionConstraint: ">=0.4.0"}, "E_HOST_INCOMPATIBLE"},
 		{"no constraint", fakeRunner{path: "/b/camp", out: []byte("camp 0.2.11")}, metadata.RuntimeTarget{Runtime: "camp"}, ""},
 		{"host absent", fakeRunner{lookErr: errors.New("nope")}, metadata.RuntimeTarget{Runtime: "camp", VersionConstraint: ">=0.4.0"}, "E_HOST_ABSENT"},
+		{"dev host allows constraint", fakeRunner{path: "/b/camp", out: []byte("camp dev\ncommit: abc")}, metadata.RuntimeTarget{Runtime: "camp-cli", VersionConstraint: ">=0.4.0"}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
