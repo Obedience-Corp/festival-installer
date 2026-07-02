@@ -14,6 +14,8 @@ import (
 
 var ErrPackageNotFound = errpkg.New("E_PKG_NOT_FOUND", "package not found in source")
 
+var ErrPackageIDMismatch = errpkg.New("E_PKG_ID_MISMATCH", "manifest id does not match the requested package id")
+
 type VerifyOptions struct {
 	KeyStore        verify.KeyStore
 	Policy          metadata.Policy
@@ -44,6 +46,10 @@ func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo V
 	if err != nil {
 		return metadata.PackageManifest{}, err
 	}
+	return loadPackageManifestFromDir(ctx, dest, sourceName, packageID, vo)
+}
+
+func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {
 	mp, err := LoadMarketplace(ctx, dest)
 	if err != nil {
 		return metadata.PackageManifest{}, err
@@ -64,12 +70,20 @@ func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo V
 		if err != nil {
 			return metadata.PackageManifest{}, err
 		}
-		return metadata.IngestManifest(ctx, vo.KeyStore, raw, sig, metadata.IngestOptions{
+		manifest, err := metadata.IngestManifest(ctx, vo.KeyStore, raw, sig, metadata.IngestOptions{
 			Policy:          vo.Policy,
 			AllowUnverified: vo.AllowUnverified,
 			WarnWriter:      vo.WarnWriter,
 			SourceLabel:     sourceName + "/" + packageID,
 		})
+		if err != nil {
+			return metadata.PackageManifest{}, err
+		}
+		if manifest.ID != packageID {
+			return metadata.PackageManifest{}, errpkg.Wrap("E_PKG_ID_MISMATCH", ErrPackageIDMismatch,
+				"index entry "+packageID+" in source "+sourceName+" resolved to a manifest for "+manifest.ID)
+		}
+		return manifest, nil
 	}
 	return metadata.PackageManifest{}, errpkg.Wrap("E_PKG_NOT_FOUND", ErrPackageNotFound, packageID+" in source "+sourceName)
 }
