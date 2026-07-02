@@ -12,23 +12,23 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 )
 
-type extractLimits struct {
-	maxEntries    int
-	maxFileBytes  int64
-	maxTotalBytes int64
+type ExtractLimits struct {
+	MaxEntries    int
+	MaxFileBytes  int64
+	MaxTotalBytes int64
 }
 
-var defaultExtractLimits = extractLimits{
-	maxEntries:    100_000,
-	maxFileBytes:  2 << 30,
-	maxTotalBytes: 8 << 30,
+var DefaultExtractLimits = ExtractLimits{
+	MaxEntries:    100_000,
+	MaxFileBytes:  512 << 20,
+	MaxTotalBytes: 1 << 30,
 }
 
 func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
-	return extractTarGz(ctx, srcArchive, destDir, defaultExtractLimits)
+	return ExtractTarGzWithLimits(ctx, srcArchive, destDir, DefaultExtractLimits)
 }
 
-func extractTarGz(ctx context.Context, srcArchive, destDir string, lim extractLimits) error {
+func ExtractTarGzWithLimits(ctx context.Context, srcArchive, destDir string, lim ExtractLimits) (err error) {
 	if err := ctx.Err(); err != nil {
 		return errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled before extract")
 	}
@@ -39,6 +39,11 @@ func extractTarGz(ctx context.Context, srcArchive, destDir string, lim extractLi
 	if err := os.MkdirAll(absDest, 0o755); err != nil {
 		return errpkg.Wrap("E_ARTIFACT_MKDIR", err, "create extract dir")
 	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(absDest)
+		}
+	}()
 
 	f, err := os.Open(srcArchive)
 	if err != nil {
@@ -68,7 +73,7 @@ func extractTarGz(ctx context.Context, srcArchive, destDir string, lim extractLi
 		}
 
 		entries++
-		if entries > lim.maxEntries {
+		if entries > lim.MaxEntries {
 			return errpkg.Wrap("E_ARTIFACT_ARCHIVE_TOO_LARGE", ErrArchiveTooLarge, "entry count exceeds limit")
 		}
 
@@ -90,9 +95,9 @@ func extractTarGz(ctx context.Context, srcArchive, destDir string, lim extractLi
 			if err != nil {
 				return errpkg.Wrap("E_ARTIFACT_CREATE", err, "create "+target)
 			}
-			remaining := lim.maxTotalBytes - totalBytes
-			if remaining > lim.maxFileBytes {
-				remaining = lim.maxFileBytes
+			remaining := lim.MaxTotalBytes - totalBytes
+			if remaining > lim.MaxFileBytes {
+				remaining = lim.MaxFileBytes
 			}
 			written, err := io.Copy(out, io.LimitReader(tr, remaining+1))
 			if err != nil {

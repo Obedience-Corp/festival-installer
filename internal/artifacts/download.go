@@ -19,7 +19,7 @@ type Downloader struct {
 }
 
 func NewDownloader() *Downloader {
-	return &Downloader{Client: &http.Client{Timeout: defaultDownloadTimeout}}
+	return &Downloader{Client: &http.Client{Timeout: defaultDownloadTimeout, CheckRedirect: CheckRedirect}}
 }
 
 func (d *Downloader) Download(ctx context.Context, url, destDir string) (string, error) {

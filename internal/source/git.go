@@ -21,8 +21,7 @@ func Clone(ctx context.Context, url, dest string) (string, error) {
 	if err := gitsafe.ValidateRemote(url); err != nil {
 		return "", err
 	}
-	args := append(gitsafe.ConfigArgs(), "clone", "--", url, dest)
-	if _, err := run(ctx, "", args...); err != nil {
+	if _, err := run(ctx, "", "clone", "--", url, dest); err != nil {
 		return "", errpkg.Wrap("E_GIT_CLONE", err, "clone "+url)
 	}
 	return headCommit(ctx, dest)
@@ -62,7 +61,7 @@ func headCommit(ctx context.Context, dest string) (string, error) {
 }
 
 func run(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append(gitsafe.ConfigArgs(), args...)...)
 	if dir != "" {
 		cmd.Dir = dir
 	}

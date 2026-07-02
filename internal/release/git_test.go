@@ -2,15 +2,19 @@ package release_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
 
+	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
 	"github.com/Obedience-Corp/obey-installer/internal/release"
 )
 
@@ -106,5 +110,50 @@ func TestResolve_GitChannelSkipsPrerelease(t *testing.T) {
 	rc, err := r.Resolve(context.Background(), src, "rc", runtime.GOOS, runtime.GOARCH)
 	if err != nil || rc.Version != "0.2.0-rc.1" {
 		t.Fatalf("rc should pick 0.2.0-rc.1, got %+v err=%v", rc, err)
+	}
+}
+
+func TestResolve_RejectsChecksumRedirectDowngrade(t *testing.T) {
+	repo := gitRepoWithTags(t, "v0.1.0")
+
+	plainSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintln(w, "deadbeef  asset.tar.gz")
+	}))
+	t.Cleanup(plainSrv.Close)
+	plainURL, err := url.Parse(plainSrv.URL)
+	if err != nil {
+		t.Fatalf("parse plain url: %v", err)
+	}
+	fakeHost := "insecure.example.com:" + plainURL.Port()
+
+	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+fakeHost+"/checksums", http.StatusFound)
+	}))
+	t.Cleanup(tlsSrv.Close)
+
+	client := tlsSrv.Client()
+	transport := client.Transport.(*http.Transport).Clone()
+	realAddr := plainSrv.Listener.Addr().String()
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr == fakeHost {
+			addr = realAddr
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}
+	client.Transport = transport
+	client.CheckRedirect = artifacts.CheckRedirect
+
+	r := release.NewResolver()
+	r.Client = client
+
+	src := release.Source{
+		Type:         "git",
+		Repo:         repo,
+		AssetURL:     tlsSrv.URL + "/dl/camp-graph-{version}-{os}-{arch}.tar.gz",
+		ChecksumsURL: tlsSrv.URL + "/dl/checksums",
+	}
+	_, err = r.Resolve(context.Background(), src, "stable", runtime.GOOS, runtime.GOARCH)
+	if !errors.Is(err, artifacts.ErrInsecureURL) {
+		t.Fatalf("expected ErrInsecureURL for downgraded checksum redirect, got %v", err)
 	}
 }

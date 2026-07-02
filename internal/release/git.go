@@ -48,7 +48,7 @@ type Resolver struct {
 }
 
 func NewResolver() *Resolver {
-	return &Resolver{Client: &http.Client{Timeout: defaultHTTPTimeout}}
+	return &Resolver{Client: &http.Client{Timeout: defaultHTTPTimeout, CheckRedirect: artifacts.CheckRedirect}}
 }
 
 var defaultOS = map[string]string{"darwin": "macOS", "linux": "linux"}

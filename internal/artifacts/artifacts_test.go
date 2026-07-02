@@ -8,14 +8,32 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
 )
+
+func redirectingClient(t *testing.T, tlsSrv *httptest.Server, fakeHost string, plainSrv *httptest.Server) *http.Client {
+	t.Helper()
+	client := tlsSrv.Client()
+	transport := client.Transport.(*http.Transport).Clone()
+	realAddr := plainSrv.Listener.Addr().String()
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr == fakeHost {
+			addr = realAddr
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, addr)
+	}
+	client.Transport = transport
+	client.CheckRedirect = artifacts.CheckRedirect
+	return client
+}
 
 func makeTarGz(t *testing.T, files map[string]string) []byte {
 	t.Helper()
@@ -192,6 +210,34 @@ func TestDownload_CancelLeavesNoPartial(t *testing.T) {
 	entries, _ := os.ReadDir(dest)
 	if len(entries) != 0 {
 		t.Fatalf("cancelled download left %d entries", len(entries))
+	}
+}
+
+func TestDownload_RejectsRedirectDowngrade(t *testing.T) {
+	body := makeTarGz(t, map[string]string{"camp": "binary-bytes"})
+	plainSrv := serve(t, body, http.StatusOK)
+	plainURL, err := url.Parse(plainSrv.URL)
+	if err != nil {
+		t.Fatalf("parse plain url: %v", err)
+	}
+	fakeHost := "insecure.example.com:" + plainURL.Port()
+
+	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+fakeHost+"/download", http.StatusFound)
+	}))
+	t.Cleanup(tlsSrv.Close)
+
+	client := redirectingClient(t, tlsSrv, fakeHost, plainSrv)
+	d := &artifacts.Downloader{Client: client}
+	dest := t.TempDir()
+
+	_, err = d.Download(context.Background(), tlsSrv.URL+"/a.tar.gz", dest)
+	if !errors.Is(err, artifacts.ErrInsecureURL) {
+		t.Fatalf("expected ErrInsecureURL for downgraded redirect, got %v", err)
+	}
+	entries, _ := os.ReadDir(dest)
+	if len(entries) != 0 {
+		t.Fatalf("expected empty dest after rejected redirect, got %d entries", len(entries))
 	}
 }
 
