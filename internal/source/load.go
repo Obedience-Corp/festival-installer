@@ -22,6 +22,9 @@ type VerifyOptions struct {
 }
 
 func DefaultVerifyOptions(warnWriter io.Writer, allowUnverified bool) VerifyOptions {
+	if warnWriter == nil {
+		warnWriter = os.Stderr
+	}
 	return VerifyOptions{
 		KeyStore:        verify.PinnedKeyStore(),
 		Policy:          metadata.PolicyWarnAllow,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/verify"
@@ -29,13 +30,22 @@ func IngestManifest(ctx context.Context, ks verify.KeyStore, raw []byte, sig *ve
 	if sig != nil {
 		return ParseVerifiedManifest(ctx, ks, raw, *sig)
 	}
-	if opts.Policy == PolicyRefuseByDefault && !opts.AllowUnverified {
-		return PackageManifest{}, errpkg.Wrap("E_UNVERIFIED_REFUSED", ErrUnverifiedRefused, label(opts.SourceLabel)+" is unsigned; pass --allow-unverified to override")
-	}
-	if opts.WarnWriter != nil {
-		_, _ = fmt.Fprintf(opts.WarnWriter, "WARNING: installing UNVERIFIED content from %s (no signature)\n", label(opts.SourceLabel))
+	if err := EnforceUnverifiedPolicy(opts); err != nil {
+		return PackageManifest{}, err
 	}
 	return parseManifest(ctx, raw)
+}
+
+func EnforceUnverifiedPolicy(opts IngestOptions) error {
+	if opts.Policy == PolicyRefuseByDefault && !opts.AllowUnverified {
+		return errpkg.Wrap("E_UNVERIFIED_REFUSED", ErrUnverifiedRefused, label(opts.SourceLabel)+" is unsigned; pass --allow-unverified to override")
+	}
+	w := opts.WarnWriter
+	if w == nil {
+		w = os.Stderr
+	}
+	_, _ = fmt.Fprintf(w, "WARNING: installing UNVERIFIED content from %s (no signature)\n", label(opts.SourceLabel))
+	return nil
 }
 
 func label(s string) string {

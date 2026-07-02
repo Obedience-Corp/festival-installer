@@ -153,7 +153,15 @@ func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 	}, nil
 }
 
-func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string) (pluginSpec, error) {
+func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+	if err := metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
+		Policy:          vo.Policy,
+		AllowUnverified: vo.AllowUnverified,
+		WarnWriter:      vo.WarnWriter,
+		SourceLabel:     bp.Source + "/" + bp.Package.ID,
+	}); err != nil {
+		return pluginSpec{}, err
+	}
 	rs := bp.Package.ReleaseSource
 	resolved, err := release.NewResolver().Resolve(ctx, *rs, channel, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -224,7 +232,7 @@ func installPlugin(ctx context.Context, host, name, channel string, vo source.Ve
 
 	var spec pluginSpec
 	if bp.Package.ReleaseSource != nil {
-		spec, err = specFromGit(ctx, bp, host, name, channel)
+		spec, err = specFromGit(ctx, bp, host, name, channel, vo)
 	} else {
 		spec, err = specFromManifest(ctx, bp, host, name, channel, vo)
 	}
