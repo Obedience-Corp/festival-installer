@@ -31,6 +31,7 @@ type installResult struct {
 func NewInstallCommand() *cobra.Command {
 	var channel string
 	var asJSON bool
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "install <festival|camp|fest>",
 		Short: "Install the festival suite (camp + fest)",
@@ -40,9 +41,10 @@ func NewInstallCommand() *cobra.Command {
 			if err := validateChannel(channel); err != nil {
 				return err
 			}
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			var res installResult
 			if host, name, ok := pluginHost(target); ok {
-				r, err := installPlugin(cmd.Context(), host, name, channel)
+				r, err := installPlugin(cmd.Context(), host, name, channel, vo)
 				if err != nil {
 					return err
 				}
@@ -56,7 +58,7 @@ func NewInstallCommand() *cobra.Command {
 				if target == "camp" || target == "fest" {
 					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "installing the festival suite (camp + fest); camp and fest are not published independently")
 				}
-				r, err := installFestival(cmd.Context(), channel)
+				r, err := installFestival(cmd.Context(), channel, vo)
 				if err != nil {
 					return err
 				}
@@ -70,6 +72,7 @@ func NewInstallCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&channel, "channel", "stable", "release channel (stable|rc|dev)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow installing unsigned content without prompting")
 	return cmd
 }
 
@@ -82,7 +85,7 @@ func validateChannel(c string) error {
 	}
 }
 
-func installFestival(ctx context.Context, channel string) (installResult, error) {
+func installFestival(ctx context.Context, channel string, vo source.VerifyOptions) (installResult, error) {
 	if err := ctx.Err(); err != nil {
 		return installResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
 	}
@@ -97,7 +100,7 @@ func installFestival(ctx context.Context, channel string) (installResult, error)
 	}
 	sourceName := cfg.Marketplaces.Default
 
-	manifest, err := source.LoadPackageManifest(ctx, sourceName, festivalPackageID)
+	manifest, err := source.LoadPackageManifest(ctx, sourceName, festivalPackageID, vo)
 	if err != nil {
 		return installResult{}, err
 	}

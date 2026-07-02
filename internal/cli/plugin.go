@@ -118,8 +118,8 @@ type pluginSpec struct {
 	target          metadata.RuntimeTarget
 }
 
-func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, channel string) (pluginSpec, error) {
-	manifest, err := source.LoadPackageManifest(ctx, bp.Source, bp.Package.ID)
+func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+	manifest, err := source.LoadPackageManifest(ctx, bp.Source, bp.Package.ID, vo)
 	if err != nil {
 		return pluginSpec{}, err
 	}
@@ -153,7 +153,15 @@ func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 	}, nil
 }
 
-func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string) (pluginSpec, error) {
+func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+	if err := metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
+		Policy:          vo.Policy,
+		AllowUnverified: vo.AllowUnverified,
+		WarnWriter:      vo.WarnWriter,
+		SourceLabel:     bp.Source + "/" + bp.Package.ID,
+	}); err != nil {
+		return pluginSpec{}, err
+	}
 	rs := bp.Package.ReleaseSource
 	resolved, err := release.NewResolver().Resolve(ctx, *rs, channel, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -208,7 +216,7 @@ func selectTarget(targets []metadata.RuntimeTarget, host string) metadata.Runtim
 	return metadata.RuntimeTarget{}
 }
 
-func installPlugin(ctx context.Context, host, name, channel string) (installResult, error) {
+func installPlugin(ctx context.Context, host, name, channel string, vo source.VerifyOptions) (installResult, error) {
 	if err := ctx.Err(); err != nil {
 		return installResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
 	}
@@ -224,9 +232,9 @@ func installPlugin(ctx context.Context, host, name, channel string) (installResu
 
 	var spec pluginSpec
 	if bp.Package.ReleaseSource != nil {
-		spec, err = specFromGit(ctx, bp, host, name, channel)
+		spec, err = specFromGit(ctx, bp, host, name, channel, vo)
 	} else {
-		spec, err = specFromManifest(ctx, bp, host, name, channel)
+		spec, err = specFromManifest(ctx, bp, host, name, channel, vo)
 	}
 	if err != nil {
 		return installResult{}, err
