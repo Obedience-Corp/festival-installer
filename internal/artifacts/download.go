@@ -19,12 +19,15 @@ type Downloader struct {
 }
 
 func NewDownloader() *Downloader {
-	return &Downloader{Client: &http.Client{Timeout: defaultDownloadTimeout}}
+	return &Downloader{Client: &http.Client{Timeout: defaultDownloadTimeout, CheckRedirect: CheckRedirect}}
 }
 
 func (d *Downloader) Download(ctx context.Context, url, destDir string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled before download")
+	}
+	if err := RequireHTTPS(url); err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return "", errpkg.Wrap("E_ARTIFACT_MKDIR", err, "create download dir")

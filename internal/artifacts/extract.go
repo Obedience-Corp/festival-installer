@@ -12,7 +12,23 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 )
 
+type ExtractLimits struct {
+	MaxEntries    int
+	MaxFileBytes  int64
+	MaxTotalBytes int64
+}
+
+var DefaultExtractLimits = ExtractLimits{
+	MaxEntries:    100_000,
+	MaxFileBytes:  512 << 20,
+	MaxTotalBytes: 1 << 30,
+}
+
 func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
+	return ExtractTarGzWithLimits(ctx, srcArchive, destDir, DefaultExtractLimits)
+}
+
+func ExtractTarGzWithLimits(ctx context.Context, srcArchive, destDir string, lim ExtractLimits) (err error) {
 	if err := ctx.Err(); err != nil {
 		return errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled before extract")
 	}
@@ -23,6 +39,11 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 	if err := os.MkdirAll(absDest, 0o755); err != nil {
 		return errpkg.Wrap("E_ARTIFACT_MKDIR", err, "create extract dir")
 	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(absDest)
+		}
+	}()
 
 	f, err := os.Open(srcArchive)
 	if err != nil {
@@ -37,6 +58,8 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
+	var entries int
+	var totalBytes int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled during extract")
@@ -47,6 +70,11 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 		}
 		if err != nil {
 			return errpkg.Wrap("E_ARTIFACT_TAR", err, "read tar header")
+		}
+
+		entries++
+		if entries > lim.MaxEntries {
+			return errpkg.Wrap("E_ARTIFACT_ARCHIVE_TOO_LARGE", ErrArchiveTooLarge, "entry count exceeds limit")
 		}
 
 		target, err := SafeJoin(absDest, hdr.Name)
@@ -67,10 +95,20 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 			if err != nil {
 				return errpkg.Wrap("E_ARTIFACT_CREATE", err, "create "+target)
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			remaining := lim.MaxTotalBytes - totalBytes
+			if remaining > lim.MaxFileBytes {
+				remaining = lim.MaxFileBytes
+			}
+			written, err := io.Copy(out, io.LimitReader(tr, remaining+1))
+			if err != nil {
 				_ = out.Close()
 				return errpkg.Wrap("E_ARTIFACT_WRITE", err, "write "+target)
 			}
+			if written > remaining {
+				_ = out.Close()
+				return errpkg.Wrap("E_ARTIFACT_ARCHIVE_TOO_LARGE", ErrArchiveTooLarge, "decompressed size exceeds limit")
+			}
+			totalBytes += written
 			if err := out.Close(); err != nil {
 				return errpkg.Wrap("E_ARTIFACT_CLOSE", err, "close "+target)
 			}

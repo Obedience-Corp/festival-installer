@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	"github.com/Obedience-Corp/obey-installer/internal/gitsafe"
 	"github.com/Obedience-Corp/obey-installer/internal/installer"
 )
 
@@ -46,7 +48,7 @@ type Resolver struct {
 }
 
 func NewResolver() *Resolver {
-	return &Resolver{Client: &http.Client{Timeout: defaultHTTPTimeout}}
+	return &Resolver{Client: &http.Client{Timeout: defaultHTTPTimeout, CheckRedirect: artifacts.CheckRedirect}}
 }
 
 var defaultOS = map[string]string{"darwin": "macOS", "linux": "linux"}
@@ -83,7 +85,13 @@ func (r *Resolver) Resolve(ctx context.Context, src Source, channel, goos, goarc
 }
 
 func (r *Resolver) latestTag(ctx context.Context, repo, channel string) (string, string, error) {
-	out, err := exec.CommandContext(ctx, "git", "ls-remote", "--tags", "--refs", repo).Output()
+	if err := gitsafe.ValidateRemote(repo); err != nil {
+		return "", "", err
+	}
+	args := append(gitsafe.ConfigArgs(), "ls-remote", "--tags", "--refs", "--", repo)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = gitsafe.Env()
+	out, err := cmd.Output()
 	if err != nil {
 		return "", "", errpkg.Wrap("E_RELEASE_LS_REMOTE", err, "git ls-remote "+repo)
 	}
@@ -129,6 +137,9 @@ func channelOrStable(channel string) string {
 }
 
 func (r *Resolver) checksumFor(ctx context.Context, checksumsURL, assetName string) (string, error) {
+	if err := artifacts.RequireHTTPS(checksumsURL); err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checksumsURL, nil)
 	if err != nil {
 		return "", errpkg.Wrap("E_RELEASE_REQ", err, "build request for "+checksumsURL)

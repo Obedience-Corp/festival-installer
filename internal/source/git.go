@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	"github.com/Obedience-Corp/obey-installer/internal/gitsafe"
 )
 
 var (
@@ -17,7 +18,10 @@ var (
 )
 
 func Clone(ctx context.Context, url, dest string) (string, error) {
-	if _, err := run(ctx, "", "clone", url, dest); err != nil {
+	if err := gitsafe.ValidateRemote(url); err != nil {
+		return "", err
+	}
+	if _, err := run(ctx, "", "clone", "--", url, dest); err != nil {
 		return "", errpkg.Wrap("E_GIT_CLONE", err, "clone "+url)
 	}
 	return headCommit(ctx, dest)
@@ -57,10 +61,11 @@ func headCommit(ctx context.Context, dest string) (string, error) {
 }
 
 func run(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append(gitsafe.ConfigArgs(), args...)...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	cmd.Env = gitsafe.Env()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", errpkg.Wrap("E_GIT_EXEC", err, "git "+strings.Join(args, " ")+": "+strings.TrimSpace(string(out)))
