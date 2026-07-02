@@ -10,34 +10,35 @@ merge into the public `festival` binary once foundations stabilize. Until then,
 
 ### What works today
 
-The CLI is a scaffold. Only `version`, `help`, and `completion` do anything real:
+The `install`, `update`, `uninstall`, `browse`, `marketplace`, and `doctor`
+subcommands are wired and functional (`cmd/obey-installer/main.go`, backed by
+`internal/cli`); `list` is still a stub. `version`, `help`, and `completion`
+work as expected.
 
-```bash
-$ obey-installer version
-0.0.0-dev
-
-$ obey-installer install fest
-install: not implemented
-```
-
-The user-facing subcommands (`install`, `browse`, `list`, `update`, `uninstall`,
-`marketplace`, `doctor`) all exit with `not implemented`. They will be wired up
-as later festivals land Steps 3–10 of the implementation plan.
+> **Security status (important):** package metadata is currently consumed
+> **without signature verification.** The `internal/verify` apparatus (RFC 8785
+> canonical JSON + ed25519) exists and is tested, but the live install path in
+> `internal/source` does not yet route through it, and no trust root is pinned.
+> Wiring mandatory verification is tracked by festival
+> `obey-installer-security-OI0007` (finding VER-01). Until it lands, treat
+> installs as trusting the source repository, and only add sources you control.
+> Transport is HTTPS-only, git invocation is hardened against argument and
+> protocol injection, and archive extraction is bounded against decompression
+> bombs (findings VER-03, VER-04, EXT-01).
 
 ### What's implemented under the hood
 
-The foundation packages (festival `obey-installer-foundations-OI0003`, Steps 1–2
-of the design plan) are complete and tested:
+The foundation packages are complete and tested:
 
 | Package | Surface |
 |---|---|
 | `internal/state` | SQLite handle with WAL + embedded migration runner (`OpenDB`, `Close`, `Conn`) |
 | `internal/state/receipts` | Receipt CRUD (`Write`, `Get`, `List`, `Delete`) with FK-cascaded files and metadata |
 | `internal/state/lock` | POSIX `fcntl`-backed cross-process install lock (`FileLock`) |
-| `internal/verify` | RFC 8785 canonical JSON `Marshal` and ed25519 `Verify` with pluggable `KeyStore` |
+| `internal/verify` | RFC 8785 canonical JSON `Marshal` and ed25519 `Verify` with pluggable `KeyStore` (built and tested; not yet wired into the live install path, see VER-01) |
 | `internal/metadata` | Schema-validated parsers for `source.json` / `index.json` / package manifest, plus `ParseVerified*` helpers that canonicalize + verify + parse |
-
-These are library primitives; nothing in `cmd/` calls them yet.
+| `internal/artifacts` | HTTPS-enforced download, bounded tar.gz extraction, atomic move |
+| `internal/gitsafe` | Git remote scheme validation and injection-hardened invocation flags |
 
 ## Design Reference
 

@@ -7,4 +7,6 @@ var (
 	ErrUnsafePath       = errpkg.New("E_ARTIFACT_UNSAFE_PATH", "archive member escapes destination directory")
 	ErrCrossDevice      = errpkg.New("E_ARTIFACT_EXDEV", "atomic move requires source and destination on the same filesystem")
 	ErrHTTPStatus       = errpkg.New("E_ARTIFACT_HTTP_STATUS", "download returned non-success HTTP status")
+	ErrInsecureURL      = errpkg.New("E_ARTIFACT_INSECURE_URL", "refusing to fetch over a non-HTTPS URL")
+	ErrArchiveTooLarge  = errpkg.New("E_ARTIFACT_ARCHIVE_TOO_LARGE", "archive exceeds decompression limits")
 )

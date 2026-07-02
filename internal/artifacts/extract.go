@@ -12,7 +12,23 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 )
 
+type extractLimits struct {
+	maxEntries    int
+	maxFileBytes  int64
+	maxTotalBytes int64
+}
+
+var defaultExtractLimits = extractLimits{
+	maxEntries:    100_000,
+	maxFileBytes:  2 << 30,
+	maxTotalBytes: 8 << 30,
+}
+
 func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
+	return extractTarGz(ctx, srcArchive, destDir, defaultExtractLimits)
+}
+
+func extractTarGz(ctx context.Context, srcArchive, destDir string, lim extractLimits) error {
 	if err := ctx.Err(); err != nil {
 		return errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled before extract")
 	}
@@ -37,6 +53,8 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
+	var entries int
+	var totalBytes int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return errpkg.Wrap("E_ARTIFACT_CTX", err, "context cancelled during extract")
@@ -47,6 +65,11 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 		}
 		if err != nil {
 			return errpkg.Wrap("E_ARTIFACT_TAR", err, "read tar header")
+		}
+
+		entries++
+		if entries > lim.maxEntries {
+			return errpkg.Wrap("E_ARTIFACT_ARCHIVE_TOO_LARGE", ErrArchiveTooLarge, "entry count exceeds limit")
 		}
 
 		target, err := SafeJoin(absDest, hdr.Name)
@@ -67,10 +90,20 @@ func ExtractTarGz(ctx context.Context, srcArchive, destDir string) error {
 			if err != nil {
 				return errpkg.Wrap("E_ARTIFACT_CREATE", err, "create "+target)
 			}
-			if _, err := io.Copy(out, tr); err != nil {
+			remaining := lim.maxTotalBytes - totalBytes
+			if remaining > lim.maxFileBytes {
+				remaining = lim.maxFileBytes
+			}
+			written, err := io.Copy(out, io.LimitReader(tr, remaining+1))
+			if err != nil {
 				_ = out.Close()
 				return errpkg.Wrap("E_ARTIFACT_WRITE", err, "write "+target)
 			}
+			if written > remaining {
+				_ = out.Close()
+				return errpkg.Wrap("E_ARTIFACT_ARCHIVE_TOO_LARGE", ErrArchiveTooLarge, "decompressed size exceeds limit")
+			}
+			totalBytes += written
 			if err := out.Close(); err != nil {
 				return errpkg.Wrap("E_ARTIFACT_CLOSE", err, "close "+target)
 			}
