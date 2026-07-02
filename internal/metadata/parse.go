@@ -92,7 +92,7 @@ func jsonPointer(verr *jsonschema.ValidationError) string {
 	return verr.InstanceLocation
 }
 
-func ParseSource(ctx context.Context, raw []byte) (Source, error) {
+func parseSource(ctx context.Context, raw []byte) (Source, error) {
 	if err := ctx.Err(); err != nil {
 		return Source{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}
@@ -106,7 +106,7 @@ func ParseSource(ctx context.Context, raw []byte) (Source, error) {
 	return s, nil
 }
 
-func ParseIndex(ctx context.Context, raw []byte) (Index, error) {
+func parseIndex(ctx context.Context, raw []byte) (Index, error) {
 	if err := ctx.Err(); err != nil {
 		return Index{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}
@@ -120,7 +120,7 @@ func ParseIndex(ctx context.Context, raw []byte) (Index, error) {
 	return i, nil
 }
 
-func ParseManifest(ctx context.Context, raw []byte) (PackageManifest, error) {
+func parseManifest(ctx context.Context, raw []byte) (PackageManifest, error) {
 	if err := ctx.Err(); err != nil {
 		return PackageManifest{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}

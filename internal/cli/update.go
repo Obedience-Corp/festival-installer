@@ -29,6 +29,7 @@ type updateResult struct {
 func NewUpdateCommand() *cobra.Command {
 	var channel string
 	var asJSON bool
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "update <festival|camp|fest>",
 		Short: "Update the installed festival suite to the channel-latest release",
@@ -45,7 +46,8 @@ func NewUpdateCommand() *cobra.Command {
 					return err
 				}
 			}
-			res, warning, err := updateFestival(cmd.Context(), channel)
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
+			res, warning, err := updateFestival(cmd.Context(), channel, vo)
 			if err != nil {
 				return err
 			}
@@ -60,10 +62,11 @@ func NewUpdateCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&channel, "channel", "", "override the release channel (default: the installed channel)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow updating from unsigned content without prompting")
 	return cmd
 }
 
-func updateFestival(ctx context.Context, channelOverride string) (updateResult, string, error) {
+func updateFestival(ctx context.Context, channelOverride string, vo source.VerifyOptions) (updateResult, string, error) {
 	if err := ctx.Err(); err != nil {
 		return updateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
 	}
@@ -91,7 +94,7 @@ func updateFestival(ctx context.Context, channelOverride string) (updateResult, 
 		installedVersion = live
 	}
 
-	manifest, err := source.LoadPackageManifest(ctx, rec.Source, festivalPackageID)
+	manifest, err := source.LoadPackageManifest(ctx, rec.Source, festivalPackageID, vo)
 	if err != nil {
 		return updateResult{}, warning, err
 	}
@@ -104,7 +107,7 @@ func updateFestival(ctx context.Context, channelOverride string) (updateResult, 
 		return updateResult{Package: festivalPackageID, Action: "current", Version: installedVersion}, warning, nil
 	}
 
-	res, err := installFestival(ctx, channel)
+	res, err := installFestival(ctx, channel, vo)
 	if err != nil {
 		return updateResult{}, warning, err
 	}

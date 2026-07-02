@@ -1,4 +1,4 @@
-package metadata_test
+package metadata
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
 )
 
 func read(t *testing.T, parts ...string) []byte {
@@ -21,7 +19,7 @@ func read(t *testing.T, parts ...string) []byte {
 
 func TestParseSource_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "source", "valid.json")
-	s, err := metadata.ParseSource(context.Background(), raw)
+	s, err := parseSource(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseSource: %v", err)
 	}
@@ -35,11 +33,11 @@ func TestParseSource_InvalidVariants(t *testing.T) {
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			raw := read(t, "..", "..", "testdata", "metadata", "source", name)
-			_, err := metadata.ParseSource(context.Background(), raw)
-			if !errors.Is(err, metadata.ErrSchemaInvalid) {
+			_, err := parseSource(context.Background(), raw)
+			if !errors.Is(err, ErrSchemaInvalid) {
 				t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 			}
-			var se *metadata.SchemaError
+			var se *SchemaError
 			if !errors.As(err, &se) {
 				t.Fatalf("expected *SchemaError, got %T", err)
 			}
@@ -49,7 +47,7 @@ func TestParseSource_InvalidVariants(t *testing.T) {
 
 func TestParseIndex_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "valid.json")
-	idx, err := metadata.ParseIndex(context.Background(), raw)
+	idx, err := parseIndex(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseIndex: %v", err)
 	}
@@ -60,11 +58,11 @@ func TestParseIndex_Valid(t *testing.T) {
 
 func TestParseIndex_EnrichedFields(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "valid.json")
-	idx, err := metadata.ParseIndex(context.Background(), raw)
+	idx, err := parseIndex(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseIndex: %v", err)
 	}
-	var plugin metadata.IndexEntry
+	var plugin IndexEntry
 	for _, e := range idx.Packages {
 		if e.Class == "plugin" {
 			plugin = e
@@ -83,11 +81,11 @@ func TestParseIndex_EnrichedFields(t *testing.T) {
 
 func TestParseIndex_BadTargetRejected(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "bad_target.json")
-	_, err := metadata.ParseIndex(context.Background(), raw)
-	if !errors.Is(err, metadata.ErrSchemaInvalid) {
+	_, err := parseIndex(context.Background(), raw)
+	if !errors.Is(err, ErrSchemaInvalid) {
 		t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 	}
-	var se *metadata.SchemaError
+	var se *SchemaError
 	if !errors.As(err, &se) {
 		t.Fatalf("expected *SchemaError, got %T", err)
 	}
@@ -95,11 +93,11 @@ func TestParseIndex_BadTargetRejected(t *testing.T) {
 
 func TestParseIndex_EmptyChannelsRejected(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "empty_channels.json")
-	_, err := metadata.ParseIndex(context.Background(), raw)
-	if !errors.Is(err, metadata.ErrSchemaInvalid) {
+	_, err := parseIndex(context.Background(), raw)
+	if !errors.Is(err, ErrSchemaInvalid) {
 		t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 	}
-	var se *metadata.SchemaError
+	var se *SchemaError
 	if !errors.As(err, &se) {
 		t.Fatalf("expected *SchemaError")
 	}
@@ -110,7 +108,7 @@ func TestParseIndex_EmptyChannelsRejected(t *testing.T) {
 
 func TestParseManifest_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "manifest", "valid.json")
-	m, err := metadata.ParseManifest(context.Background(), raw)
+	m, err := parseManifest(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseManifest: %v", err)
 	}
@@ -152,11 +150,11 @@ func TestParseManifest_InvalidVariants(t *testing.T) {
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			raw := read(t, "..", "..", "testdata", "metadata", "manifest", name)
-			_, err := metadata.ParseManifest(context.Background(), raw)
-			if !errors.Is(err, metadata.ErrSchemaInvalid) {
+			_, err := parseManifest(context.Background(), raw)
+			if !errors.Is(err, ErrSchemaInvalid) {
 				t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 			}
-			var se *metadata.SchemaError
+			var se *SchemaError
 			if !errors.As(err, &se) {
 				t.Fatalf("expected *SchemaError, got %T", err)
 			}
