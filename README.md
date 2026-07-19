@@ -133,5 +133,7 @@ internal/tui/          # bubbletea manager (theme, anim, screens)
 
 ## Design reference
 
+- **Festival Hub (control plane / launchpad / getting started):**  
+  `workflow/design/festival-hub-control-plane/` in the campaign workspace — product contract, planes, and how the hub launches camp/fest TUIs then returns without relaunching `festival`.
 - Marketplace architecture: `workflow/design/dungeon/completed/2026-06-08/festival-plugin-marketplace/`
 - Brand fire colors: fest.build flame logo `#F2721C` / `#EA5513`
