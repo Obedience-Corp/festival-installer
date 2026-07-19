@@ -9,20 +9,37 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
 	"github.com/Obedience-Corp/obey-installer/internal/cli"
+	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/state"
 	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
 )
+
+func hasErrorCode(err error, code string) bool {
+	for err != nil {
+		var e *errpkg.Error
+		if !errors.As(err, &e) {
+			return false
+		}
+		if e.Code == code {
+			return true
+		}
+		err = e.Unwrap()
+	}
+	return false
+}
 
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -186,7 +203,7 @@ func TestInstallFestival_E2E(t *testing.T) {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
-	out, _, err := runInstaller(t, "install", "festival", "--json")
+	out, _, err := runInstaller(t, "install", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -253,7 +270,7 @@ func TestInstallFestival_ChecksumMismatchRollsBack(t *testing.T) {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
-	if _, _, err := runInstaller(t, "install", "festival"); err == nil {
+	if _, _, err := runInstaller(t, "install", "festival", "--allow-unverified"); err == nil {
 		t.Fatal("expected install to fail on sha256 mismatch")
 	}
 
@@ -291,7 +308,7 @@ func TestInstallFestival_RejectsUnsafeInstallEntry(t *testing.T) {
 				t.Fatalf("marketplace add: %v\n%s", err, errOut)
 			}
 
-			if _, _, err := runInstaller(t, "install", "festival"); err == nil {
+			if _, _, err := runInstaller(t, "install", "festival", "--allow-unverified"); err == nil {
 				t.Fatal("expected install to reject an unsafe install entry")
 			}
 			binDir, _ := state.BinDir(ctx)
@@ -323,4 +340,36 @@ func mustDB(t *testing.T, ctx context.Context, home string) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close(context.Background()) })
 	return db.Raw()
+}
+
+func TestInstallFestival_UnsignedRefusedWithoutAllowUnverified(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("FESTIVAL_HOME", "")
+
+	campBody := "#!/bin/sh\necho camp\n"
+	festBody := "#!/bin/sh\necho fest\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	// VER-01: unsigned manifest must refuse by default.
+	_, errOut, err := runInstaller(t, "install", "festival", "--json")
+	if err == nil {
+		t.Fatal("expected install of unsigned package to fail without --allow-unverified")
+	}
+	if !hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+		// Fallback: CLI may only surface the code on stderr for some wrap paths.
+		if !strings.Contains(err.Error(), "E_UNVERIFIED_REFUSED") && !strings.Contains(errOut, "E_UNVERIFIED_REFUSED") {
+			t.Fatalf("expected E_UNVERIFIED_REFUSED, got err=%v errOut=%s", err, errOut)
+		}
+	}
 }

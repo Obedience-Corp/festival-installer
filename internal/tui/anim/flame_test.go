@@ -17,6 +17,10 @@ func TestFlame_HeightScale(t *testing.T) {
 	if high == "" || StaticFlame(s) == "" {
 		t.Fatal("expected non-empty flame render")
 	}
+	// Full-scale flame should be at least as tall as the low-scale flame.
+	if strings.Count(high, "\n") < strings.Count(low, "\n") {
+		t.Fatalf("expected high flame >= low flame height (high=%d low=%d)", strings.Count(high, "\n"), strings.Count(low, "\n"))
+	}
 	if !strings.Contains(Wordmark(s), "FESTIVAL") {
 		t.Fatal("wordmark missing FESTIVAL")
 	}

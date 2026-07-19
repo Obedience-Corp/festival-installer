@@ -7,9 +7,27 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/verify"
 )
 
-func TestDefaultVerifyOptions_RefuseByDefaultRequiresPinnedKeys(t *testing.T) {
+func TestDefaultVerifyOptions_RefuseByDefault(t *testing.T) {
 	vo := DefaultVerifyOptions(nil, false)
-	if vo.Policy == metadata.PolicyRefuseByDefault && !verify.HasPinnedKeys() {
-		t.Fatal("DefaultVerifyOptions defaults to PolicyRefuseByDefault but internal/verify has no pinned keys (see issue #8); pin at least one verification key before flipping the default, or every install will refuse")
+	if vo.Policy != metadata.PolicyRefuseByDefault {
+		t.Fatalf("default policy = %v, want PolicyRefuseByDefault (VER-01)", vo.Policy)
+	}
+	if vo.AllowUnverified {
+		t.Fatal("default AllowUnverified must be false")
+	}
+	// Empty trust root is intentional until marketplace keys are pinned (#8).
+	// Unsigned installs require --allow-unverified; signed installs need keys.
+	if verify.HasPinnedKeys() {
+		t.Log("pinned keys present — signed installs can verify against trust root")
+	}
+}
+
+func TestDefaultVerifyOptions_AllowUnverifiedFlag(t *testing.T) {
+	vo := DefaultVerifyOptions(nil, true)
+	if !vo.AllowUnverified {
+		t.Fatal("AllowUnverified=true must propagate")
+	}
+	if vo.Policy != metadata.PolicyRefuseByDefault {
+		t.Fatal("policy stays refuse-by-default even with allow flag (flag is the escape)")
 	}
 }

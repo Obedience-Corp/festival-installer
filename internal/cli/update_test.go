@@ -53,7 +53,7 @@ func TestUpdate_UnmanagedExternalLeftUntouched(t *testing.T) {
 	before, _ := os.ReadFile(filepath.Join(extDir, "camp"))
 	t.Setenv("PATH", extDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	out, errOut, err := runInstaller(t, "update", "festival", "--json")
+	out, errOut, err := runInstaller(t, "update", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("update: %v\n%s", err, errOut)
 	}
@@ -89,7 +89,7 @@ func TestUpdate_CurrentNoOp(t *testing.T) {
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
 
-	out, _, err := runInstaller(t, "update", "festival", "--json")
+	out, _, err := runInstaller(t, "update", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.9", "official-obey", binDir)
 
-	out, _, err := runInstaller(t, "update", "festival", "--json")
+	out, _, err := runInstaller(t, "update", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestUpdate_LiveReceiptDisagreementPrefersLive(t *testing.T) {
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
 
-	out, errOut, err := runInstaller(t, "update", "festival", "--json")
+	out, errOut, err := runInstaller(t, "update", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}

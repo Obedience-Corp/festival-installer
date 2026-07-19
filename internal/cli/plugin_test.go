@@ -170,7 +170,7 @@ func TestInstallPlugin_GitReleaseSource(t *testing.T) {
 	sep := string(os.PathListSeparator)
 	t.Setenv("PATH", pathDir+sep+managedBin+sep+os.Getenv("PATH"))
 
-	out, errOut, err := runInstaller(t, "install", "fest-demo", "--json")
+	out, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
 	}
@@ -219,7 +219,7 @@ func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {
 	managedBin := filepath.Join(home, "bin")
 	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
 
-	if _, errOut, err := runInstaller(t, "install", "fest-demo"); err != nil {
+	if _, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
 	}
 
@@ -270,7 +270,7 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 	managedBin := filepath.Join(home, "bin")
 	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
 
-	if _, errOut, err := runInstaller(t, "install", "fest-demo"); err != nil {
+	if _, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
 	}
 
@@ -325,7 +325,7 @@ func TestInstallFestPlugin_OmittedExecutableNameLandsAtSource(t *testing.T) {
 	managedBin := filepath.Join(home, "bin")
 	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
 
-	if _, errOut, err := runInstaller(t, "install", "fest-demo"); err != nil {
+	if _, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
 	}
 
@@ -364,7 +364,7 @@ func TestInstallPlugin_HostAbsentFails(t *testing.T) {
 	}
 
 	t.Setenv("PATH", filepath.Join(home, "bin"))
-	if _, _, err := runInstaller(t, "install", "fest-demo"); err == nil {
+	if _, _, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err == nil {
 		t.Fatal("expected install to fail when fest host is absent")
 	}
 	if _, statErr := os.Stat(filepath.Join(home, "bin", "fest-demo")); !os.IsNotExist(statErr) {

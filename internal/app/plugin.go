@@ -157,12 +157,16 @@ func SpecFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 }
 
 // SpecFromGit builds a plugin install plan from a git release_source.
+//
+// VER-02: git-release plugins are an untrusted class (checksums are self-asserted
+// over the same transport as the asset). They go through the same refuse-by-default
+// / --allow-unverified policy as unsigned package manifests.
 func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
 	if err := metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
 		Policy:          vo.Policy,
 		AllowUnverified: vo.AllowUnverified,
 		WarnWriter:      vo.WarnWriter,
-		SourceLabel:     bp.Source + "/" + bp.Package.ID,
+		SourceLabel:     "git-release plugin " + bp.Source + "/" + bp.Package.ID,
 	}); err != nil {
 		return pluginSpec{}, err
 	}

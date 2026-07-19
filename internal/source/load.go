@@ -23,13 +23,20 @@ type VerifyOptions struct {
 	WarnWriter      io.Writer
 }
 
+// DefaultVerifyOptions is the live-path policy for install/update/plugin.
+//
+// Policy is RefuseByDefault: unsigned package metadata is refused unless
+// allowUnverified is true (CLI --allow-unverified). When a detached .sig is
+// present, IngestManifest verifies it against the trust root (PinnedKeyStore).
+// An empty trust root still refuses unsigned content; signed content needs a
+// pinned matching key. See OI0007 / VER-01.
 func DefaultVerifyOptions(warnWriter io.Writer, allowUnverified bool) VerifyOptions {
 	if warnWriter == nil {
 		warnWriter = os.Stderr
 	}
 	return VerifyOptions{
 		KeyStore:        verify.PinnedKeyStore(),
-		Policy:          metadata.PolicyWarnAllow,
+		Policy:          metadata.PolicyRefuseByDefault,
 		AllowUnverified: allowUnverified,
 		WarnWriter:      warnWriter,
 	}

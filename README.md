@@ -38,11 +38,13 @@ distribution; until then `projects/festival` remains the public bootstrap
 
 ### Security (important)
 
-Package metadata is currently consumed **without mandatory signature
-verification.** Transport is HTTPS-only, git is hardened, and archive extraction
-is bounded. Wiring mandatory verification is tracked by festival
-`obey-installer-security-OI0007`. Treat installs as trusting the source
-repository.
+**Default install policy is refuse-by-default for unsigned package metadata**
+(VER-01 / OI0007). Pass `--allow-unverified` for unsigned dogfood content (loud
+warning on stderr). Detached `.sig` files are verified when present against the
+pinned trust root (`internal/verify` — empty until marketplace keys are
+embedded). The TUI tries the strict policy first and asks for explicit consent
+only when unsigned content is refused (same override as the CLI flag).
+Transport is HTTPS-only, git is hardened, and archive extraction is bounded.
 
 ## Quick start (humans)
 
