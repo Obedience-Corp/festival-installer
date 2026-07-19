@@ -917,25 +917,67 @@ func (m model) viewDoctor() string {
 		return s.Muted.Render("running checks…")
 	}
 	var b strings.Builder
-	// multi-booth style checks
+	// multi-booth style checks; wrap long messages so failures are fully readable.
+	msgWidth := m.width - 18
+	if msgWidth < 24 {
+		msgWidth = 24
+	}
 	for i, c := range m.checks {
 		spin := "·"
 		if !m.reduced {
 			spin = []string{"·", "°", "*", "✦"}[(m.frame+i)%4]
 		}
-		var line string
+		var badge string
 		switch c.Status {
 		case "ok":
-			line = s.OK.Render(fmt.Sprintf("[%s ok] ", spin)) + s.Normal.Render(c.ID+" — "+c.Message)
+			badge = s.OK.Render(fmt.Sprintf("[%s ok] ", spin))
 		case "warn":
-			line = s.Warn.Render(fmt.Sprintf("[%s warn] ", spin)) + s.Normal.Render(c.ID+" — "+c.Message)
+			badge = s.Warn.Render(fmt.Sprintf("[%s warn] ", spin))
 		default:
-			line = s.Err.Render(fmt.Sprintf("[%s fail] ", spin)) + s.Normal.Render(c.ID+" — "+c.Message)
+			badge = s.Err.Render(fmt.Sprintf("[%s fail] ", spin))
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		msg := c.ID + " — " + c.Message
+		wrapped := wrapWords(msg, msgWidth)
+		for j, part := range wrapped {
+			if j == 0 {
+				b.WriteString(badge + s.Normal.Render(part))
+			} else {
+				b.WriteString(s.Muted.Render("         ") + s.Normal.Render(part))
+			}
+			b.WriteByte('\n')
+		}
 	}
 	return b.String()
+}
+
+func wrapWords(text string, width int) []string {
+	if width < 8 || len(text) <= width {
+		return []string{text}
+	}
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return []string{text}
+	}
+	var lines []string
+	var cur strings.Builder
+	for _, w := range words {
+		if cur.Len() == 0 {
+			cur.WriteString(w)
+			continue
+		}
+		if cur.Len()+1+len(w) > width {
+			lines = append(lines, cur.String())
+			cur.Reset()
+			cur.WriteString(w)
+			continue
+		}
+		cur.WriteByte(' ')
+		cur.WriteString(w)
+	}
+	if cur.Len() > 0 {
+		lines = append(lines, cur.String())
+	}
+	return lines
 }
 
 func (m model) viewShell() string {

@@ -17,11 +17,12 @@ Set TypingSpeed 45ms
 Set Theme {"name":"termcast","background":"#0d0d11","foreground":"#f8f8f2","cursor":"#F2721C","selection":"#2a2a33","black":"#16161a","red":"#ff5f57","green":"#50fa7b","yellow":"#febc2e","blue":"#57a6ff","magenta":"#bd93f9","cyan":"#8be9fd","white":"#f8f8f2","brightBlack":"#6b7280","brightRed":"#ff6e67","brightGreen":"#69ff94","brightYellow":"#ffd23f","brightBlue":"#7ab8ff","brightMagenta":"#d0a9ff","brightCyan":"#a4f0ff","brightWhite":"#ffffff"}
 
 Hide
-Type `export PATH="$PWD/bin"` Enter
-Type `export TERM=xterm-256color COLORTERM=truecolor COLORFGBG='15;0'` Enter
-Type `export FESTIVAL_HOME="$(mktemp -d)/festival-home"` Enter
-Type `export PS1='\033[38;5;208m❯\033[0m '` Enter
-Type `clear` Enter
+Type "export PATH=$PWD/bin" Enter
+Type "export TERM=xterm-256color COLORTERM=truecolor COLORFGBG=15\;0" Enter
+Type "export FESTIVAL_HOME=/tmp/festival-vhs-tour-$$" Enter
+Type "mkdir -p $FESTIVAL_HOME" Enter
+Type "export PS1=$'\033[38;5;208m❯\033[0m '" Enter
+Type "clear" Enter
 Show
 
 Type "festival" Sleep 250ms Enter

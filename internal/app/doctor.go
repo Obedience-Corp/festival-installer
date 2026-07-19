@@ -13,6 +13,9 @@ import (
 
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.
 func Doctor(ctx context.Context) []DoctorCheck {
+	// Ensure the manager home exists so source/receipt checks do not fail with
+	// mkdir/db errors on a brand-new FESTIVAL_HOME.
+	_ = state.EnsureHome(ctx, 0o700)
 	return []DoctorCheck{
 		checkManagedBinOnPath(ctx),
 		checkSourcesReachable(ctx),
