@@ -327,3 +327,104 @@ func TestBeginWaitsForLockBeforeReconciling(t *testing.T) {
 		t.Fatalf("live transaction was reconciled while lock was held: %q", got)
 	}
 }
+
+func TestCommit_UpgradeBackupsOutsideStaging(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	dst := filepath.Join(binDir, "camp")
+	if err := os.WriteFile(dst, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp: %v", err)
+	}
+
+	tx, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	// Hold the staging dir path, then observe that durable backups are not under it.
+	staging := tx.StagingDir()
+	src := stageBlob(t, staging, "camp", "new-camp")
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: src, DestPath: dst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
+		PackageID: "obedience-corp/festival", Version: "0.3.0", Channel: "stable", Source: "official-obey",
+	}); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+
+	// Staging is cleaned on success; durable intent-backups dir must also be gone.
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("staging should be removed after successful commit, err=%v", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(home, installer.IntentBackupsDir)); err == nil && len(entries) > 0 {
+		t.Fatalf("intent backups should be cleared after success: %v", entries)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "new-camp" {
+		t.Fatalf("camp = %q, want new-camp", got)
+	}
+}
+
+func TestCommit_FailedUpgradeRestoresViaJournal(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	campDst := filepath.Join(binDir, "camp")
+	festDst := filepath.Join(binDir, "fest")
+	if err := os.WriteFile(campDst, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp: %v", err)
+	}
+	if err := os.WriteFile(festDst, []byte("old-fest"), 0o755); err != nil {
+		t.Fatalf("seed fest: %v", err)
+	}
+
+	tx, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	good := stageBlob(t, tx.StagingDir(), "camp", "new-camp")
+	badSrc := filepath.Join(tx.StagingDir(), "missing")
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: good, DestPath: campDst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage good: %v", err)
+	}
+	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: badSrc, DestPath: festDst, Mode: 0o755}); err != nil {
+		t.Fatalf("Stage bad: %v", err)
+	}
+
+	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
+		PackageID: "obedience-corp/festival", Version: "0.3.0", Channel: "stable", Source: "official-obey",
+	}); err == nil {
+		t.Fatal("expected commit failure")
+	}
+	// Journal-backed abort should restore both priors and clear the intent.
+	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); !os.IsNotExist(err) {
+		t.Fatalf("journal should be cleared after successful abort, err=%v", err)
+	}
+	gotCamp, err := os.ReadFile(campDst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotCamp) != "old-camp" {
+		t.Fatalf("camp = %q, want old-camp", gotCamp)
+	}
+	gotFest, err := os.ReadFile(festDst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotFest) != "old-fest" {
+		t.Fatalf("fest = %q, want old-fest", gotFest)
+	}
+	_ = tx.Rollback(ctx)
+}
