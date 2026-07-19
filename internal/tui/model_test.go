@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +24,32 @@ func TestHomeNavigation_Quit(t *testing.T) {
 	if _, ok := msg.(tea.QuitMsg); !ok {
 		// tea.Quit may return tea.QuitMsg via special internal; accept non-nil
 		_ = nm
+	}
+}
+
+func TestLaunchpad_SetsPendingLaunch(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenLaunchpad
+	m.cursor = 0
+	// Point PATH at a fake camp so resolve succeeds.
+	dir := t.TempDir()
+	camp := dir + "/camp"
+	if err := os.WriteFile(camp, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("FESTIVAL_HOME", t.TempDir())
+
+	next, cmd := m.launchSelected()
+	nm := next.(model)
+	if nm.pendingLaunch == nil {
+		t.Fatalf("expected pendingLaunch, err=%v", nm.err)
+	}
+	if nm.pendingLaunch.Tool != "camp" {
+		t.Fatalf("tool %q", nm.pendingLaunch.Tool)
+	}
+	if cmd == nil {
+		t.Fatal("expected tea.Quit cmd")
 	}
 }
 

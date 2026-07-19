@@ -22,7 +22,7 @@ func (m model) View() string {
 	s := m.styles
 	var body string
 	title := "home"
-	footer := "↑↓ navigate  enter select  ? help  q quit"
+	footer := "↑↓ navigate  enter select  1-9 menus  0/q quit  ? help"
 
 	switch m.screen {
 	case screenBoot:
@@ -62,6 +62,10 @@ func (m model) View() string {
 		title = "shell"
 		body = m.viewShell()
 		footer = "esc back"
+	case screenLaunchpad:
+		title = "launchpad"
+		body = m.viewLaunchpad()
+		footer = "enter open tool · quit tool returns here · esc back"
 	case screenConfirm:
 		title = "confirm"
 		body = components.ConfirmBox(m.confirmMsg, m.confirmYes, s)
@@ -78,7 +82,11 @@ func (m model) View() string {
 
 	header := components.Header(title, m.opts.Version, w, s)
 	foot := components.Footer(footer, w, s)
-	parts := []string{header, body}
+	parts := []string{header}
+	if m.banner != "" && (m.screen == screenHome || m.screen == screenLaunchpad) {
+		parts = append(parts, s.FireTip.Render("◆ "+m.banner))
+	}
+	parts = append(parts, body)
 	if m.err != nil && m.screen != screenResult {
 		parts = append(parts, components.ErrorBox(m.err, s))
 	}
@@ -132,6 +140,23 @@ func (m model) animationFrame() int {
 		return 0
 	}
 	return m.frame
+}
+
+func (m model) viewLaunchpad() string {
+	s := m.styles
+	if len(m.launchEntries) == 0 {
+		return s.Muted.Render("no launchpad entries")
+	}
+	items := make([]string, len(m.launchEntries))
+	for i, e := range m.launchEntries {
+		items[i] = e.Label
+		if e.Detail != "" {
+			items[i] = e.Label + "  " + e.Detail
+		}
+	}
+	intro := s.Title.Render("Open a camp / fest tool") + "\n" +
+		s.Muted.Render("Runs the real binary. Quit that tool to return here — no need to relaunch festival.") + "\n\n"
+	return intro + components.Menu(items, m.cursor, s)
 }
 
 func (m model) viewInstall() string {
@@ -307,6 +332,8 @@ func homeBoothIndex(cursor int) int {
 		return 3
 	case 7: // shell / path
 		return 4
+	case 8: // launchpad — multi-activity energy
+		return 0
 	default:
 		return 0
 	}

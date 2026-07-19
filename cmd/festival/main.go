@@ -19,9 +19,13 @@ func main() {
 	var forceTUI bool
 	root := &cobra.Command{
 		Use:   "festival",
-		Short: "Install and manage Festival tools and plugins",
-		Long: `festival is the Festival manager: install, update, and browse camp, fest,
-and plugins. Run with no arguments to open the interactive TUI.
+		Short: "Festival hub — install, onboard, and launch camp/fest tools",
+		Long: `festival is the Festival hub: install and update camp/fest, browse plugins,
+and open key camp/fest TUIs from one branded home.
+
+Run with no arguments to open the interactive TUI. From the Launchpad, tools
+run as real camp/fest processes; quit them to return here without relaunching
+festival.
 
 A festival has a lot of different things going on, just like you.
 
@@ -39,7 +43,8 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 				return err
 			}
 			if launchTUI {
-				return tui.Run(cmd.Context(), tui.Options{Version: version})
+				_, err := tui.RunLoop(cmd.Context(), tui.Options{Version: version})
+				return err
 			}
 			_, _ = fmt.Fprint(cmd.ErrOrStderr(), nonTTYBareMessage())
 			return cmd.Help()

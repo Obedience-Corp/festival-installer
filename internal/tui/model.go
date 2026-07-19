@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
+	"github.com/Obedience-Corp/obey-installer/internal/launch"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
 	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
 )
@@ -25,6 +26,7 @@ const (
 	screenMarketplace
 	screenDoctor
 	screenShell
+	screenLaunchpad
 	screenHelp
 	screenProgress
 	screenResult
@@ -123,6 +125,14 @@ type model struct {
 	// op in flight cancel
 	opCancel context.CancelFunc
 	busy     bool
+
+	// hub session handoff: set before tea.Quit so RunLoop can spawn a child
+	pendingLaunch *launch.Spec
+	// soft status after returning from a child tool
+	banner string
+
+	// launchpad
+	launchEntries []launch.Entry
 }
 
 var homeItems = []string{
@@ -134,6 +144,7 @@ var homeItems = []string{
 	"Marketplaces",
 	"Doctor",
 	"Shell / PATH setup",
+	"Launchpad (camp / fest tools)",
 	"Quit",
 }
 
@@ -146,16 +157,17 @@ func newModel(opts Options) model {
 	ti.CharLimit = 256
 	ti.Width = 48
 	m := model{
-		opts:       opts,
-		styles:     theme.New(),
-		reduced:    theme.ReducedMotion(),
-		screen:     screenBoot,
-		bootLeft:   12, // ~1.2s at 100ms
-		channels:   []string{"stable", "rc", "dev"},
-		channelIdx: 0,
-		addInput:   ti,
-		width:      80,
-		height:     24,
+		opts:          opts,
+		styles:        theme.New(),
+		reduced:       theme.ReducedMotion(),
+		screen:        screenBoot,
+		bootLeft:      12, // ~1.2s at 100ms
+		channels:      []string{"stable", "rc", "dev"},
+		channelIdx:    0,
+		addInput:      ti,
+		width:         80,
+		height:        24,
+		launchEntries: launch.Catalog(),
 	}
 	if m.reduced {
 		m.bootLeft = 1
@@ -372,6 +384,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmYes = false
 			return m.handleEnter()
 		}
+	case "0":
+		// Digit 0 is Quit (home has 10 items; 1–9 cover the first nine).
+		if m.screen == screenHome {
+			m.cursor = len(homeItems) - 1
+			return m.handleEnter()
+		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		if m.screen == screenHome {
 			idx := int(msg.String()[0] - '1')
@@ -454,6 +472,12 @@ func (m model) maxCursor() int {
 		return n - 1
 	case screenInstall:
 		return 1 // channel row is left/right; enter installs
+	case screenLaunchpad:
+		n := len(m.launchEntries)
+		if n == 0 {
+			return 0
+		}
+		return n - 1
 	default:
 		return 0
 	}
