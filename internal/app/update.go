@@ -71,6 +71,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 
 	res, err := InstallFestival(ctx, InstallOptions{
 		Channel:  channel,
+		Source:   rec.Source,
 		Verify:   opts.Verify,
 		Progress: opts.Progress,
 	})

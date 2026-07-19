@@ -30,10 +30,15 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if forceTUI || term.IsTerminal(int(os.Stdout.Fd())) {
-				if !term.IsTerminal(int(os.Stdout.Fd())) && !term.IsTerminal(int(os.Stdin.Fd())) {
-					return fmt.Errorf("TUI requires an interactive terminal; use festival <command> or open a TTY")
-				}
+			launchTUI, err := tuiLaunchDecision(
+				forceTUI,
+				term.IsTerminal(int(os.Stdin.Fd())),
+				term.IsTerminal(int(os.Stdout.Fd())),
+			)
+			if err != nil {
+				return err
+			}
+			if launchTUI {
 				return tui.Run(cmd.Context(), tui.Options{Version: version})
 			}
 			_, _ = fmt.Fprint(cmd.ErrOrStderr(), nonTTYBareMessage())
@@ -64,6 +69,13 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func tuiLaunchDecision(force, stdinTTY, stdoutTTY bool) (bool, error) {
+	if force && (!stdinTTY || !stdoutTTY) {
+		return false, fmt.Errorf("TUI requires an interactive terminal; use festival <command> or open a TTY")
+	}
+	return force || (stdinTTY && stdoutTTY), nil
 }
 
 func nonTTYBareMessage() string {

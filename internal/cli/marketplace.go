@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -76,7 +77,11 @@ func newMarketplaceListCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			views, err := app.MarketplaceList(cmd.Context())
 			if err != nil {
-				return err
+				var warning *app.MarketplaceSeedWarning
+				if !errors.As(err, &warning) {
+					return err
+				}
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
 			}
 			if asJSON {
 				return jsonout.Print(cmd.OutOrStdout(), views)
@@ -115,7 +120,11 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 			}
 			views, err := app.MarketplaceRefresh(cmd.Context(), name)
 			if err != nil {
-				return err
+				var warning *app.MarketplaceSeedWarning
+				if !errors.As(err, &warning) {
+					return err
+				}
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
 			}
 			if asJSON {
 				return jsonout.Print(cmd.OutOrStdout(), views)

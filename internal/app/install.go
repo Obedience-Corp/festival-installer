@@ -15,10 +15,18 @@ import (
 
 // InstallOptions configure a suite or plugin install.
 type InstallOptions struct {
-	Channel  string
+	Channel string
+	// Source overrides the configured marketplace. Updates use the receipt's
+	// source here so resolution and activation remain provenance-consistent.
+	Source   string
 	Verify   source.VerifyOptions
 	Progress ProgressFunc
 }
+
+// Keep the bootstrap behind the app boundary so every install entry point
+// gets the same first-run behavior. The variable also lets app tests exercise
+// the empty-home path without cloning the production marketplace.
+var ensureOfficialSeed = source.EnsureOfficialSeed
 
 // InstallFestival installs the camp+fest suite bundle.
 func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, error) {
@@ -45,7 +53,15 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 	if err != nil {
 		return InstallResult{}, err
 	}
-	sourceName := cfg.Marketplaces.Default
+	sourceName := opts.Source
+	if sourceName == "" {
+		sourceName = cfg.Marketplaces.Default
+	}
+	if sourceName == state.OfficialSeedKey {
+		if err := ensureOfficialSeed(ctx); err != nil {
+			return InstallResult{}, errpkg.Wrap("E_MARKETPLACE_SEED", err, "ensure official marketplace")
+		}
+	}
 
 	manifest, err := source.LoadPackageManifest(ctx, sourceName, FestivalPackageID, vo)
 	if err != nil {

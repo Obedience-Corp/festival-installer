@@ -11,8 +11,8 @@ func TestFlame_HeightScale(t *testing.T) {
 	s := theme.New()
 	low := Flame(0, 0, s)
 	high := Flame(0, 1, s)
-	if strings.Count(low, "\n") >= strings.Count(high, "\n") {
-		// low may equal high newline count if min height shows same; at least high non-empty
+	if strings.Count(low, "\n") > strings.Count(high, "\n") {
+		t.Fatalf("low flame should not be taller than high flame: low=%q high=%q", low, high)
 	}
 	if high == "" || StaticFlame(s) == "" {
 		t.Fatal("expected non-empty flame render")

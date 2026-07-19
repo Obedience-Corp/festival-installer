@@ -36,7 +36,7 @@ func (m model) View() string {
 		footer = "←→ channel  enter install  esc back"
 	case screenUpdate, screenProgress:
 		title = "working"
-		body = anim.ProgressFlame(m.progress.Percent, m.progress.Stage, m.progress.Message, m.frame, s)
+		body = anim.ProgressFlame(m.progress.Percent, m.progress.Stage, m.progress.Message, m.animationFrame(), s)
 		footer = "ctrl+c cancel"
 	case screenList:
 		title = "installed"
@@ -118,13 +118,20 @@ func (m model) viewHome() string {
 	} else {
 		flame = anim.Flame(m.frame, 1, s)
 	}
-	booths := anim.RenderBooths(anim.DefaultHomeBooths(homeBoothIndex(m.cursor)), m.frame, s)
+	booths := anim.RenderBooths(anim.DefaultHomeBooths(homeBoothIndex(m.cursor)), m.animationFrame(), s)
 	center := lipgloss.JoinVertical(lipgloss.Center, flame, "", booths)
 	menu := components.Menu(homeItems, m.cursor, s)
 	tag := s.Tagline.Render(anim.Tagline)
 
 	return status + "\n" + components.StatusLine(pathText, pathKind, s) + "\n\n" +
 		center + "\n\n" + menu + "\n" + tag
+}
+
+func (m model) animationFrame() int {
+	if m.reduced {
+		return 0
+	}
+	return m.frame
 }
 
 func (m model) viewInstall() string {

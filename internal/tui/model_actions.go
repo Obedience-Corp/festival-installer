@@ -197,8 +197,10 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "activate", Percent: 0.5, Message: "removing " + packageID}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.opCancel = cancel
 	return m, func() tea.Msg {
-		res, err := app.UninstallPackage(context.Background(), packageID)
+		res, err := app.UninstallPackage(ctx, packageID)
 		if err != nil {
 			return opDoneMsg{title: "Uninstall failed", body: err.Error(), err: err, success: false}
 		}
@@ -234,8 +236,10 @@ func (m model) installBrowseSelection() (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "installing " + entry.ID}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.opCancel = cancel
 	return m, func() tea.Msg {
-		res, err := app.InstallTarget(context.Background(), target, app.InstallOptions{
+		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
 			Channel: "stable",
 			Verify:  source.DefaultVerifyOptions(nil, false),
 		})

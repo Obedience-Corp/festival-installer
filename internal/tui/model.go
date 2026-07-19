@@ -75,7 +75,6 @@ type model struct {
 	width     int
 	height    int
 	screen    screen
-	prev      screen
 	cursor    int
 	frame     int
 	bootLeft  int // frames remaining on splash
