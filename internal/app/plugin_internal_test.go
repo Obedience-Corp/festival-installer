@@ -1,4 +1,4 @@
-package cli
+package app
 
 import (
 	"bytes"
@@ -63,7 +63,7 @@ func TestSpecFromGit_WarnAllowEmitsUnverifiedWarning(t *testing.T) {
 	var warn bytes.Buffer
 	vo := source.VerifyOptions{Policy: metadata.PolicyWarnAllow, WarnWriter: &warn}
 
-	_, _ = specFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
+	_, _ = SpecFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
 
 	if !strings.Contains(warn.String(), "UNVERIFIED") || !strings.Contains(warn.String(), "acme/fest-demo") {
 		t.Fatalf("expected a loud unverified warning naming the git-sourced plugin, got %q", warn.String())
@@ -73,7 +73,7 @@ func TestSpecFromGit_WarnAllowEmitsUnverifiedWarning(t *testing.T) {
 func TestSpecFromGit_RefuseByDefaultBlocksWithoutOverride(t *testing.T) {
 	vo := source.VerifyOptions{Policy: metadata.PolicyRefuseByDefault}
 
-	_, err := specFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
+	_, err := SpecFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
 
 	if !errors.Is(err, metadata.ErrUnverifiedRefused) {
 		t.Fatalf("expected ErrUnverifiedRefused for an unsigned git-sourced plugin under refuse-by-default, got %v", err)
@@ -83,7 +83,7 @@ func TestSpecFromGit_RefuseByDefaultBlocksWithoutOverride(t *testing.T) {
 func TestSpecFromGit_RefuseByDefaultAllowsWithOverride(t *testing.T) {
 	vo := source.VerifyOptions{Policy: metadata.PolicyRefuseByDefault, AllowUnverified: true}
 
-	_, err := specFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
+	_, err := SpecFromGit(context.Background(), gitSourcedBrowsePackage(), "fest", "demo", "stable", vo)
 
 	if errors.Is(err, metadata.ErrUnverifiedRefused) {
 		t.Fatalf("--allow-unverified should bypass the refuse-by-default policy check, got %v", err)

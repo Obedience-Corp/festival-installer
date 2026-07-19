@@ -1,4 +1,4 @@
-package cli
+package app
 
 import (
 	"context"
@@ -20,7 +20,8 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/state"
 )
 
-func pluginHost(selector string) (string, string, bool) {
+// PluginHost parses camp-*/fest-* selectors.
+func PluginHost(selector string) (host, name string, ok bool) {
 	switch {
 	case strings.HasPrefix(selector, "camp-"):
 		return "camp", strings.TrimPrefix(selector, "camp-"), true
@@ -38,7 +39,8 @@ func chooseAdapter(host string) hosts.Host {
 	return fest.New()
 }
 
-func findPlugin(pkgs []source.BrowsePackage, host, name string) (source.BrowsePackage, error) {
+// FindPlugin locates a plugin package by host and short name.
+func FindPlugin(pkgs []source.BrowsePackage, host, name string) (source.BrowsePackage, error) {
 	want := host + "-" + name
 	var matches []source.BrowsePackage
 	for _, bp := range pkgs {
@@ -118,7 +120,8 @@ type pluginSpec struct {
 	target          metadata.RuntimeTarget
 }
 
-func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+// SpecFromManifest builds a plugin install plan from a marketplace package manifest.
+func SpecFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
 	manifest, err := source.LoadPackageManifest(ctx, bp.Source, bp.Package.ID, vo)
 	if err != nil {
 		return pluginSpec{}, err
@@ -153,7 +156,8 @@ func specFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 	}, nil
 }
 
-func specFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+// SpecFromGit builds a plugin install plan from a git release_source.
+func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
 	if err := metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
 		Policy:          vo.Policy,
 		AllowUnverified: vo.AllowUnverified,
@@ -216,88 +220,99 @@ func selectTarget(targets []metadata.RuntimeTarget, host string) metadata.Runtim
 	return metadata.RuntimeTarget{}
 }
 
-func installPlugin(ctx context.Context, host, name, channel string, vo source.VerifyOptions) (installResult, error) {
+// InstallPlugin installs a camp or fest plugin by short name.
+func InstallPlugin(ctx context.Context, host, name string, opts InstallOptions) (InstallResult, error) {
 	if err := ctx.Err(); err != nil {
-		return installResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
+		return InstallResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
 	}
+	channel := opts.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	progress := opts.Progress
+	report(progress, ProgressEvent{Stage: "resolve", Package: host + "-" + name, Percent: 0.1, Message: "finding plugin"})
 
 	pkgs, err := source.AllPackages(ctx)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
-	bp, err := findPlugin(pkgs, host, name)
+	bp, err := FindPlugin(pkgs, host, name)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 
 	var spec pluginSpec
 	if bp.Package.ReleaseSource != nil {
-		spec, err = specFromGit(ctx, bp, host, name, channel, vo)
+		spec, err = SpecFromGit(ctx, bp, host, name, channel, opts.Verify)
 	} else {
-		spec, err = specFromManifest(ctx, bp, host, name, channel, vo)
+		spec, err = SpecFromManifest(ctx, bp, host, name, channel, opts.Verify)
 	}
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 
 	if err := chooseAdapter(host).ValidateCompatibility(ctx, spec.target); err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
-	return activatePlugin(ctx, spec, channel)
+	return activatePlugin(ctx, spec, channel, progress)
 }
 
-func activatePlugin(ctx context.Context, spec pluginSpec, channel string) (installResult, error) {
+func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progress ProgressFunc) (InstallResult, error) {
 	if err := shared.ValidateSegment(spec.execName); err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	home, err := state.Home(ctx)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	db, err := state.OpenDB(ctx, home)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	defer func() { _ = db.Close(ctx) }()
 
 	tx, err := installer.Begin(ctx, db.Raw(), home)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	report(progress, ProgressEvent{Stage: "download", Package: spec.packageID, Percent: 0.3, Message: "downloading plugin"})
 	staged, err := artifacts.NewDownloader().Download(ctx, spec.artifactURL, tx.StagingDir())
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
+	report(progress, ProgressEvent{Stage: "verify", Package: spec.packageID, Percent: 0.55, Message: "verifying checksum"})
 	if err := artifacts.VerifySHA256(ctx, staged, spec.sha256); err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 
 	binaryPath := staged
 	if spec.isArchive {
 		extractDir := filepath.Join(tx.StagingDir(), "extracted")
+		report(progress, ProgressEvent{Stage: "extract", Package: spec.packageID, Percent: 0.7, Message: "extracting plugin"})
 		if err := artifacts.ExtractTarGz(ctx, staged, extractDir); err != nil {
-			return installResult{}, err
+			return InstallResult{}, err
 		}
 		inner, err := locateArchiveBinary(extractDir, spec.binaryInArchive)
 		if err != nil {
-			return installResult{}, err
+			return InstallResult{}, err
 		}
 		binaryPath = inner
 	}
 
+	report(progress, ProgressEvent{Stage: "activate", Package: spec.packageID, Percent: 0.9, Message: "activating " + spec.execName})
 	hash, err := artifacts.SHA256(ctx, binaryPath)
 	if err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	dst := filepath.Join(binDir, spec.execName)
 	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: binaryPath, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
 		PackageID:   spec.packageID,
@@ -306,10 +321,11 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string) (insta
 		Source:      spec.source,
 		ManifestURL: spec.artifactURL,
 	}); err != nil {
-		return installResult{}, err
+		return InstallResult{}, err
 	}
 
-	return installResult{
+	report(progress, ProgressEvent{Stage: "done", Package: spec.packageID, Percent: 1, Message: "plugin ready"})
+	return InstallResult{
 		Package: spec.packageID,
 		Version: spec.version,
 		Channel: channel,
@@ -318,12 +334,13 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string) (insta
 	}, nil
 }
 
-func resolvePluginPackageID(ctx context.Context, host, name string) (string, error) {
+// ResolvePluginPackageID maps host+name to marketplace package ID.
+func ResolvePluginPackageID(ctx context.Context, host, name string) (string, error) {
 	pkgs, err := source.AllPackages(ctx)
 	if err != nil {
 		return "", err
 	}
-	bp, err := findPlugin(pkgs, host, name)
+	bp, err := FindPlugin(pkgs, host, name)
 	if err != nil {
 		return "", err
 	}

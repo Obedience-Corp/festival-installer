@@ -1,104 +1,124 @@
-# obey-installer
+# festival
 
-Installer engine and plugin manager for `fest`, `camp`, and future Obey tools.
+Interactive Festival manager — install, update, and browse `camp`, `fest`, and
+plugins with a fire-themed TUI. CLI subcommands remain for scripts and agents.
+
+> *A festival has a lot of different things going on, just like you.*
+
+<p align="center">
+  <img src="docs/demos/festival-home.gif" alt="festival TUI: boot splash, fire ambient, multi-activity booths, and home menu" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/demos/festival-tour.gif" alt="festival TUI tour: install channel picker, shell/PATH, and installed packages" width="900">
+</p>
+
+Record demos with `just vhs all` (requires `vhs`, `ttyd`, `ffmpeg`).
 
 ## Status
 
-Private incubation repo. Not yet ready for external use. The mature engine will
-merge into the public `festival` binary once foundations stabilize. Until then,
-`projects/festival` remains the public bootstrap surface.
+Private incubation in `obey-installer` (Go module still
+`github.com/Obedience-Corp/obey-installer`). The public command name is
+**`festival`**. The mature engine will later ship with the public Festival
+distribution; until then `projects/festival` remains the public bootstrap
+(npm/Homebrew/`install.sh`).
 
-### What works today
+### Security (important)
 
-The `install`, `update`, `uninstall`, `browse`, `marketplace`, and `doctor`
-subcommands are wired and functional (`cmd/obey-installer/main.go`, backed by
-`internal/cli`); `list` is still a stub. `version`, `help`, and `completion`
-work as expected.
+Package metadata is currently consumed **without mandatory signature
+verification.** Transport is HTTPS-only, git is hardened, and archive extraction
+is bounded. Wiring mandatory verification is tracked by festival
+`obey-installer-security-OI0007`. Treat installs as trusting the source
+repository.
 
-> **Security status (important):** package metadata is currently consumed
-> **without signature verification.** The `internal/verify` apparatus (RFC 8785
-> canonical JSON + ed25519) exists and is tested, but the live install path in
-> `internal/source` does not yet route through it, and no trust root is pinned.
-> Wiring mandatory verification is tracked by festival
-> `obey-installer-security-OI0007` (finding VER-01). Until it lands, treat
-> installs as trusting the source repository, and only add sources you control.
-> Transport is HTTPS-only, git invocation is hardened against argument and
-> protocol injection, and archive extraction is bounded against decompression
-> bombs (findings VER-03, VER-04, EXT-01).
+## Quick start (humans)
 
-### What's implemented under the hood
+```bash
+just build          # → bin/festival  (+ bin/obey-installer alias)
+./bin/festival      # opens the TUI on a terminal
+```
 
-The foundation packages are complete and tested:
+The TUI home screen lets you:
 
-| Package | Surface |
-|---|---|
-| `internal/state` | SQLite handle with WAL + embedded migration runner (`OpenDB`, `Close`, `Conn`) |
-| `internal/state/receipts` | Receipt CRUD (`Write`, `Get`, `List`, `Delete`) with FK-cascaded files and metadata |
-| `internal/state/lock` | POSIX `fcntl`-backed cross-process install lock (`FileLock`) |
-| `internal/verify` | RFC 8785 canonical JSON `Marshal` and ed25519 `Verify` with pluggable `KeyStore` (built and tested; not yet wired into the live install path, see VER-01) |
-| `internal/metadata` | Schema-validated parsers for `source.json` / `index.json` / package manifest, plus `ParseVerified*` helpers that canonicalize + verify + parse |
-| `internal/artifacts` | HTTPS-enforced download, bounded tar.gz extraction, atomic move |
-| `internal/gitsafe` | Git remote scheme validation and injection-hardened invocation flags |
+- Install / update the Festival suite (camp + fest)
+- List installed packages
+- Browse the catalog and install plugins
+- Uninstall receipt-owned packages
+- Manage marketplaces
+- Run doctor and PATH / shell-init guidance
 
-## Design Reference
+**Animations:** boot splash, ambient multi-activity “booths”, progress flame, and
+a short success burst. Disable ambient motion with:
 
-See `workflow/design/festival-plugin-marketplace/` in the `obey-campaign`
-workspace for the architecture, security model, and rollout plan. The
-implementation roadmap lives at `10-implementation-plan.md` (Steps 1–2 shipped,
-Steps 3–10 ahead).
+```bash
+export FESTIVAL_REDUCED_MOTION=1
+```
+
+## CLI (scripts / agents)
+
+```bash
+festival install festival --channel stable
+festival update festival
+festival list
+festival list --json
+festival browse --product fest --kind plugin
+festival marketplace list
+festival doctor
+festival shell-init zsh
+festival which camp --show-all
+festival version
+```
+
+JSON envelopes use schema version `festival/v1alpha1`.
+
+### Install targets
+
+| Target | Effect |
+| --- | --- |
+| `festival`, `camp`, `fest` | Install the suite bundle `obedience-corp/festival` (camp + fest) |
+| `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces |
+
+## Home directory
+
+| Env | Role |
+| --- | --- |
+| `FESTIVAL_HOME` | Preferred absolute path for manager state (wins if set) |
+| `OBEY_INSTALLER_HOME` | Legacy alias |
+
+Default: `~/.obey/installer` with `bin/`, `state.db`, marketplace clones, receipts.
 
 ## Development
 
-All development commands flow through `just`:
-
 ```bash
-just                  # list all recipes
-just build            # build bin/obey-installer
-just run version      # go run ./cmd/obey-installer version
-just check            # fmt + vet + lint + test (pre-commit gate)
-just ci               # check + cross-platform release builds
+just                  # list recipes
+just build            # bin/festival
+just run version
+just check            # fmt + vet + lint + test
+just test
+just release all      # cross-platform festival-{os}-{arch}
 ```
 
-### Testing
+### Layout
 
-```bash
-just test                  # go test ./...
-just testing race          # with race detector
-just testing coverage      # with coverage summary
-just testing coverage-html # writes coverage.html
-just testing bench         # run benchmarks
-just testing verbose       # verbose output
+```text
+cmd/festival/          # binary entry (bare → TUI, subcommands → CLI)
+internal/app/          # service layer shared by CLI and TUI
+internal/cli/          # cobra wrappers + human/JSON rendering
+internal/tui/          # bubbletea manager (theme, anim, screens)
 ```
 
-### Cross-platform builds
+## What works under the hood
 
-```bash
-just release all           # all four targets
-just release linux         # linux/amd64
-just release linux-arm64   # linux/arm64
-just release darwin        # darwin/amd64
-just release darwin-arm64  # darwin/arm64
-```
+| Package | Surface |
+| --- | --- |
+| `internal/state` | SQLite + WAL, home, config |
+| `internal/state/receipts` | Install receipts |
+| `internal/state/lock` | Cross-process install lock |
+| `internal/verify` | Canonical JSON + ed25519 (not yet mandatory on live path) |
+| `internal/artifacts` | HTTPS download, bounded tar.gz, atomic move |
+| `internal/source` | Marketplace clone cache + package index |
 
-### Linter
+## Design reference
 
-`golangci-lint` is required for `just lint` and `just check`. Install with:
-
-```bash
-just tools install-golangci-lint
-```
-
-The lint recipe will fail with this hint if the binary is missing.
-
-### Module hygiene
-
-```bash
-just tidy   # go mod tidy && go mod download
-just fmt    # go fmt ./...
-just vet    # go vet ./...
-just clean  # remove bin/ and coverage artifacts
-```
-
-## License
-
-FSL-1.1-ALv2. See LICENSE.
+- Marketplace architecture: `workflow/design/dungeon/completed/2026-06-08/festival-plugin-marketplace/`
+- Brand fire colors: fest.build flame logo `#F2721C` / `#EA5513`

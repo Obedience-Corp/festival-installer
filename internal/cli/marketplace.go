@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obedience-Corp/obey-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
 )
 
 const shortCommitLen = 12
@@ -40,7 +40,7 @@ func newMarketplaceAddCommand() *cobra.Command {
 		Short: "Add a marketplace from a git repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			src, err := source.AddMarketplace(cmd.Context(), args[0], name)
+			src, err := app.MarketplaceAdd(cmd.Context(), args[0], name)
 			if err != nil {
 				return err
 			}
@@ -53,19 +53,18 @@ func newMarketplaceAddCommand() *cobra.Command {
 }
 
 func newMarketplaceRemoveCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "remove <name>",
 		Short: "Remove an added marketplace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := source.RemoveMarketplace(cmd.Context(), args[0]); err != nil {
+			if err := app.MarketplaceRemove(cmd.Context(), args[0]); err != nil {
 				return err
 			}
 			_, err := fmt.Fprintf(cmd.OutOrStdout(), "removed %s\n", args[0])
 			return err
 		},
 	}
-	return cmd
 }
 
 func newMarketplaceListCommand() *cobra.Command {
@@ -75,10 +74,7 @@ func newMarketplaceListCommand() *cobra.Command {
 		Short: "List added marketplaces",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := source.EnsureOfficialSeed(cmd.Context()); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not seed official marketplace: %v\n", err)
-			}
-			views, err := source.ListMarketplaces(cmd.Context())
+			views, err := app.MarketplaceList(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -113,14 +109,11 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 		Short: "Refresh one or all marketplaces",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := source.EnsureOfficialSeed(cmd.Context()); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not seed official marketplace: %v\n", err)
-			}
 			var name string
 			if len(args) == 1 {
 				name = args[0]
 			}
-			views, err := source.RefreshMarketplaces(cmd.Context(), name)
+			views, err := app.MarketplaceRefresh(cmd.Context(), name)
 			if err != nil {
 				return err
 			}
