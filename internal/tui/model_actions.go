@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
+	"github.com/Obedience-Corp/obey-installer/internal/launch"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
 )
 
@@ -75,6 +76,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	case screenDoctor, screenShell:
 		m.screen = screenHome
 		return m, nil
+	case screenLaunchpad:
+		return m.launchSelected()
 	}
 	return m, nil
 }
@@ -117,9 +120,35 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		m.shellSnippet = snip
 		return m, nil
 	case 8:
+		m.screen = screenLaunchpad
+		m.cursor = 0
+		m.err = nil
+		return m, nil
+	case 9:
 		return m, tea.Quit
 	}
 	return m, nil
+}
+
+// launchSelected requests a child tool run: set pendingLaunch and quit the TUI
+// so the outer RunLoop can spawn camp/fest on the real TTY, then resume the hub.
+func (m model) launchSelected() (tea.Model, tea.Cmd) {
+	if len(m.launchEntries) == 0 {
+		m.err = fmt.Errorf("no launchpad entries")
+		return m, nil
+	}
+	if m.cursor < 0 || m.cursor >= len(m.launchEntries) {
+		return m, nil
+	}
+	spec := m.launchEntries[m.cursor].Spec
+	// Preflight resolve so missing tools show an in-hub error instead of a black screen.
+	if _, err := launch.Resolve(context.Background(), spec.Tool); err != nil {
+		m.err = err
+		return m, nil
+	}
+	cp := spec
+	m.pendingLaunch = &cp
+	return m, tea.Quit
 }
 
 func (m model) startInstall() (tea.Model, tea.Cmd) {

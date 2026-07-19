@@ -59,6 +59,9 @@ The TUI home screen lets you:
 - Uninstall receipt-owned packages
 - Manage marketplaces
 - Run doctor and PATH / shell-init guidance
+- **Launchpad** — open camp/fest tools (`camp wi`, `fest watch`, …) as real
+  subprocesses; quit the tool to return to the hub without relaunching `festival`
+  (suspend → child → resume; see hub design docs)
 
 **Animations:** boot splash, ambient multi-activity “booths”, progress flame, and
 a short success burst. Disable ambient motion with:
