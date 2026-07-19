@@ -39,6 +39,7 @@ type placedFile struct {
 
 type Transaction struct {
 	db         *sql.DB
+	home       string
 	stagingDir string
 	release    lock.Release
 
@@ -57,6 +58,10 @@ func BeginWithTimeout(ctx context.Context, db *sql.DB, home string, lockTimeout 
 	if err := ctx.Err(); err != nil {
 		return nil, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled before begin")
 	}
+	// Reverse any prior crash mid-Commit before starting a new activation.
+	if err := Reconcile(ctx, home, db); err != nil {
+		return nil, err
+	}
 	fl, err := lock.NewFileLock(home)
 	if err != nil {
 		return nil, err
@@ -70,7 +75,7 @@ func BeginWithTimeout(ctx context.Context, db *sql.DB, home string, lockTimeout 
 		_ = rel()
 		return nil, errpkg.Wrap("E_INSTALL_STAGING", err, "create staging dir")
 	}
-	return &Transaction{db: db, stagingDir: staging, release: rel}, nil
+	return &Transaction{db: db, home: home, stagingDir: staging, release: rel}, nil
 }
 
 func (t *Transaction) StagingDir() string { return t.stagingDir }
@@ -100,22 +105,44 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 		return receipts.Receipt{}, ErrNotStaged
 	}
 
+	// Persist intent before placement so a kill mid-loop is recoverable (TXN-01).
+	j := Journal{
+		PackageID: info.PackageID,
+		Version:   info.Version,
+		Channel:   info.Channel,
+		Source:    info.Source,
+		StartedAt: time.Now().UTC(),
+		Placed:    nil,
+	}
+	if err := writeJournal(t.home, j); err != nil {
+		return receipts.Receipt{}, err
+	}
+
 	owned := make([]receipts.OwnedFile, 0, len(t.staged))
 	for i, f := range t.staged {
 		backup, err := t.backupExisting(i, f.DestPath)
 		if err != nil {
 			t.removePlaced()
+			_ = clearJournal(t.home)
 			return receipts.Receipt{}, err
 		}
 		if err := artifacts.AtomicMove(ctx, f.StagedPath, f.DestPath); err != nil {
 			t.restoreBackup(f.DestPath, backup)
 			t.removePlaced()
+			_ = clearJournal(t.home)
 			return receipts.Receipt{}, err
 		}
 		t.placed = append(t.placed, placedFile{dest: f.DestPath, backup: backup})
+		j.Placed = append(j.Placed, JournalPlace{Dest: f.DestPath, Backup: backup})
+		if err := writeJournal(t.home, j); err != nil {
+			t.removePlaced()
+			_ = clearJournal(t.home)
+			return receipts.Receipt{}, err
+		}
 		if f.Mode != 0 {
 			if err := os.Chmod(f.DestPath, f.Mode); err != nil {
 				t.removePlaced()
+				_ = clearJournal(t.home)
 				return receipts.Receipt{}, errpkg.Wrap("E_INSTALL_CHMOD", err, "chmod "+f.DestPath)
 			}
 		}
@@ -133,8 +160,13 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 	}
 	if err := receipts.Write(ctx, t.db, r); err != nil {
 		t.removePlaced()
+		_ = clearJournal(t.home)
 		return receipts.Receipt{}, err
 	}
+
+	// Receipt is durable. Best-effort journal clear; stale journals with a
+	// matching receipt are cleared on next Reconcile without reverse.
+	_ = clearJournal(t.home)
 
 	t.committed = true
 	t.finish()
