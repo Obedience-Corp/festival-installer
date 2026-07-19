@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -186,7 +187,7 @@ func TestInstallFestival_E2E(t *testing.T) {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
-	out, _, err := runInstaller(t, "install", "festival", "--json")
+	out, _, err := runInstaller(t, "install", "festival", "--allow-unverified", "--json")
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -253,7 +254,7 @@ func TestInstallFestival_ChecksumMismatchRollsBack(t *testing.T) {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
-	if _, _, err := runInstaller(t, "install", "festival"); err == nil {
+	if _, _, err := runInstaller(t, "install", "festival", "--allow-unverified"); err == nil {
 		t.Fatal("expected install to fail on sha256 mismatch")
 	}
 
@@ -291,7 +292,7 @@ func TestInstallFestival_RejectsUnsafeInstallEntry(t *testing.T) {
 				t.Fatalf("marketplace add: %v\n%s", err, errOut)
 			}
 
-			if _, _, err := runInstaller(t, "install", "festival"); err == nil {
+			if _, _, err := runInstaller(t, "install", "festival", "--allow-unverified"); err == nil {
 				t.Fatal("expected install to reject an unsafe install entry")
 			}
 			binDir, _ := state.BinDir(ctx)
@@ -323,4 +324,36 @@ func mustDB(t *testing.T, ctx context.Context, home string) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close(context.Background()) })
 	return db.Raw()
+}
+
+func TestInstallFestival_UnsignedRefusedWithoutAllowUnverified(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("FESTIVAL_HOME", "")
+
+	campBody := "#!/bin/sh\necho camp\n"
+	festBody := "#!/bin/sh\necho fest\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	// VER-01: unsigned manifest must refuse by default.
+	_, errOut, err := runInstaller(t, "install", "festival", "--json")
+	if err == nil {
+		t.Fatal("expected install of unsigned package to fail without --allow-unverified")
+	}
+	if !strings.Contains(err.Error(), "UNVERIFIED") && !strings.Contains(err.Error(), "unverified") && !strings.Contains(errOut, "unverified") {
+		// error codes E_UNVERIFIED_REFUSED
+		if !strings.Contains(err.Error(), "E_UNVERIFIED") && !strings.Contains(err.Error(), "unsigned") {
+			t.Fatalf("expected unverified refusal, got err=%v errOut=%s", err, errOut)
+		}
+	}
 }
