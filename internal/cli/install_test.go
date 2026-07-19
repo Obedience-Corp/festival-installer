@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,9 +22,24 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obedience-Corp/obey-installer/internal/cli"
+	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/state"
 	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
 )
+
+func hasErrorCode(err error, code string) bool {
+	for err != nil {
+		var e *errpkg.Error
+		if !errors.As(err, &e) {
+			return false
+		}
+		if e.Code == code {
+			return true
+		}
+		err = e.Unwrap()
+	}
+	return false
+}
 
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -350,10 +366,10 @@ func TestInstallFestival_UnsignedRefusedWithoutAllowUnverified(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected install of unsigned package to fail without --allow-unverified")
 	}
-	if !strings.Contains(err.Error(), "UNVERIFIED") && !strings.Contains(err.Error(), "unverified") && !strings.Contains(errOut, "unverified") {
-		// error codes E_UNVERIFIED_REFUSED
-		if !strings.Contains(err.Error(), "E_UNVERIFIED") && !strings.Contains(err.Error(), "unsigned") {
-			t.Fatalf("expected unverified refusal, got err=%v errOut=%s", err, errOut)
+	if !hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+		// Fallback: CLI may only surface the code on stderr for some wrap paths.
+		if !strings.Contains(err.Error(), "E_UNVERIFIED_REFUSED") && !strings.Contains(errOut, "E_UNVERIFIED_REFUSED") {
+			t.Fatalf("expected E_UNVERIFIED_REFUSED, got err=%v errOut=%s", err, errOut)
 		}
 	}
 }

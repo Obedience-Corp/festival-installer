@@ -248,3 +248,33 @@ func TestReconcile_MatchingReceiptClearsWithoutReverse(t *testing.T) {
 		t.Fatal("journal should be cleared")
 	}
 }
+
+func TestReconcile_MissingBackupDoesNotDeleteLive(t *testing.T) {
+	// Explicit guard: backup path set, unreadable parent (lost staging), dest live.
+	home := t.TempDir()
+	dest := filepath.Join(home, "bin", "camp")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest, []byte("LIVE"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Point at a backup under a path that does not exist — Lstat fails with NotExist.
+	backup := filepath.Join(home, "intent-backups", "gone", "backup-0")
+	if err := writeJournal(home, Journal{
+		ID:     "jid",
+		Placed: []JournalPlace{{Dest: dest, Backup: backup}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Reconcile(context.Background(), home, nil); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "LIVE" {
+		t.Fatalf("got %q, want LIVE", got)
+	}
+}

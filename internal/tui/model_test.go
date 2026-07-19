@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
+	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 )
 
 func TestHomeNavigation_Quit(t *testing.T) {
@@ -27,17 +28,42 @@ func TestHomeNavigation_Quit(t *testing.T) {
 	}
 }
 
-func TestInstallPromptsForUnverifiedConsent(t *testing.T) {
+func TestInstallStartsStrictBeforeConsent(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenInstall
 
 	next, cmd := m.handleEnter()
 	nm := next.(model)
+	if cmd == nil || nm.screen != screenProgress {
+		t.Fatalf("screen=%v cmd=%v, want strict install attempt first", nm.screen, cmd)
+	}
+	if nm.confirmAct != "" {
+		t.Fatalf("should not open consent before attempt, act=%q", nm.confirmAct)
+	}
+}
+
+func TestConsentNeededMsgOpensOverrideDialog(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.busy = true
+	m.screen = screenProgress
+	next, cmd := m.Update(consentNeededMsg{
+		action: "install-unverified",
+		cause:  errpkg.New("E_UNVERIFIED_REFUSED", "unsigned"),
+	})
+	nm := next.(model)
 	if cmd != nil {
-		t.Fatal("consent prompt should not start an operation")
+		t.Fatal("consent prompt should not start another command")
 	}
 	if nm.screen != screenConfirm || nm.confirmAct != "install-unverified" {
-		t.Fatalf("screen=%v action=%q, want unverified consent prompt", nm.screen, nm.confirmAct)
+		t.Fatalf("screen=%v action=%q, want override consent", nm.screen, nm.confirmAct)
+	}
+	if nm.confirmYes {
+		t.Fatal("override consent must default to No")
+	}
+	if !nm.busy {
+		// busy cleared so user can answer
+	} else {
+		t.Fatal("busy should clear when consent is required")
 	}
 }
 
@@ -51,6 +77,17 @@ func TestUnverifiedConsentStartsInstall(t *testing.T) {
 	nm := next.(model)
 	if nm.screen != screenProgress || cmd == nil {
 		t.Fatalf("screen=%v cmd=%v, want progress and install command", nm.screen, cmd)
+	}
+}
+
+func TestHasErrorCodeWalksWraps(t *testing.T) {
+	inner := errpkg.New("E_UNVERIFIED_REFUSED", "refused")
+	outer := errpkg.Wrap("E_PKG_MANIFEST", inner, "load")
+	if !hasErrorCode(outer, "E_UNVERIFIED_REFUSED") {
+		t.Fatal("expected walk to find E_UNVERIFIED_REFUSED")
+	}
+	if hasErrorCode(outer, "E_OTHER") {
+		t.Fatal("unexpected code match")
 	}
 }
 

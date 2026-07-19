@@ -66,6 +66,13 @@ type opDoneMsg struct {
 	success bool
 }
 
+// consentNeededMsg is returned when a strict install/update hit E_UNVERIFIED_REFUSED.
+// The model opens an explicit override dialog before retrying with AllowUnverified.
+type consentNeededMsg struct {
+	action string
+	cause  error
+}
+
 type progressMsg struct {
 	ev app.ProgressEvent
 }
@@ -275,6 +282,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resultOK = msg.success
 		m.err = msg.err
 		return m, loadStatus()
+
+	case consentNeededMsg:
+		m.busy = false
+		if m.opCancel != nil {
+			m.opCancel()
+			m.opCancel = nil
+		}
+		m.confirmMsg = "Marketplace metadata is unsigned. Continue with the unverified-content override?"
+		m.confirmYes = false
+		m.confirmAct = msg.action
+		m.confirmArg = ""
+		m.err = msg.cause
+		m.screen = screenConfirm
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,16 +19,17 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	case screenHome:
 		return m.openHomeItem()
 	case screenInstall:
-		return m.requestUnverified("install-unverified")
+		// Try strict first; prompt only when VER-01 refuses unsigned content.
+		return m.startInstall(false)
 	case screenUpdate:
-		return m.requestUnverified("update-unverified")
+		return m.startUpdate(false)
 	case screenList:
 		return m, nil
 	case screenBrowse:
 		if len(m.browseFlat) == 0 {
 			return m, nil
 		}
-		return m.requestUnverified("browse-install-unverified")
+		return m.installBrowseSelection(false)
 	case screenUninstall:
 		if len(m.list.Packages) == 0 {
 			return m, nil
@@ -103,7 +105,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	case 1:
 		m.screen = screenUpdate
-		return m.requestUnverified("update-unverified")
+		return m.startUpdate(false)
 	case 2:
 		m.screen = screenList
 		return m, loadList()
@@ -143,13 +145,19 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) requestUnverified(action string) (tea.Model, tea.Cmd) {
-	m.confirmMsg = "Marketplace metadata may be unsigned. Continue with the unverified-content override?"
-	m.confirmYes = false
-	m.confirmAct = action
-	m.confirmArg = ""
-	m.screen = screenConfirm
-	return m, nil
+// hasErrorCode reports whether err or any wrapped *errpkg.Error has the code.
+func hasErrorCode(err error, code string) bool {
+	for err != nil {
+		var e *errpkg.Error
+		if !errors.As(err, &e) {
+			return false
+		}
+		if e.Code == code {
+			return true
+		}
+		err = e.Unwrap()
+	}
+	return false
 }
 
 // launchSelected requests a child tool run: set pendingLaunch and quit the TUI
@@ -196,6 +204,9 @@ func runInstall(ctx context.Context, channel string, allowUnverified bool) tea.C
 			Progress: prog,
 		})
 		if err != nil {
+			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+				return consentNeededMsg{action: "install-unverified", cause: err}
+			}
 			return opDoneMsg{title: "Install failed", body: err.Error(), err: err, success: false}
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
@@ -217,6 +228,9 @@ func (m model) startUpdate(allowUnverified bool) (tea.Model, tea.Cmd) {
 			Verify: source.DefaultVerifyOptions(nil, allowUnverified),
 		})
 		if err != nil {
+			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+				return consentNeededMsg{action: "update-unverified", cause: err}
+			}
 			return opDoneMsg{title: "Update failed", body: err.Error(), err: err, success: false}
 		}
 		body := fmt.Sprintf("action: %s\nversion: %s\n", res.Action, res.Version)
@@ -295,6 +309,9 @@ func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd)
 			Verify:  source.DefaultVerifyOptions(nil, allowUnverified),
 		})
 		if err != nil {
+			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+				return consentNeededMsg{action: "browse-install-unverified", cause: err}
+			}
 			return opDoneMsg{title: "Install failed", body: err.Error() + "\n\n(selected " + entry.ID + " as " + target + ")", err: err, success: false}
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
