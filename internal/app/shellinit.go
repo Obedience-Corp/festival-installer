@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/state"
@@ -12,21 +13,32 @@ import (
 // ErrUnsupportedShell is returned for unknown shell names.
 var ErrUnsupportedShell = errpkg.New("E_SHELL_UNSUPPORTED", "unsupported shell")
 
+// shellSingleQuote wraps s in POSIX single quotes so it is safe to embed in
+// bash/zsh/fish snippets even when it contains spaces, quotes, or metacharacters.
+// A single quote inside s is encoded as '\” (end quote, escaped quote, reopen).
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // ShellInitSnippet returns shell code to prepend the managed bin dir to PATH.
+// binDir is shell-quoted so FESTIVAL_HOME / OBEY_INSTALLER_HOME values with
+// spaces or shell metacharacters cannot break or inject into the snippet.
 func ShellInitSnippet(shell, binDir string) (string, error) {
+	quoted := shellSingleQuote(binDir)
 	switch shell {
 	case "zsh", "bash":
+		// Single-quoted bin dir is literal; "$PATH" expands when the rc runs.
 		return fmt.Sprintf(`# festival: put managed camp/fest first on PATH
 # Add to ~/.zshrc or ~/.bashrc:
 #   eval "$(festival shell-init zsh)"
-export PATH="%s:$PATH"
-`, binDir), nil
+export PATH=%s:"$PATH"
+`, quoted), nil
 	case "fish":
 		return fmt.Sprintf(`# festival: put managed camp/fest first on PATH
 # Add to ~/.config/fish/config.fish:
 #   festival shell-init fish | source
 fish_add_path --prepend --global %s
-`, binDir), nil
+`, quoted), nil
 	default:
 		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish)")
 	}

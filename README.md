@@ -5,15 +5,28 @@ plugins with a fire-themed TUI. CLI subcommands remain for scripts and agents.
 
 > *A festival has a lot of different things going on, just like you.*
 
+## Demo
+
+Recorded against a real `./bin/festival` binary (VHS + PTY).
+
+**Home — boot splash, ambient flame, multi-activity booths, menu → doctor**
+
 <p align="center">
   <img src="docs/demos/festival-home.gif" alt="festival TUI: boot splash, fire ambient, multi-activity booths, and home menu" width="900">
 </p>
+
+**Tour — install channel picker, shell/PATH, installed list**
 
 <p align="center">
   <img src="docs/demos/festival-tour.gif" alt="festival TUI tour: install channel picker, shell/PATH, and installed packages" width="900">
 </p>
 
-Record demos with `just vhs all` (requires `vhs`, `ttyd`, `ffmpeg`).
+Reproduce locally:
+
+```bash
+just build
+just vhs all   # requires vhs, ttyd, ffmpeg
+```
 
 ## Status
 
