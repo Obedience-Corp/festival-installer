@@ -1,4 +1,4 @@
-package cli
+package app
 
 import (
 	"testing"
@@ -25,7 +25,7 @@ func browseFixture() []source.BrowsePackage {
 	}
 }
 
-func collectIDs(res browseResult) []string {
+func collectIDs(res BrowseResult) []string {
 	seen := map[string]bool{}
 	var ids []string
 	for _, g := range res.Groups {
@@ -40,7 +40,7 @@ func collectIDs(res browseResult) []string {
 }
 
 func TestBuildBrowseResult_ProductAndKind(t *testing.T) {
-	res := buildBrowseResult(browseFixture(), "fest", "plugin")
+	res := BuildBrowseResult(browseFixture(), "fest", "plugin")
 	ids := collectIDs(res)
 	if len(ids) != 1 || ids[0] != "acme/fest-demo" {
 		t.Fatalf("expected only acme/fest-demo, got %v", ids)
@@ -48,7 +48,7 @@ func TestBuildBrowseResult_ProductAndKind(t *testing.T) {
 }
 
 func TestBuildBrowseResult_KindOnly(t *testing.T) {
-	res := buildBrowseResult(browseFixture(), "", "plugin")
+	res := BuildBrowseResult(browseFixture(), "", "plugin")
 	ids := collectIDs(res)
 	if len(ids) != 2 {
 		t.Fatalf("expected both plugins, got %v", ids)
@@ -56,7 +56,7 @@ func TestBuildBrowseResult_KindOnly(t *testing.T) {
 }
 
 func TestBuildBrowseResult_NoFilterGroupsSorted(t *testing.T) {
-	res := buildBrowseResult(browseFixture(), "", "")
+	res := BuildBrowseResult(browseFixture(), "", "")
 	if len(res.Groups) == 0 {
 		t.Fatal("expected groups")
 	}
@@ -65,7 +65,7 @@ func TestBuildBrowseResult_NoFilterGroupsSorted(t *testing.T) {
 			t.Fatalf("groups not sorted: %s before %s", res.Groups[i-1].HostRuntime, res.Groups[i].HostRuntime)
 		}
 	}
-	var festExt *browseGroup
+	var festExt *BrowseGroup
 	for i := range res.Groups {
 		if res.Groups[i].HostRuntime == "fest-extension" {
 			festExt = &res.Groups[i]
@@ -77,7 +77,7 @@ func TestBuildBrowseResult_NoFilterGroupsSorted(t *testing.T) {
 }
 
 func TestBuildBrowseResult_EmptyIsNonNil(t *testing.T) {
-	res := buildBrowseResult(nil, "fest", "plugin")
+	res := BuildBrowseResult(nil, "fest", "plugin")
 	if res.Groups == nil {
 		t.Fatal("Groups should be non-nil empty slice")
 	}

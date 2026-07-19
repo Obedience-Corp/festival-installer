@@ -2,7 +2,7 @@ package jsonout
 
 import "io"
 
-const SchemaVersion = "obey-installer/v1alpha1"
+const SchemaVersion = "festival/v1alpha1"
 
 type Envelope struct {
 	OK            bool        `json:"ok"`

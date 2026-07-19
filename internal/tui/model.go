@@ -1,0 +1,460 @@
+package tui
+
+import (
+	"context"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/Obedience-Corp/obey-installer/internal/app"
+	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+)
+
+type screen int
+
+const (
+	screenBoot screen = iota
+	screenHome
+	screenInstall
+	screenUpdate
+	screenList
+	screenBrowse
+	screenUninstall
+	screenMarketplace
+	screenDoctor
+	screenShell
+	screenHelp
+	screenProgress
+	screenResult
+	screenConfirm
+)
+
+type tickMsg time.Time
+
+type statusMsg struct {
+	sum app.StatusSummary
+	err error
+}
+
+type listMsg struct {
+	res app.ListResult
+	err error
+}
+
+type browseMsg struct {
+	res app.BrowseResult
+	err error
+}
+
+type doctorMsg struct {
+	checks []app.DoctorCheck
+}
+
+type marketMsg struct {
+	views []source.ListView
+	err   error
+}
+
+type opDoneMsg struct {
+	title   string
+	body    string
+	err     error
+	success bool
+}
+
+type progressMsg struct {
+	ev app.ProgressEvent
+}
+
+type model struct {
+	opts      Options
+	styles    theme.Styles
+	reduced   bool
+	width     int
+	height    int
+	screen    screen
+	cursor    int
+	frame     int
+	bootLeft  int // frames remaining on splash
+	status    app.StatusSummary
+	statusErr error
+	err       error
+	quitErr   error
+	help      bool
+
+	// install
+	channelIdx int
+	channels   []string
+
+	// list / browse / uninstall
+	list       app.ListResult
+	browse     app.BrowseResult
+	browseFlat []app.BrowseEntry
+	productF   string
+	kindF      string
+
+	// marketplace
+	markets    []source.ListView
+	marketMode string // list | add
+	addInput   textinput.Model
+
+	// doctor
+	checks []app.DoctorCheck
+
+	// shell
+	shellSnippet string
+	shellOnPath  bool
+	shellBin     string
+
+	// progress / result
+	progress    app.ProgressEvent
+	resultTitle string
+	resultBody  string
+	resultOK    bool
+
+	// confirm
+	confirmMsg string
+	confirmYes bool
+	confirmAct string // uninstall
+	confirmArg string
+
+	// op in flight cancel
+	opCancel context.CancelFunc
+	busy     bool
+}
+
+var homeItems = []string{
+	"Install Festival suite",
+	"Update Festival",
+	"Installed packages",
+	"Browse catalog",
+	"Uninstall package",
+	"Marketplaces",
+	"Doctor",
+	"Shell / PATH setup",
+	"Quit",
+}
+
+func newModel(opts Options) model {
+	if opts.Version == "" {
+		opts.Version = "dev"
+	}
+	ti := textinput.New()
+	ti.Placeholder = "https://github.com/org/marketplace.git"
+	ti.CharLimit = 256
+	ti.Width = 48
+	m := model{
+		opts:       opts,
+		styles:     theme.New(),
+		reduced:    theme.ReducedMotion(),
+		screen:     screenBoot,
+		bootLeft:   12, // ~1.2s at 100ms
+		channels:   []string{"stable", "rc", "dev"},
+		channelIdx: 0,
+		addInput:   ti,
+		width:      80,
+		height:     24,
+	}
+	if m.reduced {
+		m.bootLeft = 1
+	}
+	return m
+}
+
+func (m model) Init() tea.Cmd {
+	return tea.Batch(tickCmd(), loadStatus())
+}
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+func loadStatus() tea.Cmd {
+	return func() tea.Msg {
+		sum, err := app.Status(context.Background())
+		return statusMsg{sum: sum, err: err}
+	}
+}
+
+func loadList() tea.Cmd {
+	return func() tea.Msg {
+		res, err := app.ListInstalled(context.Background())
+		return listMsg{res: res, err: err}
+	}
+}
+
+func loadBrowse(product, kind string) tea.Cmd {
+	return func() tea.Msg {
+		res, err := app.Browse(context.Background(), app.BrowseOptions{Product: product, Kind: kind})
+		return browseMsg{res: res, err: err}
+	}
+}
+
+func loadDoctor() tea.Cmd {
+	return func() tea.Msg {
+		return doctorMsg{checks: app.Doctor(context.Background())}
+	}
+}
+
+func loadMarkets() tea.Cmd {
+	return func() tea.Msg {
+		views, err := app.MarketplaceList(context.Background())
+		return marketMsg{views: views, err: err}
+	}
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tickMsg:
+		m.frame++
+		if m.screen == screenBoot {
+			m.bootLeft--
+			if m.bootLeft <= 0 {
+				m.screen = screenHome
+			}
+		}
+		return m, tickCmd()
+
+	case statusMsg:
+		m.status = msg.sum
+		m.statusErr = msg.err
+		return m, nil
+
+	case listMsg:
+		m.list = msg.res
+		m.err = msg.err
+		m.cursor = 0
+		return m, nil
+
+	case browseMsg:
+		m.browse = msg.res
+		m.err = msg.err
+		m.browseFlat = flattenBrowse(msg.res)
+		m.cursor = 0
+		return m, nil
+
+	case doctorMsg:
+		m.checks = msg.checks
+		return m, nil
+
+	case marketMsg:
+		m.markets = msg.views
+		m.err = msg.err
+		m.cursor = 0
+		return m, nil
+
+	case progressMsg:
+		m.progress = msg.ev
+		return m, nil
+
+	case opDoneMsg:
+		m.busy = false
+		m.opCancel = nil
+		m.screen = screenResult
+		m.resultTitle = msg.title
+		m.resultBody = msg.body
+		m.resultOK = msg.success
+		m.err = msg.err
+		return m, loadStatus()
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	}
+	return m, nil
+}
+
+func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.help && msg.String() != "?" && msg.String() != "esc" {
+		m.help = false
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "ctrl+c":
+		if m.busy && m.opCancel != nil {
+			m.opCancel()
+			m.busy = false
+			m.screen = screenHome
+			return m, nil
+		}
+		return m, tea.Quit
+	case "q":
+		if m.screen == screenHome || m.screen == screenBoot {
+			return m, tea.Quit
+		}
+		if m.screen == screenMarketplace && m.marketMode == "add" {
+			m.marketMode = "list"
+			return m, nil
+		}
+		m.screen = screenHome
+		m.cursor = 0
+		m.err = nil
+		return m, nil
+	case "?":
+		m.help = !m.help
+		return m, nil
+	case "esc":
+		if m.help {
+			m.help = false
+			return m, nil
+		}
+		if m.screen == screenBoot {
+			m.screen = screenHome
+			return m, nil
+		}
+		if m.screen == screenMarketplace && m.marketMode == "add" {
+			m.marketMode = "list"
+			return m, nil
+		}
+		if m.screen == screenHome {
+			return m, tea.Quit
+		}
+		m.screen = screenHome
+		m.cursor = 0
+		m.err = nil
+		return m, nil
+	case "enter", " ":
+		if m.screen == screenBoot {
+			m.screen = screenHome
+			return m, nil
+		}
+		return m.handleEnter()
+	}
+
+	// Marketplace add text input
+	if m.screen == screenMarketplace && m.marketMode == "add" {
+		var cmd tea.Cmd
+		m.addInput, cmd = m.addInput.Update(msg)
+		if msg.String() == "enter" {
+			return m.submitMarketplaceAdd()
+		}
+		return m, cmd
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		max := m.maxCursor()
+		if m.cursor < max {
+			m.cursor++
+		}
+	case "left", "h":
+		if m.screen == screenInstall && m.channelIdx > 0 {
+			m.channelIdx--
+		}
+		if m.screen == screenConfirm {
+			m.confirmYes = true
+		}
+	case "right", "l":
+		if m.screen == screenInstall && m.channelIdx < len(m.channels)-1 {
+			m.channelIdx++
+		}
+		if m.screen == screenConfirm {
+			m.confirmYes = false
+		}
+	case "y":
+		if m.screen == screenConfirm {
+			m.confirmYes = true
+			return m.handleEnter()
+		}
+	case "n":
+		if m.screen == screenConfirm {
+			m.confirmYes = false
+			return m.handleEnter()
+		}
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		if m.screen == screenHome {
+			idx := int(msg.String()[0] - '1')
+			if idx >= 0 && idx < len(homeItems) {
+				m.cursor = idx
+				return m.handleEnter()
+			}
+		}
+	case "r":
+		if m.screen == screenMarketplace {
+			return m, loadMarkets()
+		}
+		if m.screen == screenList {
+			return m, loadList()
+		}
+		if m.screen == screenBrowse {
+			return m, loadBrowse(m.productF, m.kindF)
+		}
+		if m.screen == screenDoctor {
+			return m, loadDoctor()
+		}
+	case "a":
+		if m.screen == screenMarketplace {
+			m.marketMode = "add"
+			m.addInput.SetValue("")
+			m.addInput.Focus()
+			return m, nil
+		}
+	case "f":
+		// cycle browse product filter
+		if m.screen == screenBrowse {
+			cycle := []string{"", "fest", "camp", "obey"}
+			m.productF = nextIn(cycle, m.productF)
+			return m, loadBrowse(m.productF, m.kindF)
+		}
+	case "c":
+		if m.screen == screenBrowse {
+			cycle := []string{"", "plugin", "tool", "product", "bundle"}
+			m.kindF = nextIn(cycle, m.kindF)
+			return m, loadBrowse(m.productF, m.kindF)
+		}
+	}
+	return m, nil
+}
+
+func nextIn(opts []string, cur string) string {
+	for i, o := range opts {
+		if o == cur {
+			return opts[(i+1)%len(opts)]
+		}
+	}
+	return opts[0]
+}
+
+func (m model) maxCursor() int {
+	switch m.screen {
+	case screenHome:
+		return len(homeItems) - 1
+	case screenList, screenUninstall:
+		n := len(m.list.Packages)
+		if n == 0 {
+			return 0
+		}
+		return n - 1
+	case screenBrowse:
+		n := len(m.browseFlat)
+		if n == 0 {
+			return 0
+		}
+		return n - 1
+	case screenMarketplace:
+		if m.marketMode == "add" {
+			return 0
+		}
+		// list + actions: markets + refresh row
+		n := len(m.markets) + 1 // last = refresh all
+		if n < 1 {
+			return 0
+		}
+		return n - 1
+	case screenInstall:
+		return 1 // channel row is left/right; enter installs
+	default:
+		return 0
+	}
+}

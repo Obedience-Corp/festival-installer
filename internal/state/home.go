@@ -9,9 +9,19 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 )
 
-const homeEnvVar = "OBEY_INSTALLER_HOME"
+const (
+	homeEnvVar         = "OBEY_INSTALLER_HOME"
+	homeEnvVarFestival = "FESTIVAL_HOME"
+)
 
 func Home(ctx context.Context) (string, error) {
+	// Prefer FESTIVAL_HOME; keep OBEY_INSTALLER_HOME for incubation compatibility.
+	if v := strings.TrimSpace(os.Getenv(homeEnvVarFestival)); v != "" {
+		if !filepath.IsAbs(v) {
+			return "", errpkg.New("E_HOME_NOT_ABS", homeEnvVarFestival+" must be an absolute path")
+		}
+		return v, nil
+	}
 	if v := strings.TrimSpace(os.Getenv(homeEnvVar)); v != "" {
 		if !filepath.IsAbs(v) {
 			return "", errpkg.New("E_HOME_NOT_ABS", homeEnvVar+" must be an absolute path")

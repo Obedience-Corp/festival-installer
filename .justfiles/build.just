@@ -1,6 +1,6 @@
 set working-directory := '..'
 
-binary := "obey-installer"
+binary := "festival"
 bin_dir := "bin"
 version := `git describe --tags --always --dirty 2>/dev/null || echo "dev"`
 ldflags := "-s -w -X main.version=" + version

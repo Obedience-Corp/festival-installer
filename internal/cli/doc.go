@@ -1,2 +1,2 @@
-// Package cli wires the cobra command tree for the obey-installer binary.
+// Package cli wires the cobra command tree for the festival manager binary.
 package cli

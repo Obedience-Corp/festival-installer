@@ -10,7 +10,9 @@ import (
 func TestShellInit_ZshBashPrependPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
-	want := `export PATH="` + filepath.Join(home, "bin") + `:$PATH"`
+	// Single-quoted bin dir is shell-safe; "$PATH" expands when the rc runs.
+	binDir := filepath.Join(home, "bin")
+	want := "export PATH='" + binDir + "':\"$PATH\""
 	for _, shell := range []string{"zsh", "bash"} {
 		out, _, err := runInstaller(t, "shell-init", shell)
 		if err != nil {
@@ -25,12 +27,32 @@ func TestShellInit_ZshBashPrependPath(t *testing.T) {
 func TestShellInit_FishPrependPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	binDir := filepath.Join(home, "bin")
 	out, _, err := runInstaller(t, "shell-init", "fish")
 	if err != nil {
 		t.Fatalf("shell-init fish: %v", err)
 	}
-	if !strings.Contains(out, "fish_add_path") || !strings.Contains(out, filepath.Join(home, "bin")) {
-		t.Fatalf("fish snippet wrong:\n%s", out)
+	want := "fish_add_path --prepend --global '" + binDir + "'"
+	if !strings.Contains(out, want) {
+		t.Fatalf("fish snippet missing quoted path %q:\n%s", want, out)
+	}
+}
+
+func TestShellInit_QuotesHomeWithSpaces(t *testing.T) {
+	home := t.TempDir()
+	// Nested dir with spaces — FESTIVAL_HOME can be any absolute path.
+	spaced := filepath.Join(home, "festival home")
+	if err := os.MkdirAll(filepath.Join(spaced, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FESTIVAL_HOME", spaced)
+	out, _, err := runInstaller(t, "shell-init", "zsh")
+	if err != nil {
+		t.Fatalf("shell-init zsh: %v", err)
+	}
+	want := "export PATH='" + filepath.Join(spaced, "bin") + "':\"$PATH\""
+	if !strings.Contains(out, want) {
+		t.Fatalf("expected quoted spaced path %q in:\n%s", want, out)
 	}
 }
 

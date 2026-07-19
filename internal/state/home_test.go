@@ -24,6 +24,7 @@ func TestHome(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FESTIVAL_HOME", "")
 			t.Setenv("OBEY_INSTALLER_HOME", tt.envValue)
 			got, err := Home(context.Background())
 			if tt.wantCode != "" {
@@ -43,9 +44,22 @@ func TestHome(t *testing.T) {
 	}
 }
 
+func TestHome_FestivalEnvPreferred(t *testing.T) {
+	t.Setenv("FESTIVAL_HOME", "/tmp/festival-home-pref")
+	t.Setenv("OBEY_INSTALLER_HOME", "/tmp/obey-installer-home")
+	got, err := Home(context.Background())
+	if err != nil {
+		t.Fatalf("Home: %v", err)
+	}
+	if got != "/tmp/festival-home-pref" {
+		t.Fatalf("want FESTIVAL_HOME to win, got %q", got)
+	}
+}
+
 func TestEnsureHome(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "installer")
+	t.Setenv("FESTIVAL_HOME", "")
 	t.Setenv("OBEY_INSTALLER_HOME", target)
 
 	if err := EnsureHome(context.Background(), 0700); err != nil {

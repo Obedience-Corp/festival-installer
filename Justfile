@@ -3,8 +3,9 @@ set dotenv-load := false
 mod release '.justfiles/build.just'
 mod testing '.justfiles/test.just'
 mod tools '.justfiles/tools.just'
+mod vhs '.justfiles/vhs.just'
 
-binary := "obey-installer"
+binary := "festival"
 bin_dir := "bin"
 
 # Show available recipes
@@ -16,12 +17,14 @@ bin_dir := "bin"
 build:
     mkdir -p {{bin_dir}}
     go build -o {{bin_dir}}/{{binary}} ./cmd/{{binary}}
+    # Incubation alias for muscle memory / old scripts
+    ln -sfn {{binary}} {{bin_dir}}/obey-installer
 
 # Run all tests
 test:
     go test ./...
 
-# Run the installer (e.g. `just run version`, `just run install foo`)
+# Run the manager (e.g. `just run version`, `just run install festival`)
 run *ARGS:
     go run ./cmd/{{binary}} {{ARGS}}
 
