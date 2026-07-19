@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
+	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/launch"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
 )
@@ -134,7 +135,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 // so the outer RunLoop can spawn camp/fest on the real TTY, then resume the hub.
 func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	if len(m.launchEntries) == 0 {
-		m.err = fmt.Errorf("no launchpad entries")
+		m.err = errpkg.New("E_LAUNCH_EMPTY", "no launchpad entries")
 		return m, nil
 	}
 	if m.cursor < 0 || m.cursor >= len(m.launchEntries) {

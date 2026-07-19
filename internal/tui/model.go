@@ -384,6 +384,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.confirmYes = false
 			return m.handleEnter()
 		}
+	case "0":
+		// Digit 0 is Quit (home has 10 items; 1–9 cover the first nine).
+		if m.screen == screenHome {
+			m.cursor = len(homeItems) - 1
+			return m.handleEnter()
+		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		if m.screen == screenHome {
 			idx := int(msg.String()[0] - '1')

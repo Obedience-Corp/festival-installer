@@ -22,7 +22,7 @@ func (m model) View() string {
 	s := m.styles
 	var body string
 	title := "home"
-	footer := "↑↓ navigate  enter select  ? help  q quit"
+	footer := "↑↓ navigate  enter select  1-9 menus  0/q quit  ? help"
 
 	switch m.screen {
 	case screenBoot:

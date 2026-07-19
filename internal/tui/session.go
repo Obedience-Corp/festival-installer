@@ -10,6 +10,8 @@ type SessionResult struct {
 	// Launch is set when the user selected a launchpad tool; hub TUI has exited
 	// alt-screen so the parent can run the child on the real TTY.
 	Launch *launch.Spec
+	// ResumeCursor is the launchpad index to restore after the child exits.
+	ResumeCursor int
 	// Err is a fatal hub error (not a child exit code).
 	Err error
 	// Banner is an optional soft message to show after returning from a child.

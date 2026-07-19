@@ -7,26 +7,30 @@ type Entry struct {
 	// Detail is a one-line hint under or beside the label.
 	Detail string
 	// Spec is what to run when the user selects this entry.
+	// Dir is left empty: Run fills campaign root when WantsCampaignRoot(spec).
 	Spec Spec
 }
 
 // Catalog is the default launchpad list (Ring 3 hub surface).
 // Keep this curated and small; data-driven config can come later.
+//
+// Campaign-scoped tools (wi, intent, list, watch) run with cwd = campaign root
+// when DetectCampaignRoot finds a .campaign ancestor; version checks inherit cwd.
 func Catalog() []Entry {
 	return []Entry{
 		{
 			Label:  "Campaign work items",
-			Detail: "camp wi — unified work browser",
+			Detail: "camp wi — unified work browser (campaign root when known)",
 			Spec:   Spec{Tool: "camp", Args: []string{"wi"}, Title: "camp wi"},
 		},
 		{
 			Label:  "Intent explore",
-			Detail: "camp intent explore — triage the inbox",
+			Detail: "camp intent explore — triage the inbox (campaign root when known)",
 			Spec:   Spec{Tool: "camp", Args: []string{"intent", "explore"}, Title: "camp intent explore"},
 		},
 		{
 			Label:  "List festivals",
-			Detail: "fest list — festivals by status",
+			Detail: "fest list — festivals by status (campaign root when known)",
 			Spec:   Spec{Tool: "fest", Args: []string{"list"}, Title: "fest list"},
 		},
 		{

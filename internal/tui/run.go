@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -13,6 +14,13 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/launch"
 )
+
+// resumeState carries launchpad position across Pattern-1 program restarts.
+type resumeState struct {
+	active bool
+	screen screen
+	cursor int
+}
 
 // Run starts the full-screen Festival hub TUI once and returns when the user
 // quits or requests a child launch. Prefer RunLoop for the suspend→resume UX.
@@ -32,11 +40,12 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 
 	var banner string
+	var resume resumeState
 	for {
 		if err := ctx.Err(); err != nil {
 			return SessionResult{Quit: true}, err
 		}
-		sess, err := runOnce(ctx, opts, banner)
+		sess, err := runOnce(ctx, opts, banner, resume)
 		if err != nil {
 			return sess, err
 		}
@@ -44,21 +53,33 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 			return sess, sess.Err
 		}
 
+		// Remember launchpad cursor for post-child resume.
+		resume = resumeState{
+			active: true,
+			screen: screenLaunchpad,
+			cursor: sess.ResumeCursor,
+		}
+
 		// Child owns the terminal; hub alt-screen is already gone.
 		if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(*sess.Launch)); err != nil {
 			return SessionResult{Quit: true}, errpkg.Wrap("E_TUI_LAUNCH_BANNER", err, "write launch banner")
 		}
 		res := launch.Run(ctx, *sess.Launch)
+		resetTerminalAfterChild()
 		banner = formatChildBanner(*sess.Launch, res)
-		// Loop: re-enter hub TUI.
+		// Loop: re-enter hub TUI on launchpad with status refresh via Init.
 	}
 }
 
-func runOnce(ctx context.Context, opts Options, banner string) (SessionResult, error) {
+func runOnce(ctx context.Context, opts Options, banner string, resume resumeState) (SessionResult, error) {
 	m := newModel(opts)
 	m.banner = banner
-	// Skip boot splash when returning from a child tool.
-	if banner != "" || opts.SkipBoot {
+	switch {
+	case resume.active:
+		m.screen = resume.screen
+		m.cursor = resume.cursor
+		m.bootLeft = 0
+	case banner != "" || opts.SkipBoot:
 		m.screen = screenHome
 		m.bootLeft = 0
 	}
@@ -76,7 +97,10 @@ func runOnce(ctx context.Context, opts Options, banner string) (SessionResult, e
 	}
 	if fm.pendingLaunch != nil {
 		spec := *fm.pendingLaunch
-		return SessionResult{Launch: &spec}, nil
+		return SessionResult{
+			Launch:       &spec,
+			ResumeCursor: fm.cursor,
+		}, nil
 	}
 	return SessionResult{Quit: true}, nil
 }
@@ -88,13 +112,28 @@ func launchLabel(s launch.Spec) string {
 	return s.Tool
 }
 
+// formatChildBanner distinguishes resolve/start failures from signalled or
+// non-zero child exits so Ctrl+C in a tool does not look like a launch failure.
 func formatChildBanner(spec launch.Spec, res launch.Result) string {
 	label := launchLabel(spec)
-	if res.Err != nil && res.ExitCode < 0 {
-		return fmt.Sprintf("could not launch %s: %v", label, res.Err)
+	if !res.Started {
+		if res.Err != nil {
+			return fmt.Sprintf("could not launch %s: %v", label, res.Err)
+		}
+		return fmt.Sprintf("could not launch %s", label)
+	}
+	if res.Signal != "" {
+		return fmt.Sprintf("returned from %s (%s) — back in festival hub", label, res.Signal)
 	}
 	if res.ExitCode != 0 {
 		return fmt.Sprintf("returned from %s (exit %d)", label, res.ExitCode)
 	}
 	return fmt.Sprintf("returned from %s — back in festival hub", label)
+}
+
+// resetTerminalAfterChild best-effort restores cursor and SGR if a child left
+// the TTY dirty (raw mode / hidden cursor / partial alt-screen).
+func resetTerminalAfterChild() {
+	// show cursor; reset SGR; disable mouse tracking common leftovers
+	_, _ = fmt.Fprint(os.Stdout, "\x1b[?25h\x1b[0m\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l")
 }

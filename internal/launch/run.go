@@ -2,9 +2,9 @@ package launch
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
@@ -17,6 +17,11 @@ const HubEnvKey = "FESTIVAL_HUB"
 // Run resolves Spec.Tool, runs it with Spec.Args on the current TTY, and waits
 // until the child exits. Stdin/stdout/stderr are the process stdio so interactive
 // camp/fest TUIs work. The caller must leave the hub alt-screen before Run.
+//
+// While the child runs the hub ignores SIGINT so Ctrl+C aborts the child (same
+// foreground process group) without killing festival — design AC: quit child →
+// back in hub. Interactive handoff does not use CommandContext (which would
+// SIGKILL the child on context cancel).
 func Run(ctx context.Context, spec Spec) Result {
 	if err := ctx.Err(); err != nil {
 		return Result{ExitCode: -1, Err: err}
@@ -30,25 +35,48 @@ func Run(ctx context.Context, spec Spec) Result {
 		return Result{ExitCode: -1, Err: err}
 	}
 
-	cmd := exec.CommandContext(ctx, path, spec.Args...)
+	args := append([]string(nil), spec.Args...)
+	// Prefer explicit Spec.Dir; else campaign root for campaign-scoped tools.
+	dir := spec.Dir
+	if dir == "" && WantsCampaignRoot(spec) {
+		if root := DetectCampaignRoot(""); root != "" {
+			dir = root
+		}
+	}
+
+	cmd := exec.Command(path, args...) //nolint:gosec // path from Resolve; args from curated catalog
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if spec.Dir != "" {
-		cmd.Dir = spec.Dir
+	if dir != "" {
+		cmd.Dir = dir
 	}
 	cmd.Env = childEnv()
 
+	// Catch SIGINT in the parent so Ctrl+C does not kill festival while the
+	// child runs. Prefer Notify over Ignore: SIG_IGN is inherited across exec
+	// and would silence Ctrl+C in the child too; Notify handlers reset to
+	// default in the child image (POSIX execve).
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	defer signal.Stop(sigCh)
+
 	err = cmd.Run()
+	// Drain a SIGINT that arrived while waiting so it does not hit the hub later.
+	select {
+	case <-sigCh:
+	default:
+	}
 	res := Result{Path: path}
 	if err == nil {
+		res.Started = true
 		return res
 	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		res.ExitCode = ee.ExitCode()
-		// Non-zero exit from an interactive TUI is common (e.g. user abort);
-		// still surface the error so the hub can show a soft banner if desired.
+	code, sig, started := classifyExit(err)
+	res.ExitCode = code
+	res.Signal = sig
+	res.Started = started
+	if started {
 		res.Err = err
 		return res
 	}
