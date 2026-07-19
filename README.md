@@ -42,8 +42,8 @@ distribution; until then `projects/festival` remains the public bootstrap
 (VER-01 / OI0007). Pass `--allow-unverified` for unsigned dogfood content (loud
 warning on stderr). Detached `.sig` files are verified when present against the
 pinned trust root (`internal/verify` — empty until marketplace keys are
-embedded). Transport is HTTPS-only, git is hardened, and archive extraction is
-bounded.
+embedded). The TUI asks for explicit consent before using the same override.
+Transport is HTTPS-only, git is hardened, and archive extraction is bounded.
 
 ## Quick start (humans)
 

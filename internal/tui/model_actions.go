@@ -18,13 +18,16 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	case screenHome:
 		return m.openHomeItem()
 	case screenInstall:
-		return m.startInstall()
+		return m.requestUnverified("install-unverified")
 	case screenUpdate:
-		return m.startUpdate()
+		return m.requestUnverified("update-unverified")
 	case screenList:
 		return m, nil
 	case screenBrowse:
-		return m.installBrowseSelection()
+		if len(m.browseFlat) == 0 {
+			return m, nil
+		}
+		return m.requestUnverified("browse-install-unverified")
 	case screenUninstall:
 		if len(m.list.Packages) == 0 {
 			return m, nil
@@ -39,11 +42,20 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	case screenConfirm:
 		if !m.confirmYes {
 			m.screen = screenHome
+			m.err = nil
 			return m, nil
 		}
-		if m.confirmAct == "uninstall" {
+		switch m.confirmAct {
+		case "uninstall":
 			return m.startUninstall(m.confirmArg)
+		case "install-unverified":
+			return m.startInstall(true)
+		case "update-unverified":
+			return m.startUpdate(true)
+		case "browse-install-unverified":
+			return m.installBrowseSelection(true)
 		}
+		m.screen = screenHome
 		return m, nil
 	case screenMarketplace:
 		if m.marketMode == "add" {
@@ -91,7 +103,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	case 1:
 		m.screen = screenUpdate
-		return m.startUpdate()
+		return m.requestUnverified("update-unverified")
 	case 2:
 		m.screen = screenList
 		return m, loadList()
@@ -131,6 +143,15 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) requestUnverified(action string) (tea.Model, tea.Cmd) {
+	m.confirmMsg = "Marketplace metadata may be unsigned. Continue with the unverified-content override?"
+	m.confirmYes = false
+	m.confirmAct = action
+	m.confirmArg = ""
+	m.screen = screenConfirm
+	return m, nil
+}
+
 // launchSelected requests a child tool run: set pendingLaunch and quit the TUI
 // so the outer RunLoop can spawn camp/fest on the real TTY, then resume the hub.
 func (m model) launchSelected() (tea.Model, tea.Cmd) {
@@ -152,17 +173,17 @@ func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
-func (m model) startInstall() (tea.Model, tea.Cmd) {
+func (m model) startInstall(allowUnverified bool) (tea.Model, tea.Cmd) {
 	ch := m.channels[m.channelIdx]
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0, Message: "starting install"}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.opCancel = cancel
-	return m, runInstall(ctx, ch)
+	return m, runInstall(ctx, ch, allowUnverified)
 }
 
-func runInstall(ctx context.Context, channel string) tea.Cmd {
+func runInstall(ctx context.Context, channel string, allowUnverified bool) tea.Cmd {
 	return func() tea.Msg {
 		prog := func(ev app.ProgressEvent) {
 			// best-effort; bubbletea can't inject mid-cmd without program.Send
@@ -171,7 +192,7 @@ func runInstall(ctx context.Context, channel string) tea.Cmd {
 		}
 		res, err := app.InstallFestival(ctx, app.InstallOptions{
 			Channel:  channel,
-			Verify:   source.DefaultVerifyOptions(nil, false),
+			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
 			Progress: prog,
 		})
 		if err != nil {
@@ -185,7 +206,7 @@ func runInstall(ctx context.Context, channel string) tea.Cmd {
 	}
 }
 
-func (m model) startUpdate() (tea.Model, tea.Cmd) {
+func (m model) startUpdate(allowUnverified bool) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "checking updates"}
@@ -193,7 +214,7 @@ func (m model) startUpdate() (tea.Model, tea.Cmd) {
 	m.opCancel = cancel
 	return m, func() tea.Msg {
 		res, warning, err := app.UpdateFestival(ctx, app.UpdateOptions{
-			Verify: source.DefaultVerifyOptions(nil, false),
+			Verify: source.DefaultVerifyOptions(nil, allowUnverified),
 		})
 		if err != nil {
 			return opDoneMsg{title: "Update failed", body: err.Error(), err: err, success: false}
@@ -245,7 +266,7 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m model) installBrowseSelection() (tea.Model, tea.Cmd) {
+func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd) {
 	if len(m.browseFlat) == 0 {
 		return m, nil
 	}
@@ -271,7 +292,7 @@ func (m model) installBrowseSelection() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
 			Channel: "stable",
-			Verify:  source.DefaultVerifyOptions(nil, false),
+			Verify:  source.DefaultVerifyOptions(nil, allowUnverified),
 		})
 		if err != nil {
 			return opDoneMsg{title: "Install failed", body: err.Error() + "\n\n(selected " + entry.ID + " as " + target + ")", err: err, success: false}

@@ -2,6 +2,7 @@ package installer_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -129,6 +130,9 @@ func TestCommit_PlacesFilesAndWritesReceipt(t *testing.T) {
 	}
 	if got.Metadata["manifest_url"] != "https://example/manifest.json" {
 		t.Fatalf("manifest_url not recorded: %+v", got.Metadata)
+	}
+	if got.Metadata["install_journal_id"] == "" {
+		t.Fatalf("install journal id not recorded: %+v", got.Metadata)
 	}
 	if r.Version != got.Version {
 		t.Fatalf("returned receipt %+v disagrees with stored %+v", r, got)
@@ -278,5 +282,48 @@ func TestSecondBeginBlockedWhileLockHeld(t *testing.T) {
 	_, err = installer.BeginWithTimeout(ctx, db.Raw(), home, 200*time.Millisecond)
 	if !errors.Is(err, lock.ErrLockTimeout) {
 		t.Fatalf("expected ErrLockTimeout while another process holds the lock, got %v", err)
+	}
+}
+
+func TestBeginWaitsForLockBeforeReconciling(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+	dest := filepath.Join(home, "bin", "camp")
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dest, []byte("live"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(home, "backup-camp")
+	if err := os.WriteFile(backup, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	intent, err := json.Marshal(map[string]any{
+		"id":         "active-transaction",
+		"package_id": "obedience-corp/festival",
+		"placed":     []map[string]string{{"dest": dest, "backup": backup}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, installer.JournalName), intent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := spawnLockHelper(t, home)
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	if _, err := installer.BeginWithTimeout(ctx, db.Raw(), home, 200*time.Millisecond); !errors.Is(err, lock.ErrLockTimeout) {
+		t.Fatalf("expected lock timeout, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); err != nil {
+		t.Fatalf("journal should remain while another transaction owns the lock: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "live" {
+		t.Fatalf("live transaction was reconciled while lock was held: %q", got)
 	}
 }

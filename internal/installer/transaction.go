@@ -58,16 +58,19 @@ func BeginWithTimeout(ctx context.Context, db *sql.DB, home string, lockTimeout 
 	if err := ctx.Err(); err != nil {
 		return nil, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled before begin")
 	}
-	// Reverse any prior crash mid-Commit before starting a new activation.
-	if err := Reconcile(ctx, home, db); err != nil {
-		return nil, err
-	}
 	fl, err := lock.NewFileLock(home)
 	if err != nil {
 		return nil, err
 	}
 	rel, err := fl.Acquire(ctx, lockTimeout)
 	if err != nil {
+		return nil, err
+	}
+	// Reconcile only while holding the install lock. Otherwise a second
+	// installer can roll back a live transaction's journal before it waits for
+	// the lock.
+	if err := Reconcile(ctx, home, db); err != nil {
+		_ = rel()
 		return nil, err
 	}
 	staging, err := os.MkdirTemp(home, "staging-")
@@ -105,8 +108,13 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 		return receipts.Receipt{}, ErrNotStaged
 	}
 
+	journalID, err := newJournalID()
+	if err != nil {
+		return receipts.Receipt{}, err
+	}
 	// Persist intent before placement so a kill mid-loop is recoverable (TXN-01).
 	j := Journal{
+		ID:        journalID,
 		PackageID: info.PackageID,
 		Version:   info.Version,
 		Channel:   info.Channel,
@@ -120,8 +128,22 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 
 	owned := make([]receipts.OwnedFile, 0, len(t.staged))
 	for i, f := range t.staged {
-		backup, err := t.backupExisting(i, f.DestPath)
+		backup, err := t.backupPath(i, f.DestPath)
 		if err != nil {
+			t.removePlaced()
+			_ = clearJournal(t.home)
+			return receipts.Receipt{}, err
+		}
+		// Record the destination and pre-image before moving either the backup
+		// or staged file. Reconcile can now recover every kill point in this
+		// activation step.
+		j.Placed = append(j.Placed, JournalPlace{Dest: f.DestPath, Backup: backup})
+		if err := writeJournal(t.home, j); err != nil {
+			t.removePlaced()
+			_ = clearJournal(t.home)
+			return receipts.Receipt{}, err
+		}
+		if err := t.backupExisting(f.DestPath, backup); err != nil {
 			t.removePlaced()
 			_ = clearJournal(t.home)
 			return receipts.Receipt{}, err
@@ -133,12 +155,6 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 			return receipts.Receipt{}, err
 		}
 		t.placed = append(t.placed, placedFile{dest: f.DestPath, backup: backup})
-		j.Placed = append(j.Placed, JournalPlace{Dest: f.DestPath, Backup: backup})
-		if err := writeJournal(t.home, j); err != nil {
-			t.removePlaced()
-			_ = clearJournal(t.home)
-			return receipts.Receipt{}, err
-		}
 		if f.Mode != 0 {
 			if err := os.Chmod(f.DestPath, f.Mode); err != nil {
 				t.removePlaced()
@@ -156,7 +172,10 @@ func (t *Transaction) Commit(ctx context.Context, info ReceiptInfo) (receipts.Re
 		Channel:     info.Channel,
 		InstalledAt: time.Now().UTC(),
 		OwnedFiles:  owned,
-		Metadata:    map[string]string{"manifest_url": info.ManifestURL},
+		Metadata: map[string]string{
+			"manifest_url":       info.ManifestURL,
+			"install_journal_id": j.ID,
+		},
 	}
 	if err := receipts.Write(ctx, t.db, r); err != nil {
 		t.removePlaced()
@@ -184,18 +203,24 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	return nil
 }
 
-func (t *Transaction) backupExisting(i int, dest string) (string, error) {
+func (t *Transaction) backupPath(i int, dest string) (string, error) {
 	if _, err := os.Lstat(dest); err != nil {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
 		return "", errpkg.Wrap("E_INSTALL_BACKUP", err, "inspect existing "+dest)
 	}
-	backup := filepath.Join(t.stagingDir, "backup-"+strconv.Itoa(i))
-	if err := os.Rename(dest, backup); err != nil {
-		return "", errpkg.Wrap("E_INSTALL_BACKUP", err, "back up existing "+dest)
+	return filepath.Join(t.stagingDir, "backup-"+strconv.Itoa(i)), nil
+}
+
+func (t *Transaction) backupExisting(dest, backup string) error {
+	if backup == "" {
+		return nil
 	}
-	return backup, nil
+	if err := os.Rename(dest, backup); err != nil {
+		return errpkg.Wrap("E_INSTALL_BACKUP", err, "back up existing "+dest)
+	}
+	return nil
 }
 
 func (t *Transaction) restoreBackup(dest, backup string) {

@@ -119,7 +119,7 @@ type model struct {
 	// confirm
 	confirmMsg string
 	confirmYes bool
-	confirmAct string // uninstall
+	confirmAct string // uninstall | install-unverified | update-unverified | browse-install-unverified
 	confirmArg string
 
 	// op in flight cancel
