@@ -10,6 +10,7 @@ import (
 
 	// Seed dark background before any lipgloss/termenv OSC query.
 	_ "github.com/Obedience-Corp/obey-installer/internal/bginit"
+	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/launch"
 )
 
@@ -36,7 +37,6 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 			return SessionResult{Quit: true}, err
 		}
 		sess, err := runOnce(ctx, opts, banner)
-		banner = ""
 		if err != nil {
 			return sess, err
 		}
@@ -45,7 +45,9 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 		}
 
 		// Child owns the terminal; hub alt-screen is already gone.
-		fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(*sess.Launch))
+		if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(*sess.Launch)); err != nil {
+			return SessionResult{Quit: true}, errpkg.Wrap("E_TUI_LAUNCH_BANNER", err, "write launch banner")
+		}
 		res := launch.Run(ctx, *sess.Launch)
 		banner = formatChildBanner(*sess.Launch, res)
 		// Loop: re-enter hub TUI.
