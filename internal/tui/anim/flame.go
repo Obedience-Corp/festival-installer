@@ -116,7 +116,7 @@ func Wordmark(s theme.Styles) string {
 }
 
 // Tagline is the product metaphor line.
-const Tagline = "a festival has a lot of different things going on, just like you"
+const Tagline = "All your work, where you can find it. "
 
 // BootView composes splash content.
 func BootView(frame int, width int, s theme.Styles, reduced bool) string {

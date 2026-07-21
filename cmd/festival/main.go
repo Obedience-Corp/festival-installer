@@ -27,7 +27,7 @@ Run with no arguments to open the interactive TUI. From the Launchpad, tools
 run as real camp/fest processes; quit them to return here without relaunching
 festival.
 
-A festival has a lot of different things going on, just like you.
+All your work, where you can find it.
 
 Scripts and agents can use subcommands with --json for machine-readable output.`,
 		SilenceErrors: true,
