@@ -222,9 +222,9 @@ func (st *resolution) sourceForPackage(ctx context.Context, packageID string) (s
 func (st *resolution) resolvePackage(ctx context.Context, packageID, srcID, channel, reason, constraint string) error {
 	if existing, ok := st.active[packageID]; ok {
 		if constraint != "" {
-			ok, cerr := constraintSatisfied(existing.Version, constraint)
+			ok, cerr := installer.SatisfiesConstraint(existing.Version, constraint)
 			if cerr != nil {
-				return cerr
+				return errpkg.Wrap("E_DEP_CONSTRAINT", cerr, packageID+" constraint "+constraint)
 			}
 			if !ok {
 				return errpkg.New("E_DEP_CONSTRAINT_UNSAT", packageID+" "+existing.Version+" does not satisfy "+constraint)
@@ -252,9 +252,9 @@ func (st *resolution) resolvePackage(ctx context.Context, packageID, srcID, chan
 		return errpkg.Wrap("E_NO_MATCHING_RELEASE", err, "release for "+packageID+" channel "+chosen)
 	}
 	if constraint != "" {
-		ok, cerr := constraintSatisfied(rel.Version, constraint)
+		ok, cerr := installer.SatisfiesConstraint(rel.Version, constraint)
 		if cerr != nil {
-			return cerr
+			return errpkg.Wrap("E_DEP_CONSTRAINT", cerr, packageID+" constraint "+constraint)
 		}
 		if !ok {
 			return errpkg.New("E_DEP_CONSTRAINT_UNSAT", packageID+" "+rel.Version+" does not satisfy "+constraint)
@@ -318,9 +318,9 @@ func validateHostExposure(hostManifest metadata.PackageManifest, hostVersion str
 		}
 	}
 	if target.VersionConstraint != "" && hostVersion != "" {
-		ok, err := constraintSatisfied(hostVersion, target.VersionConstraint)
+		ok, err := installer.SatisfiesConstraint(hostVersion, target.VersionConstraint)
 		if err != nil {
-			return err
+			return errpkg.Wrap("E_HOST_CONSTRAINT", err, "host "+target.Runtime+" constraint "+target.VersionConstraint)
 		}
 		if !ok {
 			return errpkg.New("E_HOST_INCOMPATIBLE", "host "+hostVersion+" does not satisfy "+target.VersionConstraint)
@@ -441,34 +441,4 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
-}
-
-func constraintSatisfied(version, constraint string) (bool, error) {
-	op, want := splitConstraint(strings.TrimSpace(constraint))
-	if want == "" {
-		return false, errpkg.New("E_DEP_CONSTRAINT", "no version in constraint "+constraint)
-	}
-	switch op {
-	case ">=":
-		return !installer.VersionLess(version, want), nil
-	case ">":
-		return installer.VersionLess(want, version), nil
-	case "<=":
-		return !installer.VersionLess(want, version), nil
-	case "<":
-		return installer.VersionLess(version, want), nil
-	case "=", "":
-		return !installer.VersionLess(version, want) && !installer.VersionLess(want, version), nil
-	default:
-		return false, errpkg.New("E_DEP_CONSTRAINT", "unsupported constraint "+constraint)
-	}
-}
-
-func splitConstraint(c string) (string, string) {
-	for _, op := range []string{">=", "<=", ">", "<", "="} {
-		if strings.HasPrefix(c, op) {
-			return op, strings.TrimSpace(c[len(op):])
-		}
-	}
-	return "", c
 }

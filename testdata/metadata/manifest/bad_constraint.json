@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "obedience-corp/festival",
+  "class": "product",
+  "display_name": "Festival",
+  "summary": "Camp + Fest planning and execution suite",
+  "provides_binaries": ["camp", "fest"],
+  "releases": [
+    {
+      "version": "0.2.10",
+      "channel": "stable",
+      "published_at": "2026-06-08T00:00:00Z",
+      "compatibility": { "os": ["darwin", "linux"], "arch": ["amd64", "arm64"] },
+      "dependencies": [
+        { "package": "obedience-corp/camp", "version_constraint": ">=1.2.0 <2.0.0" }
+      ],
+      "artifacts": [
+        {
+          "kind": "suite-archive",
+          "os": "darwin",
+          "arch": "all",
+          "url": "https://github.com/Obedience-Corp/festival/releases/download/v0.2.10/festival-0.2.10-macOS-all.tar.gz",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ],
+      "install": {
+        "entries": [
+          { "kind": "binary", "source": "camp", "executable_name": "camp" }
+        ]
+      }
+    }
+  ]
+}

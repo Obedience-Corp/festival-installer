@@ -75,9 +75,9 @@ func (a *Adapter) ValidateCompatibility(ctx context.Context, target metadata.Run
 	if target.VersionConstraint == "" || !isSemver(version) {
 		return nil
 	}
-	ok, cerr := satisfies(version, target.VersionConstraint)
+	ok, cerr := installer.SatisfiesConstraint(version, target.VersionConstraint)
 	if cerr != nil {
-		return cerr
+		return errpkg.Wrap("E_HOST_CONSTRAINT", cerr, a.bin+" constraint "+target.VersionConstraint)
 	}
 	if !ok {
 		return errpkg.New("E_HOST_INCOMPATIBLE", a.bin+" "+version+" does not satisfy "+target.VersionConstraint)
@@ -137,34 +137,4 @@ func allDigits(s string) bool {
 		}
 	}
 	return true
-}
-
-func satisfies(version, constraint string) (bool, error) {
-	op, want := splitConstraint(strings.TrimSpace(constraint))
-	if want == "" {
-		return false, errpkg.New("E_HOST_CONSTRAINT", "no version in constraint "+constraint)
-	}
-	switch op {
-	case ">=":
-		return !installer.VersionLess(version, want), nil
-	case ">":
-		return installer.VersionLess(want, version), nil
-	case "<=":
-		return !installer.VersionLess(want, version), nil
-	case "<":
-		return installer.VersionLess(version, want), nil
-	case "=", "":
-		return !installer.VersionLess(version, want) && !installer.VersionLess(want, version), nil
-	default:
-		return false, errpkg.New("E_HOST_CONSTRAINT", "unsupported constraint "+constraint)
-	}
-}
-
-func splitConstraint(c string) (string, string) {
-	for _, op := range []string{">=", "<=", ">", "<", "="} {
-		if strings.HasPrefix(c, op) {
-			return op, strings.TrimSpace(c[len(op):])
-		}
-	}
-	return "", c
 }
