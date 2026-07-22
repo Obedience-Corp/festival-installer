@@ -44,7 +44,8 @@ warning on stderr). Detached `.sig` files are verified when present against the
 pinned trust root (`internal/verify` — empty until marketplace keys are
 embedded). The TUI tries the strict policy first and asks for explicit consent
 only when unsigned content is refused (same override as the CLI flag).
-Transport is HTTPS-only, git is hardened, and archive extraction is bounded.
+Artifact downloads are HTTPS-only, git remotes are restricted to HTTPS, SSH, and
+local paths, and archive extraction is bounded.
 
 ## Quick start (humans)
 
