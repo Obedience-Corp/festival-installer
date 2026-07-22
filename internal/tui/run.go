@@ -73,6 +73,7 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 
 func runOnce(ctx context.Context, opts Options, banner string, resume resumeState) (SessionResult, error) {
 	m := newModel(opts)
+	m.ctx = ctx
 	m.banner = banner
 	switch {
 	case resume.active:

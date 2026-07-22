@@ -78,6 +78,9 @@ type progressMsg struct {
 }
 
 type model struct {
+	// ctx is the RunLoop program context. Every tea.Cmd that performs network
+	// or git work derives from it so quitting cancels in-flight operations.
+	ctx       context.Context
 	opts      Options
 	styles    theme.Styles
 	reduced   bool
@@ -164,6 +167,7 @@ func newModel(opts Options) model {
 	ti.CharLimit = 256
 	ti.Width = 48
 	m := model{
+		ctx:           context.Background(),
 		opts:          opts,
 		styles:        theme.New(),
 		reduced:       theme.ReducedMotion(),
@@ -183,43 +187,52 @@ func newModel(opts Options) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(), loadStatus())
+	return tea.Batch(tickCmd(), m.loadStatus())
 }
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func loadStatus() tea.Cmd {
+func (m model) opContext() (context.Context, context.CancelFunc) {
+	return context.WithCancel(m.ctx)
+}
+
+func (m model) loadStatus() tea.Cmd {
+	ctx := m.ctx
 	return func() tea.Msg {
-		sum, err := app.Status(context.Background())
+		sum, err := app.Status(ctx)
 		return statusMsg{sum: sum, err: err}
 	}
 }
 
-func loadList() tea.Cmd {
+func (m model) loadList() tea.Cmd {
+	ctx := m.ctx
 	return func() tea.Msg {
-		res, err := app.ListInstalled(context.Background())
+		res, err := app.ListInstalled(ctx)
 		return listMsg{res: res, err: err}
 	}
 }
 
-func loadBrowse(product, kind string) tea.Cmd {
+func (m model) loadBrowse(product, kind string) tea.Cmd {
+	ctx := m.ctx
 	return func() tea.Msg {
-		res, err := app.Browse(context.Background(), app.BrowseOptions{Product: product, Kind: kind})
+		res, err := app.Browse(ctx, app.BrowseOptions{Product: product, Kind: kind})
 		return browseMsg{res: res, err: err}
 	}
 }
 
-func loadDoctor() tea.Cmd {
+func (m model) loadDoctor() tea.Cmd {
+	ctx := m.ctx
 	return func() tea.Msg {
-		return doctorMsg{checks: app.Doctor(context.Background())}
+		return doctorMsg{checks: app.Doctor(ctx)}
 	}
 }
 
-func loadMarkets() tea.Cmd {
+func (m model) loadMarkets() tea.Cmd {
+	ctx := m.ctx
 	return func() tea.Msg {
-		views, err := app.MarketplaceList(context.Background())
+		views, err := app.MarketplaceList(ctx)
 		return marketMsg{views: views, err: err}
 	}
 }
@@ -281,7 +294,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resultBody = msg.body
 		m.resultOK = msg.success
 		m.err = msg.err
-		return m, loadStatus()
+		return m, m.loadStatus()
 
 	case consentNeededMsg:
 		m.busy = false
@@ -309,6 +322,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Text fields must capture keys before the global switch, or URLs containing
+	// q or ? fire the quit/help shortcuts instead of being typed.
+	if m.textInputActive() {
+		return m.handleTextInputKey(msg)
+	}
+
 	switch msg.String() {
 	case "ctrl+c":
 		if m.busy && m.opCancel != nil {
@@ -321,10 +340,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q":
 		if m.screen == screenHome || m.screen == screenBoot {
 			return m, tea.Quit
-		}
-		if m.screen == screenMarketplace && m.marketMode == "add" {
-			m.marketMode = "list"
-			return m, nil
 		}
 		m.screen = screenHome
 		m.cursor = 0
@@ -342,10 +357,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenHome
 			return m, nil
 		}
-		if m.screen == screenMarketplace && m.marketMode == "add" {
-			m.marketMode = "list"
-			return m, nil
-		}
 		if m.screen == screenHome {
 			return m, tea.Quit
 		}
@@ -359,16 +370,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.handleEnter()
-	}
-
-	// Marketplace add text input
-	if m.screen == screenMarketplace && m.marketMode == "add" {
-		var cmd tea.Cmd
-		m.addInput, cmd = m.addInput.Update(msg)
-		if msg.String() == "enter" {
-			return m.submitMarketplaceAdd()
-		}
-		return m, cmd
 	}
 
 	switch msg.String() {
@@ -421,16 +422,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "r":
 		if m.screen == screenMarketplace {
-			return m, loadMarkets()
+			return m, m.loadMarkets()
 		}
 		if m.screen == screenList {
-			return m, loadList()
+			return m, m.loadList()
 		}
 		if m.screen == screenBrowse {
-			return m, loadBrowse(m.productF, m.kindF)
+			return m, m.loadBrowse(m.productF, m.kindF)
 		}
 		if m.screen == screenDoctor {
-			return m, loadDoctor()
+			return m, m.loadDoctor()
 		}
 	case "a":
 		if m.screen == screenMarketplace {
@@ -444,16 +445,35 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenBrowse {
 			cycle := []string{"", "fest", "camp", "obey"}
 			m.productF = nextIn(cycle, m.productF)
-			return m, loadBrowse(m.productF, m.kindF)
+			return m, m.loadBrowse(m.productF, m.kindF)
 		}
 	case "c":
 		if m.screen == screenBrowse {
 			cycle := []string{"", "plugin", "tool", "product", "bundle"}
 			m.kindF = nextIn(cycle, m.kindF)
-			return m, loadBrowse(m.productF, m.kindF)
+			return m, m.loadBrowse(m.productF, m.kindF)
 		}
 	}
 	return m, nil
+}
+
+func (m model) textInputActive() bool {
+	return m.screen == screenMarketplace && m.marketMode == "add"
+}
+
+func (m model) handleTextInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.marketMode = "list"
+		return m, nil
+	case "enter":
+		return m.submitMarketplaceAdd()
+	}
+	var cmd tea.Cmd
+	m.addInput, cmd = m.addInput.Update(msg)
+	return m, cmd
 }
 
 func nextIn(opts []string, cur string) string {
