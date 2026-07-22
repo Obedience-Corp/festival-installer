@@ -32,7 +32,7 @@ func TestBootView_Reduced(t *testing.T) {
 	if !strings.Contains(out, "FESTIVAL") {
 		t.Fatalf("boot missing wordmark:\n%s", out)
 	}
-	if !strings.Contains(out, "different things going on") {
+	if !strings.Contains(out, strings.TrimSpace(Tagline)) {
 		t.Fatalf("boot missing tagline:\n%s", out)
 	}
 }
