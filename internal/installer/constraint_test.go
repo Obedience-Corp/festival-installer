@@ -28,6 +28,12 @@ func TestSatisfiesConstraint_SupportedOperators(t *testing.T) {
 		{"eq mismatch", "1.2.4", "=1.2.3", false},
 		{"bare exact match", "1.2.3", "1.2.3", true},
 		{"bare exact mismatch", "1.2.4", "1.2.3", false},
+		// Runtime trims whitespace between operator and version for hand-authored
+		// constraints; marketplace schema may still require the compact form.
+		{"gte with space after op", "0.4.5", ">= 0.4.0", true},
+		{"lt with space after op", "0.3.9", "< 0.4.0", true},
+		{"eq with surrounding space", "1.2.3", "  = 1.2.3  ", true},
+		{"bare exact with surrounding space", "1.2.3", "  1.2.3  ", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,6 +92,8 @@ func TestSatisfiesConstraint_UnsupportedSyntaxErrors(t *testing.T) {
 		{"space only", "   "},
 		{"trailing prerelease dash", "1.2.0-"},
 		{"four components", "1.2.3.4"},
+		// Single suffix only: prerelease and build together are rejected.
+		{"prerelease and build", "1.2.3-rc.1+build"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
