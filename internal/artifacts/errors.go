@@ -10,4 +10,5 @@ var (
 	ErrInsecureURL      = errpkg.New("E_ARTIFACT_INSECURE_URL", "refusing to fetch over a non-HTTPS URL")
 	ErrArchiveTooLarge  = errpkg.New("E_ARTIFACT_ARCHIVE_TOO_LARGE", "archive exceeds decompression limits")
 	ErrTooManyRedirects = errpkg.New("E_ARTIFACT_TOO_MANY_REDIRECTS", "stopped after 10 redirects")
+	ErrDownloadTooLarge = errpkg.New("E_ARTIFACT_DOWNLOAD_TOO_LARGE", "download exceeds size limit")
 )

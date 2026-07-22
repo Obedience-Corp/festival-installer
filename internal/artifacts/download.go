@@ -15,11 +15,22 @@ import (
 const defaultDownloadTimeout = 5 * time.Minute
 
 type Downloader struct {
-	Client *http.Client
+	Client   *http.Client
+	MaxBytes int64
 }
 
 func NewDownloader() *Downloader {
-	return &Downloader{Client: &http.Client{Timeout: defaultDownloadTimeout, CheckRedirect: CheckRedirect}}
+	return &Downloader{
+		Client:   &http.Client{Timeout: defaultDownloadTimeout, CheckRedirect: CheckRedirect},
+		MaxBytes: DefaultExtractLimits.MaxTotalBytes,
+	}
+}
+
+func (d *Downloader) maxBytes() int64 {
+	if d.MaxBytes > 0 {
+		return d.MaxBytes
+	}
+	return DefaultExtractLimits.MaxTotalBytes
 }
 
 func (d *Downloader) Download(ctx context.Context, url, destDir string) (string, error) {
@@ -46,6 +57,11 @@ func (d *Downloader) Download(ctx context.Context, url, destDir string) (string,
 		return "", errpkg.Wrap("E_ARTIFACT_HTTP_STATUS", ErrHTTPStatus, resp.Status+" from "+url)
 	}
 
+	limit := d.maxBytes()
+	if resp.ContentLength > limit {
+		return "", errpkg.Wrap("E_ARTIFACT_DOWNLOAD_TOO_LARGE", ErrDownloadTooLarge, "content-length exceeds size limit for "+url)
+	}
+
 	name := filepath.Base(url)
 	if name == "" || name == "." || name == "/" || strings.ContainsAny(name, `/\`) {
 		name = "artifact.download"
@@ -62,9 +78,14 @@ func (d *Downloader) Download(ctx context.Context, url, destDir string) (string,
 		_ = os.Remove(tmpName)
 	}
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	written, err := io.Copy(tmp, io.LimitReader(resp.Body, limit+1))
+	if err != nil {
 		cleanup()
 		return "", errpkg.Wrap("E_ARTIFACT_COPY", err, "stream body to disk")
+	}
+	if written > limit {
+		cleanup()
+		return "", errpkg.Wrap("E_ARTIFACT_DOWNLOAD_TOO_LARGE", ErrDownloadTooLarge, "download exceeds size limit for "+url)
 	}
 	if err := tmp.Sync(); err != nil {
 		cleanup()
