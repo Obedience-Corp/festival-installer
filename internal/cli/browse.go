@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 func NewBrowseCommand() *cobra.Command {
@@ -43,7 +44,7 @@ func renderBrowseTable(out io.Writer, res app.BrowseResult) error {
 	_, _ = fmt.Fprintln(tw, "HOST RUNTIME\tID\tNAME\tCLASS\tSOURCE")
 	for _, g := range res.Groups {
 		for _, p := range g.Packages {
-			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", g.HostRuntime, p.ID, p.DisplayName, p.Class, p.Source)
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", textsafe.Line(g.HostRuntime), textsafe.Line(p.ID), textsafe.Line(p.DisplayName), textsafe.Line(p.Class), textsafe.Line(p.Source))
 		}
 	}
 	if err := tw.Flush(); err != nil {

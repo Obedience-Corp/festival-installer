@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 	"github.com/Obedience-Corp/obey-installer/internal/tui/anim"
 	"github.com/Obedience-Corp/obey-installer/internal/tui/components"
 )
@@ -181,7 +182,7 @@ func (m model) viewList() string {
 	}
 	items := make([]string, len(m.list.Packages))
 	for i, p := range m.list.Packages {
-		items[i] = fmt.Sprintf("%s  %s  (%s)", p.PackageID, p.Version, p.Channel)
+		items[i] = fmt.Sprintf("%s  %s  (%s)", textsafe.Line(p.PackageID), textsafe.Line(p.Version), textsafe.Line(p.Channel))
 	}
 	return components.Menu(items, m.cursor, s)
 }
@@ -194,7 +195,7 @@ func (m model) viewBrowse() string {
 	}
 	items := make([]string, len(m.browseFlat))
 	for i, p := range m.browseFlat {
-		items[i] = fmt.Sprintf("%s  [%s]  %s", p.ID, p.Class, p.Source)
+		items[i] = fmt.Sprintf("%s  [%s]  %s", textsafe.Line(p.ID), textsafe.Line(p.Class), textsafe.Line(p.Source))
 	}
 	return filt + "\n\n" + components.Menu(items, m.cursor, s)
 }
@@ -207,9 +208,9 @@ func (m model) viewMarketplace() string {
 	}
 	items := make([]string, 0, len(m.markets)+1)
 	for _, v := range m.markets {
-		line := fmt.Sprintf("%s  %s  pkgs=%d", v.Name, short(v.Commit, 12), v.Packages)
+		line := fmt.Sprintf("%s  %s  pkgs=%d", textsafe.Line(v.Name), short(textsafe.Line(v.Commit), 12), v.Packages)
 		if v.Err != "" {
-			line += "  ERR:" + v.Err
+			line += "  ERR:" + textsafe.Line(v.Err)
 		}
 		items = append(items, line)
 	}
@@ -242,7 +243,7 @@ func (m model) viewDoctor() string {
 		default:
 			badge = s.Err.Render(fmt.Sprintf("[%s fail] ", spin))
 		}
-		msg := c.ID + " — " + c.Message
+		msg := c.ID + " — " + textsafe.Line(c.Message)
 		wrapped := wrapWords(msg, msgWidth)
 		for j, part := range wrapped {
 			if j == 0 {
@@ -302,13 +303,14 @@ func (m model) viewShell() string {
 func (m model) viewResult() string {
 	s := m.styles
 	title := s.Title.Render(m.resultTitle)
+	body := textsafe.Block(m.resultBody)
 	if m.resultOK {
 		if !m.reduced {
-			return title + "\n\n" + anim.Celebrate(m.frame, s) + "\n\n" + s.Normal.Render(m.resultBody)
+			return title + "\n\n" + anim.Celebrate(m.frame, s) + "\n\n" + s.Normal.Render(body)
 		}
-		return title + "\n\n" + s.OK.Render("done") + "\n\n" + s.Normal.Render(m.resultBody)
+		return title + "\n\n" + s.OK.Render("done") + "\n\n" + s.Normal.Render(body)
 	}
-	return title + "\n\n" + s.Err.Render(m.resultBody)
+	return title + "\n\n" + s.Err.Render(body)
 }
 
 func short(s string, n int) string {

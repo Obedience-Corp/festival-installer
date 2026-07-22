@@ -8,6 +8,7 @@ import (
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 func NewUninstallCommand() *cobra.Command {
@@ -36,11 +37,11 @@ func renderUninstallResult(w io.Writer, res app.UninstallResult) error {
 		_, err := fmt.Fprintln(w, res.Note)
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "uninstalled %s\n", res.Package); err != nil {
+	if _, err := fmt.Fprintf(w, "uninstalled %s\n", textsafe.Line(res.Package)); err != nil {
 		return err
 	}
 	for _, f := range res.Removed {
-		if _, err := fmt.Fprintf(w, "  removed %s\n", f); err != nil {
+		if _, err := fmt.Fprintf(w, "  removed %s\n", textsafe.Line(f)); err != nil {
 			return err
 		}
 	}

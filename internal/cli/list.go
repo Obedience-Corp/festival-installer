@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 func NewListCommand() *cobra.Command {
@@ -39,7 +40,7 @@ func renderListTable(out io.Writer, res app.ListResult) error {
 	tw := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "PACKAGE\tVERSION\tCHANNEL\tSOURCE")
 	for _, p := range res.Packages {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", p.PackageID, p.Version, p.Channel, p.Source)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", textsafe.Line(p.PackageID), textsafe.Line(p.Version), textsafe.Line(p.Channel), textsafe.Line(p.Source))
 	}
 	if err := tw.Flush(); err != nil {
 		return errpkg.Wrap("E_CLI_RENDER", err, "render list table")

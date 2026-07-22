@@ -10,6 +10,7 @@ import (
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 func NewUpdateCommand() *cobra.Command {
@@ -56,18 +57,19 @@ func NewUpdateCommand() *cobra.Command {
 }
 
 func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
+	pkg := textsafe.Line(res.Package)
 	switch res.Action {
 	case "upgraded":
-		_, err := fmt.Fprintf(w, "upgraded %s %s -> %s\n", res.Package, res.From, res.Version)
+		_, err := fmt.Fprintf(w, "upgraded %s %s -> %s\n", pkg, textsafe.Line(res.From), textsafe.Line(res.Version))
 		return err
 	case "current":
-		_, err := fmt.Fprintf(w, "%s is already current at %s\n", res.Package, res.Version)
+		_, err := fmt.Fprintf(w, "%s is already current at %s\n", pkg, textsafe.Line(res.Version))
 		return err
 	case "unmanaged":
-		_, err := fmt.Fprintf(w, "%s is installed outside festival; left untouched\n", res.Package)
+		_, err := fmt.Fprintf(w, "%s is installed outside festival; left untouched\n", pkg)
 		return err
 	default:
-		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", res.Package)
+		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", pkg)
 		return err
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/app"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 func NewInstallCommand() *cobra.Command {
@@ -56,11 +57,11 @@ func NewInstallCommand() *cobra.Command {
 }
 
 func renderInstallResult(w io.Writer, res app.InstallResult) error {
-	if _, err := fmt.Fprintf(w, "installed %s %s (%s) from %s\n", res.Package, res.Version, res.Channel, res.Source); err != nil {
+	if _, err := fmt.Fprintf(w, "installed %s %s (%s) from %s\n", textsafe.Line(res.Package), textsafe.Line(res.Version), textsafe.Line(res.Channel), textsafe.Line(res.Source)); err != nil {
 		return err
 	}
 	for _, f := range res.Files {
-		if _, err := fmt.Fprintf(w, "  %s\n", f); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s\n", textsafe.Line(f)); err != nil {
 			return err
 		}
 	}
