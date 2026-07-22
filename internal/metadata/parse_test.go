@@ -146,6 +146,7 @@ func TestParseManifest_InvalidVariants(t *testing.T) {
 		"bad_arch.json",
 		"bad_class.json",
 		"unknown_field.json",
+		"bad_constraint.json",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {

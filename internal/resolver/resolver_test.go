@@ -208,6 +208,26 @@ func TestResolve_DepConstraintsCompatibleAndNot(t *testing.T) {
 	}
 }
 
+func TestResolve_DepConstraintSyntaxErrorSurfaces(t *testing.T) {
+	idx := newIndex([]resolver.Source{{ID: "official", Priority: 0}})
+	idx.add("official", source.PackageRef{ID: "x/b", Class: "tool"},
+		manifest("x/b", "tool", []metadata.Release{release("2.0.0", "stable", nil, "binary")}))
+	idx.add("official", source.PackageRef{ID: "x/a", Class: "tool"},
+		manifest("x/a", "tool", []metadata.Release{release("1.0.0", "stable", []metadata.Dependency{{Package: "x/b", VersionConstraint: ">=1.2.0 <2.0.0"}}, "binary")}))
+	r := resolver.New(idx, fakeScope{})
+
+	_, err := r.Resolve(context.Background(), linuxReq(resolver.Selector{Raw: "x/a"}))
+	if err == nil {
+		t.Fatal("expected an error for unsupported dependency constraint, got nil")
+	}
+	if !strings.Contains(err.Error(), "E_VERSION_CONSTRAINT") {
+		t.Fatalf("expected the constraint parse error to surface (E_VERSION_CONSTRAINT), got %v", err)
+	}
+	if !strings.Contains(err.Error(), "E_DEP_CONSTRAINT") {
+		t.Fatalf("expected the dependency-context wrap (E_DEP_CONSTRAINT), got %v", err)
+	}
+}
+
 func TestResolve_CampaignScopeRequiresRoot(t *testing.T) {
 	idx := newIndex([]resolver.Source{{ID: "official", Priority: 0}})
 	idx.add("official", source.PackageRef{ID: "obey/skills", Class: "plugin"},

@@ -41,7 +41,7 @@
         "properties": {
           "package": { "type": "string", "minLength": 1 },
           "runtime": { "type": "string", "minLength": 1 },
-          "version_constraint": { "type": "string" },
+          "version_constraint": { "type": "string", "pattern": "^(>=|<=|>|<|=)?\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.-]+)?$" },
           "required_features": { "type": "array", "items": { "type": "string" } }
         }
       }
@@ -76,7 +76,7 @@
               "required": ["package", "version_constraint"],
               "properties": {
                 "package": { "type": "string", "minLength": 1 },
-                "version_constraint": { "type": "string", "minLength": 1 },
+                "version_constraint": { "type": "string", "pattern": "^(>=|<=|>|<|=)?\\d+\\.\\d+\\.\\d+([-+][0-9A-Za-z.-]+)?$" },
                 "scope": { "type": "string", "enum": ["user", "campaign"] }
               }
             }
