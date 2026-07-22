@@ -12,15 +12,10 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
 )
 
-type Scope string
-
-const ScopeUser Scope = "user"
-
 type Host interface {
 	HostID() string
 	DetectInstalled(ctx context.Context) (bool, string, string, error)
 	ValidateCompatibility(ctx context.Context, target metadata.RuntimeTarget) error
-	Activate(ctx context.Context, staged string, entry metadata.InstallEntry, scope Scope) ([]receipts.OwnedFile, error)
 	Remove(ctx context.Context, r receipts.Receipt) error
 }
 
@@ -83,18 +78,6 @@ func (a *Adapter) ValidateCompatibility(ctx context.Context, target metadata.Run
 		return errpkg.New("E_HOST_INCOMPATIBLE", a.bin+" "+version+" does not satisfy "+target.VersionConstraint)
 	}
 	return nil
-}
-
-func (a *Adapter) Activate(ctx context.Context, staged string, entry metadata.InstallEntry, scope Scope) ([]receipts.OwnedFile, error) {
-	name := entry.ExecutableName
-	if name == "" {
-		name = entry.Source
-	}
-	rec, err := shared.ActivateBinary(ctx, staged, name)
-	if err != nil {
-		return nil, err
-	}
-	return []receipts.OwnedFile{rec}, nil
 }
 
 func (a *Adapter) Remove(ctx context.Context, r receipts.Receipt) error {
