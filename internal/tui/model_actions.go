@@ -63,25 +63,26 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.marketMode == "add" {
 			return m.submitMarketplaceAdd()
 		}
+		ctx := m.ctx
 		if m.cursor >= len(m.markets) {
 			// refresh all
 			return m, tea.Batch(func() tea.Msg {
-				_, err := app.MarketplaceRefresh(context.Background(), "")
+				_, err := app.MarketplaceRefresh(ctx, "")
 				if err != nil {
 					return marketMsg{err: err}
 				}
-				views, err := app.MarketplaceList(context.Background())
+				views, err := app.MarketplaceList(ctx)
 				return marketMsg{views: views, err: err}
 			})
 		}
 		// remove selected marketplace? use 'd' - for enter, refresh single
 		name := m.markets[m.cursor].Name
 		return m, tea.Batch(func() tea.Msg {
-			_, err := app.MarketplaceRefresh(context.Background(), name)
+			_, err := app.MarketplaceRefresh(ctx, name)
 			if err != nil {
 				return marketMsg{err: err}
 			}
-			views, err := app.MarketplaceList(context.Background())
+			views, err := app.MarketplaceList(ctx)
 			return marketMsg{views: views, err: err}
 		})
 	case screenResult:
@@ -108,30 +109,30 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m.startUpdate(false)
 	case 2:
 		m.screen = screenList
-		return m, loadList()
+		return m, m.loadList()
 	case 3:
 		m.screen = screenBrowse
 		m.productF, m.kindF = "", ""
-		return m, loadBrowse("", "")
+		return m, m.loadBrowse("", "")
 	case 4:
 		m.screen = screenUninstall
-		return m, loadList()
+		return m, m.loadList()
 	case 5:
 		m.screen = screenMarketplace
 		m.marketMode = "list"
-		return m, loadMarkets()
+		return m, m.loadMarkets()
 	case 6:
 		m.screen = screenDoctor
-		return m, loadDoctor()
+		return m, m.loadDoctor()
 	case 7:
 		m.screen = screenShell
-		bin, on, err := app.ManagedBinOnPath(context.Background())
+		bin, on, err := app.ManagedBinOnPath(m.ctx)
 		m.shellBin = bin
 		m.shellOnPath = on
 		if err != nil {
 			m.err = err
 		}
-		snip, _ := app.ShellInit(context.Background(), "zsh")
+		snip, _ := app.ShellInit(m.ctx, "zsh")
 		m.shellSnippet = snip
 		return m, nil
 	case 8:
@@ -172,7 +173,7 @@ func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	}
 	spec := m.launchEntries[m.cursor].Spec
 	// Preflight resolve so missing tools show an in-hub error instead of a black screen.
-	if _, err := launch.Resolve(context.Background(), spec.Tool); err != nil {
+	if _, err := launch.Resolve(m.ctx, spec.Tool); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -186,7 +187,7 @@ func (m model) startInstall(allowUnverified bool) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0, Message: "starting install"}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, runInstall(ctx, ch, allowUnverified)
 }
@@ -221,7 +222,7 @@ func (m model) startUpdate(allowUnverified bool) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "checking updates"}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, func() tea.Msg {
 		res, warning, err := app.UpdateFestival(ctx, app.UpdateOptions{
@@ -262,7 +263,7 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "activate", Percent: 0.5, Message: "removing " + packageID}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, func() tea.Msg {
 		res, err := app.UninstallPackage(ctx, packageID)
@@ -301,7 +302,7 @@ func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd)
 	m.busy = true
 	m.screen = screenProgress
 	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "installing " + entry.ID}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, func() tea.Msg {
 		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
@@ -325,16 +326,17 @@ func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd)
 func (m model) submitMarketplaceAdd() (tea.Model, tea.Cmd) {
 	url := strings.TrimSpace(m.addInput.Value())
 	if url == "" {
-		m.err = fmt.Errorf("enter a git URL")
+		m.err = errpkg.New("E_MARKETPLACE_URL_EMPTY", "enter a git URL")
 		return m, nil
 	}
 	m.marketMode = "list"
+	ctx := m.ctx
 	return m, func() tea.Msg {
-		_, err := app.MarketplaceAdd(context.Background(), url, "")
+		_, err := app.MarketplaceAdd(ctx, url, "")
 		if err != nil {
 			return marketMsg{err: err}
 		}
-		views, err := app.MarketplaceList(context.Background())
+		views, err := app.MarketplaceList(ctx)
 		return marketMsg{views: views, err: err}
 	}
 }
