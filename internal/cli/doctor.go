@@ -30,7 +30,11 @@ func NewDoctorCommand() *cobra.Command {
 				return err
 			}
 			if app.DoctorFailed(checks) {
-				return errpkg.New("E_DOCTOR_FAIL", "one or more doctor checks failed")
+				failErr := errpkg.New("E_DOCTOR_FAIL", "one or more doctor checks failed")
+				if asJSON {
+					return jsonAlreadyEmitted(failErr)
+				}
+				return failErr
 			}
 			return nil
 		},
