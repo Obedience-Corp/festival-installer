@@ -58,3 +58,55 @@ func TestFailure_ErrorShape(t *testing.T) {
 		t.Fatalf("failure warnings must be [], got: %s", buf.String())
 	}
 }
+
+func TestFailure_MatchesSuccessConventions(t *testing.T) {
+	var success, failure bytes.Buffer
+	if err := jsonout.Success(&success, "install", map[string]any{"version": "0.2.10"}, nil); err != nil {
+		t.Fatalf("Success: %v", err)
+	}
+	if err := jsonout.Failure(&failure, "install", "E_INSTALL_TARGET", "unknown target"); err != nil {
+		t.Fatalf("Failure: %v", err)
+	}
+
+	decode := func(name string, buf *bytes.Buffer) map[string]any {
+		var m map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &m); err != nil {
+			t.Fatalf("%s decode: %v\n%s", name, err, buf.String())
+		}
+		return m
+	}
+	s := decode("success", &success)
+	f := decode("failure", &failure)
+
+	for _, key := range []string{"ok", "action", "schema_version", "warnings"} {
+		if _, ok := s[key]; !ok {
+			t.Fatalf("success envelope missing shared key %q: %v", key, s)
+		}
+		if _, ok := f[key]; !ok {
+			t.Fatalf("failure envelope missing shared key %q: %v", key, f)
+		}
+	}
+	if s["action"] != f["action"] || s["schema_version"] != f["schema_version"] {
+		t.Fatalf("action/schema_version diverge: success=%v failure=%v", s, f)
+	}
+	if s["schema_version"] != jsonout.SchemaVersion {
+		t.Fatalf("schema_version = %v, want %q", s["schema_version"], jsonout.SchemaVersion)
+	}
+	if s["ok"] != true || f["ok"] != false {
+		t.Fatalf("ok must be true for success and false for failure: success=%v failure=%v", s["ok"], f["ok"])
+	}
+
+	// Success carries data and no error; failure carries error and no data.
+	if _, ok := s["data"]; !ok {
+		t.Fatalf("success envelope must carry data: %v", s)
+	}
+	if _, ok := s["error"]; ok {
+		t.Fatalf("success envelope must omit error: %v", s)
+	}
+	if _, ok := f["error"]; !ok {
+		t.Fatalf("failure envelope must carry error: %v", f)
+	}
+	if _, ok := f["data"]; ok {
+		t.Fatalf("failure envelope must omit data: %v", f)
+	}
+}

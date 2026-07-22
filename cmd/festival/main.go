@@ -70,6 +70,8 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 		},
 	})
 
+	cli.WrapJSONErrors(root)
+
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

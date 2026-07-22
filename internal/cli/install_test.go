@@ -176,6 +176,8 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewShellInitCommand())
 	root.AddCommand(cli.NewBrowseCommand())
 	root.AddCommand(cli.NewDoctorCommand())
+	root.AddCommand(cli.NewWhichCommand())
+	cli.WrapJSONErrors(root)
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errOut)
