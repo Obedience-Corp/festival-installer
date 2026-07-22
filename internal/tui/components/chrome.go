@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
 )
 
@@ -95,7 +96,7 @@ func ErrorBox(err error, s theme.Styles) string {
 	if err == nil {
 		return ""
 	}
-	return s.Err.Render("error: ") + s.Normal.Render(err.Error())
+	return s.Err.Render("error: ") + s.Normal.Render(textsafe.Block(err.Error()))
 }
 
 // HelpOverlay lists global keys.

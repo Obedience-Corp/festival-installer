@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/obey-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
 	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
 )
 
 const shortCommitLen = 12
@@ -45,7 +46,7 @@ func newMarketplaceAddCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "added %s (%s) at %s\n", src.Name, src.URL, src.Commit)
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "added %s (%s) at %s\n", textsafe.Line(src.Name), textsafe.Line(src.URL), textsafe.Line(src.Commit))
 			return err
 		},
 	}
@@ -92,9 +93,9 @@ func newMarketplaceListCommand() *cobra.Command {
 			for _, v := range views {
 				pkgs := fmt.Sprintf("%d", v.Packages)
 				if v.Err != "" {
-					pkgs = "error: " + v.Err
+					pkgs = "error: " + textsafe.Line(v.Err)
 				}
-				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", v.Name, v.URL, shortCommit(v.Commit), pkgs)
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", textsafe.Line(v.Name), textsafe.Line(v.URL), shortCommit(textsafe.Line(v.Commit)), pkgs)
 			}
 			if err := tw.Flush(); err != nil {
 				return errpkg.Wrap("E_CLI_RENDER", err, "render list table")
@@ -133,11 +134,11 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 			for _, v := range views {
 				switch {
 				case v.Err != "":
-					_, _ = fmt.Fprintf(&buf, "%s: error: %s\n", v.Name, v.Err)
+					_, _ = fmt.Fprintf(&buf, "%s: error: %s\n", textsafe.Line(v.Name), textsafe.Line(v.Err))
 				case v.Changed:
-					_, _ = fmt.Fprintf(&buf, "%s: %s -> %s\n", v.Name, shortCommit(v.OldCommit), shortCommit(v.NewCommit))
+					_, _ = fmt.Fprintf(&buf, "%s: %s -> %s\n", textsafe.Line(v.Name), shortCommit(textsafe.Line(v.OldCommit)), shortCommit(textsafe.Line(v.NewCommit)))
 				default:
-					_, _ = fmt.Fprintf(&buf, "%s: up to date\n", v.Name)
+					_, _ = fmt.Fprintf(&buf, "%s: up to date\n", textsafe.Line(v.Name))
 				}
 			}
 			_, err = fmt.Fprint(cmd.OutOrStdout(), buf.String())
