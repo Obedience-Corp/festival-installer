@@ -37,6 +37,13 @@ func TestJSONFailureEnvelope_EmittedOnStdout(t *testing.T) {
 			wantAction: "install",
 			wantCode:   "E_INSTALL_CHANNEL",
 		},
+		{
+			// Nested command: must not collide with top-level "list".
+			name:       "marketplace refresh unknown source",
+			args:       []string{"marketplace", "refresh", "no-such-source", "--json"},
+			wantAction: "marketplace refresh",
+			wantCode:   "E_SOURCE_NOT_FOUND",
+		},
 	}
 
 	for _, tc := range cases {

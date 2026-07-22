@@ -2,6 +2,7 @@ package cli
 
 import (
 	stderrors "errors"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +19,21 @@ func (e *jsonEmittedError) Unwrap() error { return e.err }
 // jsonAlreadyEmitted wraps err to tell WrapJSONErrors that the command already
 // wrote its own JSON envelope for this failure, so no second envelope is added.
 func jsonAlreadyEmitted(err error) error { return &jsonEmittedError{err: err} }
+
+// jsonAction returns the machine-stable action name for a failure envelope.
+// It uses CommandPath with the root binary name stripped so nested commands stay
+// unambiguous: "festival list" → "list", "festival marketplace list" →
+// "marketplace list". Leaf Name() alone would collide those two.
+func jsonAction(c *cobra.Command) string {
+	path := strings.TrimSpace(c.CommandPath())
+	if i := strings.IndexByte(path, ' '); i >= 0 {
+		return path[i+1:]
+	}
+	if path != "" {
+		return path
+	}
+	return c.Name()
+}
 
 // WrapJSONErrors makes every --json subcommand emit exactly one jsonout failure
 // envelope on stdout when its RunE fails, carrying the machine error code, while
@@ -41,7 +57,11 @@ func WrapJSONErrors(root *cobra.Command) {
 				return err
 			}
 			if f := c.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
-				_ = jsonout.Failure(c.OutOrStdout(), c.Name(), errpkg.Code(err), err.Error())
+				if writeErr := jsonout.Failure(c.OutOrStdout(), jsonAction(c), errpkg.Code(err), err.Error()); writeErr != nil {
+					// Keep the domain error primary so exit codes/messages stay
+					// useful; surface the write failure alongside it.
+					return stderrors.Join(err, writeErr)
+				}
 			}
 			return err
 		}
