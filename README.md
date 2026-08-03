@@ -3,7 +3,7 @@
 Interactive Festival manager — install, update, and browse `camp`, `fest`, and
 plugins with a fire-themed TUI. CLI subcommands remain for scripts and agents.
 
-> *A festival has a lot of different things going on, just like you.*
+> _All your work, where you can find it._
 
 ## Demo
 
@@ -92,17 +92,17 @@ JSON envelopes use schema version `festival/v1alpha1`.
 
 ### Install targets
 
-| Target | Effect |
-| --- | --- |
-| `festival`, `camp`, `fest` | Install the suite bundle `obedience-corp/festival` (camp + fest) |
-| `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces |
+| Target                       | Effect                                                           |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `festival`, `camp`, `fest`   | Install the suite bundle `obedience-corp/festival` (camp + fest) |
+| `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces                    |
 
 ## Home directory
 
-| Env | Role |
-| --- | --- |
-| `FESTIVAL_HOME` | Preferred absolute path for manager state (wins if set) |
-| `OBEY_INSTALLER_HOME` | Legacy alias |
+| Env                   | Role                                                    |
+| --------------------- | ------------------------------------------------------- |
+| `FESTIVAL_HOME`       | Preferred absolute path for manager state (wins if set) |
+| `OBEY_INSTALLER_HOME` | Legacy alias                                            |
 
 Default: `~/.obey/installer` with `bin/`, `state.db`, marketplace clones, receipts.
 
@@ -128,14 +128,14 @@ internal/tui/          # bubbletea manager (theme, anim, screens)
 
 ## What works under the hood
 
-| Package | Surface |
-| --- | --- |
-| `internal/state` | SQLite + WAL, home, config |
-| `internal/state/receipts` | Install receipts |
-| `internal/state/lock` | Cross-process install lock |
-| `internal/verify` | Canonical JSON + ed25519 (not yet mandatory on live path) |
-| `internal/artifacts` | HTTPS download, bounded tar.gz, atomic move |
-| `internal/source` | Marketplace clone cache + package index |
+| Package                   | Surface                                                   |
+| ------------------------- | --------------------------------------------------------- |
+| `internal/state`          | SQLite + WAL, home, config                                |
+| `internal/state/receipts` | Install receipts                                          |
+| `internal/state/lock`     | Cross-process install lock                                |
+| `internal/verify`         | Canonical JSON + ed25519 (not yet mandatory on live path) |
+| `internal/artifacts`      | HTTPS download, bounded tar.gz, atomic move               |
+| `internal/source`         | Marketplace clone cache + package index                   |
 
 ## Design reference
 
