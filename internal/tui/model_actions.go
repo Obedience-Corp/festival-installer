@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
@@ -161,8 +162,10 @@ func hasErrorCode(err error, code string) bool {
 	return false
 }
 
-// launchSelected requests a child tool run: set pendingLaunch and quit the TUI
-// so the outer RunLoop can spawn camp/fest on the real TTY, then resume the hub.
+// launchSelected runs the selected launchpad entry. TUI-mode entries set
+// pendingLaunch and quit so the outer RunLoop can spawn camp/fest on the real
+// TTY; capture-mode entries (oneshot/stream) run inside the hub with piped
+// output so their text is not lost when the hub repaints.
 func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	if len(m.launchEntries) == 0 {
 		m.err = errpkg.New("E_LAUNCH_EMPTY", "no launchpad entries")
@@ -171,15 +174,73 @@ func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	if m.cursor < 0 || m.cursor >= len(m.launchEntries) {
 		return m, nil
 	}
-	spec := m.launchEntries[m.cursor].Spec
+	entry := m.launchEntries[m.cursor]
 	// Preflight resolve so missing tools show an in-hub error instead of a black screen.
-	if _, err := launch.Resolve(m.ctx, spec.Tool); err != nil {
+	if _, err := launch.Resolve(m.ctx, entry.Spec.Tool); err != nil {
 		m.err = err
 		return m, nil
 	}
-	cp := spec
+	if entry.Mode.IsCapture() {
+		return m.startCapture(entry)
+	}
+	cp := entry.Spec
 	m.pendingLaunch = &cp
 	return m, tea.Quit
+}
+
+// startCapture spawns a capture-mode child and switches to the output screen.
+func (m model) startCapture(entry launch.Entry) (tea.Model, tea.Cmd) {
+	cs, err := launch.StartCapture(m.ctx, entry.Spec)
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	m.capture = cs
+	m.captureTitle = entry.Spec.Title
+	if m.captureTitle == "" {
+		m.captureTitle = entry.Spec.Tool
+	}
+	m.captureMode = entry.Mode
+	m.captureRes = nil
+	m.captureOut = nil
+	m.captureVP = viewport.New(captureVPWidth(m.width), captureVPHeight(m.height))
+	m.err = nil
+	m.screen = screenChildOutput
+	return m, captureNext(cs)
+}
+
+// captureNext waits for the next output chunk or the child's exit.
+func captureNext(cs *launch.Capture) tea.Cmd {
+	return func() tea.Msg {
+		chunk, res := cs.Next()
+		if res != nil {
+			return childExitMsg(*res)
+		}
+		return childChunkMsg(chunk)
+	}
+}
+
+// closeChildOutput leaves the capture screen: a running child is stopped
+// first (its exit arrives via captureNext); once exited, return to launchpad.
+func (m model) closeChildOutput() (tea.Model, tea.Cmd) {
+	if m.capture != nil {
+		m.capture.Stop()
+		return m, nil
+	}
+	m.captureRes = nil
+	m.captureOut = nil
+	m.screen = screenLaunchpad
+	return m, nil
+}
+
+// captureVPWidth/Height keep the output viewport inside the hub chrome
+// (header, title line, footer).
+func captureVPWidth(w int) int {
+	return max(20, w-2)
+}
+
+func captureVPHeight(h int) int {
+	return max(5, h-6)
 }
 
 func (m model) startInstall(allowUnverified bool) (tea.Model, tea.Cmd) {

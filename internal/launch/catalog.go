@@ -9,6 +9,10 @@ type Entry struct {
 	// Spec is what to run when the user selects this entry.
 	// Dir is left empty: Run fills campaign root when WantsCampaignRoot(spec).
 	Spec Spec
+	// Mode is how the hub runs the entry: ModeTUI hands over the TTY;
+	// ModeOneShot/ModeStream pipe output into the hub pager so plain CLI
+	// output is not lost when the hub repaints.
+	Mode Mode
 }
 
 // Catalog is the default launchpad list (Ring 3 hub surface).
@@ -32,21 +36,25 @@ func Catalog() []Entry {
 			Label:  "List festivals",
 			Detail: "fest list — festivals by status (campaign root when known)",
 			Spec:   Spec{Tool: "fest", Args: []string{"list"}, Title: "fest list"},
+			Mode:   ModeOneShot,
 		},
 		{
 			Label:  "Watch festival progress",
 			Detail: "fest watch — live progress (q to return here)",
 			Spec:   Spec{Tool: "fest", Args: []string{"watch"}, Title: "fest watch"},
+			Mode:   ModeStream,
 		},
 		{
 			Label:  "Camp version",
 			Detail: "camp version — quick sanity check",
 			Spec:   Spec{Tool: "camp", Args: []string{"version"}, Title: "camp version"},
+			Mode:   ModeOneShot,
 		},
 		{
 			Label:  "Fest version",
 			Detail: "fest version — quick sanity check",
 			Spec:   Spec{Tool: "fest", Args: []string{"version"}, Title: "fest version"},
+			Mode:   ModeOneShot,
 		},
 	}
 }

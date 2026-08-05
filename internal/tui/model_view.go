@@ -71,6 +71,10 @@ func (m model) View() string {
 		title = "confirm"
 		body = components.ConfirmBox(m.confirmMsg, m.confirmYes, s)
 		footer = "←→  y/n  enter"
+	case screenChildOutput:
+		title = "launchpad"
+		body = m.viewChildOutput()
+		footer = m.childOutputFooter()
 	case screenResult:
 		title = "result"
 		body = m.viewResult()
