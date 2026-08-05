@@ -437,7 +437,6 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-
 	switch msg.String() {
 	case "up", "k":
 		if m.cursor > 0 {
