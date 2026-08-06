@@ -1,5 +1,22 @@
 package launch
 
+// Mode selects how the hub runs a launchpad entry. The zero value is ModeTUI.
+type Mode string
+
+const (
+	// ModeTUI hands the child the real TTY: suspend hub, exec, resume.
+	ModeTUI Mode = ""
+	// ModeOneShot captures a short-lived command's output into the hub pager
+	// instead of losing it when the hub repaints.
+	ModeOneShot Mode = "oneshot"
+	// ModeStream pipes a long-running command's output live into the hub pager.
+	ModeStream Mode = "stream"
+)
+
+// IsCapture reports whether the entry runs inside the hub with piped output
+// (one-shot and streaming modes) rather than owning the TTY.
+func (m Mode) IsCapture() bool { return m == ModeOneShot || m == ModeStream }
+
 // Spec describes a tool invocation the hub should run after leaving the TUI.
 type Spec struct {
 	// Tool is the binary name: camp, fest, or a plugin executable name.

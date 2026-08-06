@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/obey-installer/internal/app"
@@ -31,6 +32,7 @@ const (
 	screenProgress
 	screenResult
 	screenConfirm
+	screenChildOutput
 )
 
 type tickMsg time.Time
@@ -76,6 +78,12 @@ type consentNeededMsg struct {
 type progressMsg struct {
 	ev app.ProgressEvent
 }
+
+// childChunkMsg carries one piped output chunk from a capture-mode child.
+type childChunkMsg []byte
+
+// childExitMsg is the capture child's final result, after all output chunks.
+type childExitMsg launch.Result
 
 type model struct {
 	// ctx is the RunLoop program context. Every tea.Cmd that performs network
@@ -143,7 +151,20 @@ type model struct {
 
 	// launchpad
 	launchEntries []launch.Entry
+
+	// launchpad capture: oneshot/stream entries run inside the hub with
+	// piped output instead of owning the TTY. captureOut is bounded
+	// scrollback; never a strings.Builder (models are copied by value).
+	capture      *launch.Capture
+	captureTitle string
+	captureMode  launch.Mode
+	captureOut   []byte
+	captureRes   *launch.Result
+	captureVP    viewport.Model
 }
+
+// captureMaxBytes bounds capture scrollback; the head is trimmed past this.
+const captureMaxBytes = 512 * 1024
 
 var homeItems = []string{
 	"Install Festival suite",
@@ -242,6 +263,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.captureVP.Width = captureVPWidth(msg.Width)
+		m.captureVP.Height = captureVPHeight(msg.Height)
+		if m.captureOut != nil {
+			m.captureVP.SetContent(captureRender(m.captureOut, m.captureVP.Width))
+		}
+		return m, nil
+
+	case childChunkMsg:
+		if m.capture == nil {
+			return m, nil
+		}
+		follow := m.captureVP.AtBottom()
+		m.captureOut = append(m.captureOut, msg...)
+		if len(m.captureOut) > captureMaxBytes {
+			m.captureOut = m.captureOut[len(m.captureOut)-captureMaxBytes:]
+		}
+		m.captureVP.SetContent(captureRender(m.captureOut, m.captureVP.Width))
+		if follow {
+			m.captureVP.GotoBottom()
+		}
+		return m, captureNext(m.capture)
+
+	case childExitMsg:
+		res := launch.Result(msg)
+		m.captureRes = &res
+		m.capture = nil
+		m.captureVP.SetContent(captureRender(m.captureOut, m.captureVP.Width))
 		return m, nil
 
 	case tickMsg:
@@ -330,6 +378,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "ctrl+c":
+		if m.screen == screenChildOutput && m.capture != nil {
+			m.capture.Stop()
+			return m, nil
+		}
 		if m.busy && m.opCancel != nil {
 			m.opCancel()
 			m.busy = false
@@ -338,6 +390,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "q":
+		if m.screen == screenChildOutput {
+			return m.closeChildOutput()
+		}
 		if m.screen == screenHome || m.screen == screenBoot {
 			return m, tea.Quit
 		}
@@ -357,6 +412,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenHome
 			return m, nil
 		}
+		if m.screen == screenChildOutput {
+			return m.closeChildOutput()
+		}
 		if m.screen == screenHome {
 			return m, tea.Quit
 		}
@@ -370,6 +428,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.handleEnter()
+	}
+
+	// Capture screen: remaining keys scroll the output viewport.
+	if m.screen == screenChildOutput {
+		var cmd tea.Cmd
+		m.captureVP, cmd = m.captureVP.Update(msg)
+		return m, cmd
 	}
 
 	switch msg.String() {
