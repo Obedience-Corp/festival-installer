@@ -30,8 +30,8 @@ just vhs all   # requires vhs, ttyd, ffmpeg
 
 ## Status
 
-Private incubation in `obey-installer` (Go module still
-`github.com/Obedience-Corp/obey-installer`). The public command name is
+Private pre-release development lives in `festival-installer` at
+`github.com/Obedience-Corp/festival-installer`. The public command name is
 **`festival`**. The mature engine will later ship with the public Festival
 distribution; until then `projects/festival` remains the public bootstrap
 (npm/Homebrew/`install.sh`).
@@ -50,7 +50,7 @@ local paths, and archive extraction is bounded.
 ## Quick start (humans)
 
 ```bash
-just build          # → bin/festival  (+ bin/obey-installer alias)
+just build          # → bin/festival
 ./bin/festival      # opens the TUI on a terminal
 ```
 
@@ -99,10 +99,9 @@ JSON envelopes use schema version `festival/v1alpha1`.
 
 ## Home directory
 
-| Env                   | Role                                                    |
-| --------------------- | ------------------------------------------------------- |
-| `FESTIVAL_HOME`       | Preferred absolute path for manager state (wins if set) |
-| `OBEY_INSTALLER_HOME` | Legacy alias                                            |
+| Env             | Role                                       |
+| --------------- | ------------------------------------------ |
+| `FESTIVAL_HOME` | Absolute path override for manager state   |
 
 Default: `~/.obey/installer` with `bin/`, `state.db`, marketplace clones, receipts.
 

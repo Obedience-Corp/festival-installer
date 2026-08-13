@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 // MarketplaceSeedWarning reports that the official source could not be

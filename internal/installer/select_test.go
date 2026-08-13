@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
 func festivalManifest() metadata.PackageManifest {

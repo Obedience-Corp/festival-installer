@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 // ListInstalled returns all package receipts.

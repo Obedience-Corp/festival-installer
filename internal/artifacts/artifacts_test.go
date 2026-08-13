@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 )
 
 func redirectingClient(t *testing.T, tlsSrv *httptest.Server, fakeHost string, plainSrv *httptest.Server) *http.Client {

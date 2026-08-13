@@ -1,6 +1,6 @@
 package lock
 
-import errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+import errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 
 var (
 	ErrLockTimeout         = errpkg.New("E_LOCK_TIMEOUT", "timeout acquiring lock")

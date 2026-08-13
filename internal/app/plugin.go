@@ -7,17 +7,17 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/camp"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/fest"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/release"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/camp"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/fest"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/release"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // PluginHost parses camp-*/fest-* selectors.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func Print(w io.Writer, v any) error {

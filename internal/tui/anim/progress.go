@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 // ProgressFlame maps a 0..1 fraction and stage label to a visual block.

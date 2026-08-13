@@ -14,8 +14,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
-	"github.com/Obedience-Corp/obey-installer/internal/release"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
+	"github.com/Obedience-Corp/festival-installer/internal/release"
 )
 
 func gitEnv() []string {

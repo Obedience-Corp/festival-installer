@@ -1,8 +1,8 @@
 package source
 
 import (
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/release"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/release"
 )
 
 type Marketplace struct {

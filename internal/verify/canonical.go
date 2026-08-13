@@ -6,7 +6,7 @@ import (
 
 	canonical "github.com/gibson042/canonicaljson-go"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 var ErrNonFiniteNumber = errpkg.New("E_CANONICAL_NONFINITE", "non-finite number cannot be canonically encoded")

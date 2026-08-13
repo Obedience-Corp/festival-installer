@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 var ErrKeyNotFound = errpkg.New("E_KEY_NOT_FOUND", "verification key not found")

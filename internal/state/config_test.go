@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func writeConfig(t *testing.T, dir, content string) {

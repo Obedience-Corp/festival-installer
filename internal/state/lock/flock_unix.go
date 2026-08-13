@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func tryAcquire(fd int) (bool, error) {

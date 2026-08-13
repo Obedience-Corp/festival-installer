@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 func TestMarshal_GoldenFixtures(t *testing.T) {

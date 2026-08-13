@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 type Selector struct {

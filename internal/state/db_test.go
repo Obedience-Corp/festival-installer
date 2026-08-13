@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func openTestDB(t *testing.T) (*DB, string) {

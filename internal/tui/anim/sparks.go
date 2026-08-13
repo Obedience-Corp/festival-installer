@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 // SparkField drifts small embers for multi-activity energy.
