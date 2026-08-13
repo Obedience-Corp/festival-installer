@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/lock"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
-const envLockHelperHome = "OBEY_INSTALLER_LOCK_HELPER_HOME"
+const envLockHelperHome = "FESTIVAL_INSTALLER_LOCK_HELPER_HOME"
 
 func TestMain(m *testing.M) {
 	if home := os.Getenv(envLockHelperHome); home != "" {

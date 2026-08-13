@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 const maxRedirects = 10

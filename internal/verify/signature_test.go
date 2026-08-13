@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 func newKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {

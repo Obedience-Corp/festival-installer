@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 var ErrPackageNotFound = errpkg.New("E_PKG_NOT_FOUND", "package not found in source")

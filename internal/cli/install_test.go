@@ -21,10 +21,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obedience-Corp/obey-installer/internal/cli"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/cli"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 func hasErrorCode(err error, code string) bool {
@@ -168,7 +168,7 @@ func fixtureInstallMarketplaceManifest(t *testing.T, manifest string) string {
 
 func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
-	root := &cobra.Command{Use: "obey-installer", SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "festival", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewInstallCommand())
 	root.AddCommand(cli.NewUpdateCommand())

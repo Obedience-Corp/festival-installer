@@ -1,6 +1,6 @@
 package app
 
-import errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+import errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 
 // ValidateChannel accepts stable|rc|dev.
 func ValidateChannel(c string) error {

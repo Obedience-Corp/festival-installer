@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // ResolveWhich finds the active and managed locations for a tool binary.

@@ -10,9 +10,9 @@ import (
 	"github.com/muesli/termenv"
 
 	// Seed dark background before any lipgloss/termenv OSC query.
-	_ "github.com/Obedience-Corp/obey-installer/internal/bginit"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/launch"
+	_ "github.com/Obedience-Corp/festival-installer/internal/bginit"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
 // resumeState carries launchpad position across Pattern-1 program restarts.

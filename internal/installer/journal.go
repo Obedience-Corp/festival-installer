@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 // JournalName is the stable install-intent file under installer home (TXN-01).

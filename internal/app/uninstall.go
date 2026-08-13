@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/lock"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 const uninstallLockTimeout = 30 * time.Second

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 const noHostRuntime = "(unspecified)"

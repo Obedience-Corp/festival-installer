@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 // Booth is a side activity indicator on the home screen.

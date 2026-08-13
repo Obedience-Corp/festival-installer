@@ -9,12 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obedience-Corp/obey-installer/internal/cli"
+	"github.com/Obedience-Corp/festival-installer/internal/cli"
 )
 
 func runWhich(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
-	root := &cobra.Command{Use: "obey-installer", SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "festival", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewWhichCommand())
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)

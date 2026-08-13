@@ -1,4 +1,4 @@
-module github.com/Obedience-Corp/obey-installer
+module github.com/Obedience-Corp/festival-installer
 
 go 1.25.6
 

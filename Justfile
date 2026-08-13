@@ -17,8 +17,6 @@ bin_dir := "bin"
 build:
     mkdir -p {{bin_dir}}
     go build -o {{bin_dir}}/{{binary}} ./cmd/{{binary}}
-    # Incubation alias for muscle memory / old scripts
-    ln -sfn {{binary}} {{bin_dir}}/obey-installer
 
 # Run all tests
 test:

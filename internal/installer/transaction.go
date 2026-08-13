@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state/lock"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 const defaultLockTimeout = 30 * time.Second

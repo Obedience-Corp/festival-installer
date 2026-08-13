@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 )
 
 type jsonEmittedError struct{ err error }

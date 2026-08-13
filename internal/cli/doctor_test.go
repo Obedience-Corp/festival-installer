@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 func doctorChecks(t *testing.T, out string) map[string]string {

@@ -12,8 +12,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obedience-Corp/obey-installer/internal/cli"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/cli"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 const validManifest = `{
@@ -85,7 +85,7 @@ func listContainsPackageCount(out, name string, count int) bool {
 
 func runCmd(t *testing.T, args ...string) (string, error) {
 	t.Helper()
-	root := &cobra.Command{Use: "obey-installer", SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "festival", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewMarketplaceCommand())
 	var out bytes.Buffer
 	root.SetOut(&out)

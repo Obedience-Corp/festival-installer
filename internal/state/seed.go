@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 const OfficialSeedKey = "official-obey"
