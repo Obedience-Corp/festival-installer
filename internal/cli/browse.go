@@ -31,11 +31,7 @@ func NewBrowseCommand() *cobra.Command {
 				}
 			}
 			if asJSON {
-				var warnings []string
-				if warning != nil {
-					warnings = []string{warning.Friendly()}
-				}
-				return jsonout.Success(cmd.OutOrStdout(), "browse", res, warnings)
+				return jsonout.Success(cmd.OutOrStdout(), "browse", res, seedWarnings(warning))
 			}
 			if warning != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())

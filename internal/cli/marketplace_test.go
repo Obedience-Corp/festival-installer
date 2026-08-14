@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obedience-Corp/obey-installer/internal/cli"
+	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
 	"github.com/Obedience-Corp/obey-installer/internal/source"
 )
 
@@ -145,6 +147,117 @@ func TestMarketplaceE2E_AddListRefreshRemove(t *testing.T) {
 	}
 	if len(sources) != 0 {
 		t.Fatalf("registry not empty after remove: %+v", sources)
+	}
+}
+
+type marketplaceEnvelope struct {
+	OK            bool            `json:"ok"`
+	Action        string          `json:"action"`
+	SchemaVersion string          `json:"schema_version"`
+	Warnings      []string        `json:"warnings"`
+	Data          json.RawMessage `json:"data"`
+}
+
+func decodeMarketplaceEnvelope(t *testing.T, out string) marketplaceEnvelope {
+	t.Helper()
+	var env marketplaceEnvelope
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	if !env.OK {
+		t.Fatalf("envelope not ok: %s", out)
+	}
+	if env.SchemaVersion != jsonout.SchemaVersion {
+		t.Fatalf("schema_version = %q, want %q", env.SchemaVersion, jsonout.SchemaVersion)
+	}
+	return env
+}
+
+const seedFriendlyWarning = "couldn't reach the official marketplace; showing local sources only"
+
+func TestMarketplaceListRefreshJSONEnvelope(t *testing.T) {
+	cases := []struct {
+		name   string
+		args   []string
+		action string
+	}{
+		{"list", []string{"marketplace", "list", "--json"}, "marketplace list"},
+		{"refresh", []string{"marketplace", "refresh", "--json"}, "marketplace refresh"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name+"/seeded home has empty warnings", func(t *testing.T) {
+			t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+			fixture := fixtureMarketplace(t)
+			if out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", "official"); err != nil {
+				t.Fatalf("add: %v\n%s%s", err, out, errOut)
+			}
+
+			out, errOut, err := runInstaller(t, tc.args...)
+			if err != nil {
+				t.Fatalf("%v: %v\n%s", tc.args, err, errOut)
+			}
+			if errOut != "" {
+				t.Fatalf("expected no stderr for an already-seeded home, got %q", errOut)
+			}
+			env := decodeMarketplaceEnvelope(t, out)
+			if env.Action != tc.action {
+				t.Fatalf("action = %q, want %q", env.Action, tc.action)
+			}
+			if env.Warnings == nil || len(env.Warnings) != 0 {
+				t.Fatalf("expected warnings to serialize as [], got %v in %s", env.Warnings, out)
+			}
+			var views []map[string]any
+			if err := json.Unmarshal(env.Data, &views); err != nil {
+				t.Fatalf("data is not an array of views: %v\n%s", err, out)
+			}
+			if len(views) != 1 || views[0]["name"] != "official" {
+				t.Fatalf("expected the registered source in data, got %s", env.Data)
+			}
+		})
+		// GIT_ALLOW_PROTOCOL=file makes the https seed clone fail deterministically
+		// with raw git output, without touching the network.
+		t.Run(tc.name+"/seed failure lands in warnings without git trace", func(t *testing.T) {
+			t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+			t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+
+			out, errOut, err := runInstaller(t, tc.args...)
+			if err != nil {
+				t.Fatalf("%v: %v\n%s", tc.args, err, errOut)
+			}
+			if errOut != "" {
+				t.Fatalf("expected the warning in the envelope only, got stderr %q", errOut)
+			}
+			env := decodeMarketplaceEnvelope(t, out)
+			if len(env.Warnings) != 1 || env.Warnings[0] != seedFriendlyWarning {
+				t.Fatalf("warnings = %v, want [%q]", env.Warnings, seedFriendlyWarning)
+			}
+			for _, leak := range []string{"clone", "fatal", "github.com"} {
+				if strings.Contains(out, leak) {
+					t.Fatalf("raw git detail %q leaked into the envelope: %s", leak, out)
+				}
+			}
+			if !strings.Contains(out, "\"data\": []") {
+				t.Fatalf("expected empty views to serialize as [], got: %s", out)
+			}
+		})
+		t.Run(tc.name+"/table mode warns on stderr without git trace", func(t *testing.T) {
+			t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+			t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+
+			tableArgs := tc.args[:len(tc.args)-1]
+			out, errOut, err := runInstaller(t, tableArgs...)
+			if err != nil {
+				t.Fatalf("%v: %v\n%s", tableArgs, err, errOut)
+			}
+			if !strings.Contains(errOut, "warning: "+seedFriendlyWarning) {
+				t.Fatalf("expected friendly warning on stderr, got %q", errOut)
+			}
+			for _, leak := range []string{"clone", "fatal", "github.com"} {
+				if strings.Contains(out+errOut, leak) {
+					t.Fatalf("raw git detail %q leaked: %s%s", leak, out, errOut)
+				}
+			}
+		})
 	}
 }
 

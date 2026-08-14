@@ -42,11 +42,15 @@ func MarketplaceRemove(ctx context.Context, name string) error {
 }
 
 // MarketplaceList returns marketplace views (seeding official if needed).
+// Views are never nil so JSON consumers always see an array.
 func MarketplaceList(ctx context.Context) ([]source.ListView, error) {
 	seedErr := ensureOfficialSeed(ctx)
 	views, err := source.ListMarketplaces(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if views == nil {
+		views = []source.ListView{}
 	}
 	if seedErr != nil {
 		return views, &MarketplaceSeedWarning{Err: seedErr}
@@ -55,11 +59,15 @@ func MarketplaceList(ctx context.Context) ([]source.ListView, error) {
 }
 
 // MarketplaceRefresh refreshes one or all marketplaces.
+// Views are never nil so JSON consumers always see an array.
 func MarketplaceRefresh(ctx context.Context, name string) ([]source.RefreshView, error) {
 	seedErr := ensureOfficialSeed(ctx)
 	views, err := source.RefreshMarketplaces(ctx, name)
 	if err != nil {
 		return nil, err
+	}
+	if views == nil {
+		views = []source.RefreshView{}
 	}
 	if seedErr != nil {
 		return views, &MarketplaceSeedWarning{Err: seedErr}
