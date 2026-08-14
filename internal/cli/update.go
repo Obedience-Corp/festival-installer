@@ -18,13 +18,22 @@ func NewUpdateCommand() *cobra.Command {
 	var asJSON bool
 	var allowUnverified bool
 	cmd := &cobra.Command{
-		Use:   "update <festival|camp|fest>",
+		Use:   "update [festival|camp|fest]",
 		Short: "Update the installed festival suite to the channel-latest release",
-		Args:  cobra.ExactArgs(1),
+		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
+			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
+			"suite. camp and fest are accepted as aliases: they are not published independently, so\n" +
+			"passing either one still updates the whole suite and prints a notice saying so.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := args[0]
+			target := "festival"
+			if len(args) == 1 {
+				target = args[0]
+			}
 			switch target {
-			case "festival", "camp", "fest":
+			case "festival":
+			case "camp", "fest":
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s is part of the festival suite; updating the suite\n", target)
 			default:
 				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, or fest)")
 			}

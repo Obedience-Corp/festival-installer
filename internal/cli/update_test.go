@@ -44,6 +44,75 @@ func writeFestivalReceipt(t *testing.T, ctx context.Context, home, version, sour
 	}
 }
 
+func TestUpdate_UnknownTargetRejected(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+
+	_, _, err := runInstaller(t, "update", "widget")
+	if err == nil {
+		t.Fatal("expected unknown target to fail")
+	}
+	if !hasErrorCode(err, "E_UPDATE_TARGET") {
+		t.Fatalf("expected E_UPDATE_TARGET, got %v", err)
+	}
+}
+
+func TestUpdate_TargetContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantNotice string
+	}{
+		{name: "no arg defaults to festival"},
+		{name: "festival explicit", args: []string{"festival"}},
+		{name: "camp alias", args: []string{"camp"}, wantNotice: "camp is part of the festival suite; updating the suite"},
+		{name: "fest alias", args: []string{"fest"}, wantNotice: "fest is part of the festival suite; updating the suite"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("OBEY_INSTALLER_HOME", home)
+			ctx := context.Background()
+			binDir := filepath.Join(home, "bin")
+
+			writeManagedBinary(t, binDir, "camp", "0.2.10")
+			writeManagedBinary(t, binDir, "fest", "0.2.10")
+
+			repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
+			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+				t.Fatalf("marketplace add: %v\n%s", err, errOut)
+			}
+			writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
+
+			args := append([]string{"update"}, tc.args...)
+			args = append(args, "--allow-unverified", "--json")
+			out, errOut, err := runInstaller(t, args...)
+			if err != nil {
+				t.Fatalf("update: %v\n%s", err, errOut)
+			}
+
+			var res struct {
+				Action  string `json:"action"`
+				Version string `json:"version"`
+			}
+			dataOf(t, out, &res)
+			if res.Action != "current" || res.Version != "0.2.10" {
+				t.Fatalf("expected current 0.2.10, got %+v", res)
+			}
+
+			if tc.wantNotice == "" {
+				if strings.Contains(errOut, "is part of the festival suite") {
+					t.Fatalf("unexpected alias notice: %q", errOut)
+				}
+				return
+			}
+			if !strings.Contains(errOut, tc.wantNotice) {
+				t.Fatalf("expected alias notice %q, got %q", tc.wantNotice, errOut)
+			}
+		})
+	}
+}
+
 func TestUpdate_UnmanagedExternalLeftUntouched(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
