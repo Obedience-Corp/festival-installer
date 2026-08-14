@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -23,11 +24,21 @@ func NewBrowseCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			res, err := app.Browse(cmd.Context(), app.BrowseOptions{Product: product, Kind: kind})
+			var warning *app.MarketplaceSeedWarning
 			if err != nil {
-				return err
+				if !errors.As(err, &warning) {
+					return err
+				}
 			}
 			if asJSON {
-				return jsonout.Success(cmd.OutOrStdout(), "browse", res, nil)
+				var warnings []string
+				if warning != nil {
+					warnings = []string{warning.Friendly()}
+				}
+				return jsonout.Success(cmd.OutOrStdout(), "browse", res, warnings)
+			}
+			if warning != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())
 			}
 			return renderBrowseTable(cmd.OutOrStdout(), res)
 		},

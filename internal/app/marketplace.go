@@ -14,9 +14,20 @@ type MarketplaceSeedWarning struct {
 	Err error
 }
 
+// marketplaceSeedFriendlyMessage is the user-facing rendering of a
+// MarketplaceSeedWarning. It intentionally omits Err's detail (which can
+// contain raw git command output, e.g. an auth failure trace) so terminal
+// and JSON consumers never see it.
+const marketplaceSeedFriendlyMessage = "couldn't reach the official marketplace; showing local sources only"
+
 func (w *MarketplaceSeedWarning) Error() string {
 	return fmt.Sprintf("could not seed official marketplace: %v", w.Err)
 }
+
+// Friendly returns the one-line, user-facing rendering of this warning.
+// Callers rendering to a terminal or a JSON envelope should use this instead
+// of Error(), which carries full diagnostic detail meant for debugging.
+func (w *MarketplaceSeedWarning) Friendly() string { return marketplaceSeedFriendlyMessage }
 
 func (w *MarketplaceSeedWarning) Unwrap() error { return w.Err }
 

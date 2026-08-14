@@ -16,13 +16,18 @@ type BrowseOptions struct {
 	Kind    string
 }
 
-// Browse returns packages grouped by host runtime.
+// Browse returns packages grouped by host runtime (seeding official if needed).
 func Browse(ctx context.Context, opts BrowseOptions) (BrowseResult, error) {
+	seedErr := ensureOfficialSeed(ctx)
 	pkgs, err := source.AllPackages(ctx)
 	if err != nil {
 		return BrowseResult{}, err
 	}
-	return BuildBrowseResult(pkgs, opts.Product, opts.Kind), nil
+	res := BuildBrowseResult(pkgs, opts.Product, opts.Kind)
+	if seedErr != nil {
+		return res, &MarketplaceSeedWarning{Err: seedErr}
+	}
+	return res, nil
 }
 
 func matchKind(p source.PackageRef, kind string) bool {

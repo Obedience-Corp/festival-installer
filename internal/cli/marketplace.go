@@ -82,7 +82,7 @@ func newMarketplaceListCommand() *cobra.Command {
 				if !errors.As(err, &warning) {
 					return err
 				}
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())
 			}
 			if asJSON {
 				return jsonout.Print(cmd.OutOrStdout(), views)
@@ -125,7 +125,7 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 				if !errors.As(err, &warning) {
 					return err
 				}
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())
 			}
 			if asJSON {
 				return jsonout.Print(cmd.OutOrStdout(), views)

@@ -91,12 +91,23 @@ func ConfirmBox(msg string, yesSelected bool, s theme.Styles) string {
 	return s.Title.Render(msg) + "\n\n" + yes + "  " + no
 }
 
+// friendlyError is implemented by errors (e.g. app.MarketplaceSeedWarning)
+// whose Error() carries diagnostic detail, such as raw git command output,
+// that must never reach the terminal.
+type friendlyError interface {
+	Friendly() string
+}
+
 // ErrorBox shows an error without using brand orange.
 func ErrorBox(err error, s theme.Styles) string {
 	if err == nil {
 		return ""
 	}
-	return s.Err.Render("error: ") + s.Normal.Render(textsafe.Block(err.Error()))
+	msg := err.Error()
+	if f, ok := err.(friendlyError); ok {
+		msg = f.Friendly()
+	}
+	return s.Err.Render("error: ") + s.Normal.Render(textsafe.Block(msg))
 }
 
 // HelpOverlay lists global keys.
