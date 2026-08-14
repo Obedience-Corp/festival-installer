@@ -45,6 +45,7 @@ check: fmt vet lint test
 # What CI runs: full check plus cross-platform release build
 ci: check
     just release all
+    just release verify-linux-static
 
 # Download and tidy dependencies
 tidy:

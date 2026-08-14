@@ -4,11 +4,35 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
+
+func TestDetachedSignatureRoundTrip(t *testing.T) {
+	original := verify.Signature{KeyID: "official-2026-01", Algorithm: verify.AlgorithmEd25519, Bytes: []byte("signature")}
+	raw, err := verify.MarshalDetachedSignature(original)
+	if err != nil {
+		t.Fatalf("MarshalDetachedSignature: %v", err)
+	}
+	var encoded map[string]string
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		t.Fatalf("decode JSON: %v", err)
+	}
+	if encoded["signature"] != base64.StdEncoding.EncodeToString(original.Bytes) {
+		t.Fatalf("signature encoding mismatch: %q", encoded["signature"])
+	}
+	got, err := verify.ParseDetachedSignature(raw)
+	if err != nil {
+		t.Fatalf("ParseDetachedSignature: %v", err)
+	}
+	if got.KeyID != original.KeyID || got.Algorithm != original.Algorithm || string(got.Bytes) != string(original.Bytes) {
+		t.Fatalf("round trip mismatch: %+v", got)
+	}
+}
 
 func newKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()

@@ -1,6 +1,10 @@
 package verify
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
 	"math"
 	"reflect"
 
@@ -10,6 +14,27 @@ import (
 )
 
 var ErrNonFiniteNumber = errpkg.New("E_CANONICAL_NONFINITE", "non-finite number cannot be canonically encoded")
+
+var ErrTrailingJSON = errpkg.New("E_CANONICAL_TRAILING", "JSON document contains trailing data")
+
+// CanonicalizeJSON decodes one JSON document without losing numeric precision
+// and returns its RFC 8785 canonical encoding.
+func CanonicalizeJSON(raw []byte) ([]byte, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var value any
+	if err := dec.Decode(&value); err != nil {
+		return nil, errpkg.Wrap("E_CANONICAL_DECODE", err, "decode JSON document")
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = ErrTrailingJSON
+		}
+		return nil, errpkg.Wrap("E_CANONICAL_TRAILING", err, "reject trailing JSON data")
+	}
+	return Marshal(value)
+}
 
 // Marshal returns the RFC 8785 canonical encoding of v. Non-finite floats
 // (NaN, +Inf, -Inf) anywhere in v cause ErrNonFiniteNumber.
