@@ -15,10 +15,8 @@ func TestDefaultVerifyOptions_RefuseByDefault(t *testing.T) {
 	if vo.AllowUnverified {
 		t.Fatal("default AllowUnverified must be false")
 	}
-	// Empty trust root is intentional until marketplace keys are pinned (#8).
-	// Unsigned installs require --allow-unverified; signed installs need keys.
-	if verify.HasPinnedKeys() {
-		t.Log("pinned keys present — signed installs can verify against trust root")
+	if !verify.HasPinnedKeys() {
+		t.Fatal("production verification requires a pinned marketplace trust root")
 	}
 }
 

@@ -23,7 +23,7 @@ const usage = `festival-metadata manages canonical Ed25519 metadata signatures.
 Usage:
   festival-metadata generate-key --private-key PATH
   festival-metadata sign --private-key PATH --key-id ID [--signature PATH] MANIFEST
-  festival-metadata verify (--public-key BASE64 | --public-key-file PATH) [--signature PATH] MANIFEST
+  festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--signature PATH] MANIFEST
 `
 
 func main() {
@@ -128,11 +128,22 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 	publicValue := fs.String("public-key", "", "base64 Ed25519 public key")
 	publicPath := fs.String("public-key-file", "", "file containing a base64 Ed25519 public key")
+	pinned := fs.Bool("pinned", false, "verify with Festival Installer's pinned trust store")
 	signaturePath := fs.String("signature", "", "detached signature path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 || (*publicValue == "") == (*publicPath == "") {
+	sources := 0
+	if *publicValue != "" {
+		sources++
+	}
+	if *publicPath != "" {
+		sources++
+	}
+	if *pinned {
+		sources++
+	}
+	if fs.NArg() != 1 || sources != 1 {
 		return errors.New("verify requires exactly one public key source and one manifest")
 	}
 	if *publicPath != "" {
@@ -141,10 +152,6 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("read public key: %w", err)
 		}
 		*publicValue = strings.TrimSpace(string(raw))
-	}
-	pub, err := decodePublicKey(*publicValue)
-	if err != nil {
-		return err
 	}
 	manifestPath := fs.Arg(0)
 	if *signaturePath == "" {
@@ -169,7 +176,16 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ks := verify.NewStaticStore(map[string]ed25519.PublicKey{sig.KeyID: pub})
+	var ks verify.KeyStore
+	if *pinned {
+		ks = verify.PinnedKeyStore()
+	} else {
+		pub, err := decodePublicKey(*publicValue)
+		if err != nil {
+			return err
+		}
+		ks = verify.NewStaticStore(map[string]ed25519.PublicKey{sig.KeyID: pub})
+	}
 	if _, err := metadata.ParseVerifiedManifest(context.Background(), ks, raw, sig); err != nil {
 		return err
 	}
