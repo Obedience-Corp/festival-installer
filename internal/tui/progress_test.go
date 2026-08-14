@@ -210,6 +210,94 @@ func TestReportedEventsDriveTheBar(t *testing.T) {
 	}
 }
 
+func TestOpDoneReleasesItsOwnStream(t *testing.T) {
+	live := newProgressStream()
+	stale := newProgressStream()
+
+	t.Run("own completion clears the stream without waiting for close", func(t *testing.T) {
+		m := newModel(Options{Version: "test"})
+		m.busy = true
+		m.progressStream = live
+		next, _ := m.Update(opDoneMsg{stream: live, title: "Install complete", success: true})
+		nm := next.(model)
+		if nm.progressStream != nil {
+			t.Fatal("completed operation left its stream attached; cleanup depends on progressClosedMsg ordering")
+		}
+		if nm.busy {
+			t.Fatal("completed operation left the model busy")
+		}
+	})
+
+	t.Run("superseded completion leaves the live stream", func(t *testing.T) {
+		m := newModel(Options{Version: "test"})
+		m.busy = true
+		m.progressStream = live
+		next, _ := m.Update(opDoneMsg{stream: stale, title: "Install failed"})
+		if next.(model).progressStream != live {
+			t.Fatal("a superseded operation's completion cleared the live stream")
+		}
+	})
+}
+
+func TestUninstallReleasesItsProgressStream(t *testing.T) {
+	t.Setenv("FESTIVAL_HOME", t.TempDir())
+	m := newModel(Options{Version: "test"})
+	next, cmd := m.startUninstall("acme/fest-demo")
+	nm := next.(model)
+	if nm.progressStream == nil {
+		t.Fatal("uninstall started without a progress stream")
+	}
+	first := drain(t, cmd)
+	batch, ok := first.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("cmd yields %T, want tea.BatchMsg with the op and its drain", first)
+	}
+
+	msgs := make(chan tea.Msg, len(batch))
+	for _, c := range batch {
+		go func(c tea.Cmd) { msgs <- c() }(c)
+	}
+	var done opDoneMsg
+	var closed progressClosedMsg
+	var haveDone, haveClosed bool
+	for range batch {
+		select {
+		case msg := <-msgs:
+			switch v := msg.(type) {
+			case opDoneMsg:
+				done, haveDone = v, true
+			case progressClosedMsg:
+				closed, haveClosed = v, true
+			default:
+				t.Fatalf("unexpected message %T from uninstall batch", msg)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("uninstall batch did not complete")
+		}
+	}
+	if !haveDone || !haveClosed {
+		t.Fatalf("batch delivered done=%v closed=%v, want both", haveDone, haveClosed)
+	}
+	if !done.success {
+		t.Fatalf("uninstall of an absent package should report success with a note, got %+v", done)
+	}
+
+	// Deliver completion first: the stream must be released even when the
+	// close message has not arrived yet.
+	next, _ = nm.Update(done)
+	nm = next.(model)
+	if nm.progressStream != nil {
+		t.Fatal("progressStream still set after uninstall completed")
+	}
+	if nm.busy {
+		t.Fatal("model still busy after uninstall completed")
+	}
+	next, _ = nm.Update(closed)
+	if next.(model).progressStream != nil {
+		t.Fatal("late close message re-attached a stream")
+	}
+}
+
 func TestOperationsOpenAProgressStream(t *testing.T) {
 	tests := []struct {
 		name  string

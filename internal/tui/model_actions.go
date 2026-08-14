@@ -263,13 +263,13 @@ func runInstall(ctx context.Context, channel string, allowUnverified bool, ps *p
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "install-unverified", cause: err}
 			}
-			return opDoneMsg{title: "Install failed", body: err.Error(), err: err, success: false}
+			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error(), err: err, success: false}
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
 		for _, f := range res.Files {
 			body += "  " + f + "\n"
 		}
-		return opDoneMsg{title: "Install complete", body: body, success: true}
+		return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 	}
 }
 
@@ -291,7 +291,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "update-unverified", cause: err}
 			}
-			return opDoneMsg{title: "Update failed", body: err.Error(), err: err, success: false}
+			return opDoneMsg{stream: ps, title: "Update failed", body: err.Error(), err: err, success: false}
 		}
 		body := fmt.Sprintf("action: %s\nversion: %s\n", res.Action, res.Version)
 		if res.From != "" {
@@ -314,7 +314,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			title = "Not installed"
 			ok = false
 		}
-		return opDoneMsg{title: title, body: body, success: ok}
+		return opDoneMsg{stream: ps, title: title, body: body, success: ok}
 	}
 }
 
@@ -322,11 +322,15 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	m, ps := m.beginProgress(app.ProgressEvent{Stage: "activate", Percent: 0.5, Message: "removing " + packageID})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
-	return m, func() tea.Msg {
+	return m, tea.Batch(runUninstall(ctx, packageID, ps), waitProgress(ps))
+}
+
+func runUninstall(ctx context.Context, packageID string, ps *progressStream) tea.Cmd {
+	return func() tea.Msg {
 		defer ps.close()
 		res, err := app.UninstallPackage(ctx, packageID)
 		if err != nil {
-			return opDoneMsg{title: "Uninstall failed", body: err.Error(), err: err, success: false}
+			return opDoneMsg{stream: ps, title: "Uninstall failed", body: err.Error(), err: err, success: false}
 		}
 		body := res.Note
 		if body == "" {
@@ -335,7 +339,7 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 				body += "  removed " + f + "\n"
 			}
 		}
-		return opDoneMsg{title: "Uninstall complete", body: body, success: true}
+		return opDoneMsg{stream: ps, title: "Uninstall complete", body: body, success: true}
 	}
 }
 
@@ -375,13 +379,13 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "browse-install-unverified", cause: err}
 			}
-			return opDoneMsg{title: "Install failed", body: err.Error() + "\n\n(selected " + entryID + " as " + target + ")", err: err, success: false}
+			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error() + "\n\n(selected " + entryID + " as " + target + ")", err: err, success: false}
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
 		for _, f := range res.Files {
 			body += "  " + f + "\n"
 		}
-		return opDoneMsg{title: "Install complete", body: body, success: true}
+		return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 	}
 }
 

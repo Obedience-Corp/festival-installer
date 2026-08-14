@@ -61,7 +61,11 @@ type marketMsg struct {
 	err   error
 }
 
+// opDoneMsg is an operation's final result. It carries the operation's
+// progressStream so completion can release the live stream directly instead
+// of depending on progressClosedMsg arriving first.
 type opDoneMsg struct {
+	stream  *progressStream
 	title   string
 	body    string
 	err     error
@@ -361,6 +365,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case opDoneMsg:
 		m.busy = false
 		m.opCancel = nil
+		if msg.stream == m.progressStream {
+			m.progressStream = nil
+		}
 		m.screen = screenResult
 		m.resultTitle = msg.title
 		m.resultBody = msg.body
