@@ -24,7 +24,8 @@ func NewUpdateCommand() *cobra.Command {
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
 			"suite. camp and fest are accepted as aliases: they are not published independently, so\n" +
 			"passing either one still updates the whole suite and prints a notice saying so.",
-		Args: cobra.MaximumNArgs(1),
+		ValidArgs: []string{"festival", "camp", "fest"},
+		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := "festival"
 			if len(args) == 1 {

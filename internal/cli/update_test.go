@@ -44,6 +44,28 @@ func writeFestivalReceipt(t *testing.T, ctx context.Context, home, version, sour
 	}
 }
 
+func TestUpdate_CompletionOffersOptionalTargets(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+
+	out, errOut, err := runInstaller(t, "__complete", "update", "")
+	if err != nil {
+		t.Fatalf("complete: %v\n%s", err, errOut)
+	}
+	for _, target := range []string{"festival", "camp", "fest"} {
+		if !strings.Contains(out, target+"\n") {
+			t.Fatalf("expected completion to offer %q, got %q", target, out)
+		}
+	}
+
+	out, errOut, err = runInstaller(t, "__complete", "update", "festival", "")
+	if err != nil {
+		t.Fatalf("complete second arg: %v\n%s", err, errOut)
+	}
+	if strings.Contains(out, "festival\n") || strings.Contains(out, "camp\n") || strings.Contains(out, "fest\n") {
+		t.Fatalf("expected no target completions past the first argument, got %q", out)
+	}
+}
+
 func TestUpdate_UnknownTargetRejected(t *testing.T) {
 	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
 
