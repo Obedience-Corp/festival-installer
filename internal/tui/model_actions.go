@@ -245,25 +245,19 @@ func captureVPHeight(h int) int {
 
 func (m model) startInstall(allowUnverified bool) (tea.Model, tea.Cmd) {
 	ch := m.channels[m.channelIdx]
-	m.busy = true
-	m.screen = screenProgress
-	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0, Message: "starting install"}
+	m, ps := m.beginProgress(app.ProgressEvent{Stage: "resolve", Percent: 0, Message: "starting install"})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
-	return m, runInstall(ctx, ch, allowUnverified)
+	return m, tea.Batch(runInstall(ctx, ch, allowUnverified, ps), waitProgress(ps))
 }
 
-func runInstall(ctx context.Context, channel string, allowUnverified bool) tea.Cmd {
+func runInstall(ctx context.Context, channel string, allowUnverified bool, ps *progressStream) tea.Cmd {
 	return func() tea.Msg {
-		prog := func(ev app.ProgressEvent) {
-			// best-effort; bubbletea can't inject mid-cmd without program.Send
-			// stage is still returned in final message body
-			_ = ev
-		}
+		defer ps.close()
 		res, err := app.InstallFestival(ctx, app.InstallOptions{
 			Channel:  channel,
 			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
-			Progress: prog,
+			Progress: ps.report,
 		})
 		if err != nil {
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
@@ -280,14 +274,18 @@ func runInstall(ctx context.Context, channel string, allowUnverified bool) tea.C
 }
 
 func (m model) startUpdate(allowUnverified bool) (tea.Model, tea.Cmd) {
-	m.busy = true
-	m.screen = screenProgress
-	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "checking updates"}
+	m, ps := m.beginProgress(app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "checking updates"})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
-	return m, func() tea.Msg {
+	return m, tea.Batch(runUpdate(ctx, allowUnverified, ps), waitProgress(ps))
+}
+
+func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) tea.Cmd {
+	return func() tea.Msg {
+		defer ps.close()
 		res, warning, err := app.UpdateFestival(ctx, app.UpdateOptions{
-			Verify: source.DefaultVerifyOptions(nil, allowUnverified),
+			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
+			Progress: ps.report,
 		})
 		if err != nil {
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
@@ -321,12 +319,11 @@ func (m model) startUpdate(allowUnverified bool) (tea.Model, tea.Cmd) {
 }
 
 func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
-	m.busy = true
-	m.screen = screenProgress
-	m.progress = app.ProgressEvent{Stage: "activate", Percent: 0.5, Message: "removing " + packageID}
+	m, ps := m.beginProgress(app.ProgressEvent{Stage: "activate", Percent: 0.5, Message: "removing " + packageID})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, func() tea.Msg {
+		defer ps.close()
 		res, err := app.UninstallPackage(ctx, packageID)
 		if err != nil {
 			return opDoneMsg{title: "Uninstall failed", body: err.Error(), err: err, success: false}
@@ -360,21 +357,25 @@ func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd)
 			target = seg
 		}
 	}
-	m.busy = true
-	m.screen = screenProgress
-	m.progress = app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "installing " + entry.ID}
+	m, ps := m.beginProgress(app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "installing " + entry.ID})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
-	return m, func() tea.Msg {
+	return m, tea.Batch(runTargetInstall(ctx, target, entry.ID, allowUnverified, ps), waitProgress(ps))
+}
+
+func runTargetInstall(ctx context.Context, target, entryID string, allowUnverified bool, ps *progressStream) tea.Cmd {
+	return func() tea.Msg {
+		defer ps.close()
 		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
-			Channel: "stable",
-			Verify:  source.DefaultVerifyOptions(nil, allowUnverified),
+			Channel:  "stable",
+			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
+			Progress: ps.report,
 		})
 		if err != nil {
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "browse-install-unverified", cause: err}
 			}
-			return opDoneMsg{title: "Install failed", body: err.Error() + "\n\n(selected " + entry.ID + " as " + target + ")", err: err, success: false}
+			return opDoneMsg{title: "Install failed", body: err.Error() + "\n\n(selected " + entryID + " as " + target + ")", err: err, success: false}
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
 		for _, f := range res.Files {
