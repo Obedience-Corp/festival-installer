@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // Status returns a summary for the TUI home screen.

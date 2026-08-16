@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 const seedTestManifest = `{

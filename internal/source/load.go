@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 var ErrPackageNotFound = errpkg.New("E_PKG_NOT_FOUND", "package not found in source")
@@ -28,8 +28,7 @@ type VerifyOptions struct {
 // Policy is RefuseByDefault: unsigned package metadata is refused unless
 // allowUnverified is true (CLI --allow-unverified). When a detached .sig is
 // present, IngestManifest verifies it against the trust root (PinnedKeyStore).
-// An empty trust root still refuses unsigned content; signed content needs a
-// pinned matching key. See OI0007 / VER-01.
+// Official marketplace metadata must use a matching pinned key. See VER-01.
 func DefaultVerifyOptions(warnWriter io.Writer, allowUnverified bool) VerifyOptions {
 	if warnWriter == nil {
 		warnWriter = os.Stderr

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/obey"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/obey"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
 func skillEntry() metadata.InstallEntry {

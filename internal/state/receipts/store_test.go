@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 func openDB(t *testing.T) *state.DB {
@@ -38,7 +38,7 @@ func sampleReceipt() receipts.Receipt {
 			{Path: "/opt/obey/share/fest/docs.md", Hash: "sha256:def", Mode: 0644},
 		},
 		Metadata: map[string]string{
-			"installer": "obey-installer",
+			"installer": "festival-installer",
 			"build":     "release",
 		},
 	}
@@ -66,7 +66,7 @@ func TestWriteThenGet_RoundTrip(t *testing.T) {
 	if len(got.OwnedFiles) != 2 {
 		t.Fatalf("owned files: got %d, want 2", len(got.OwnedFiles))
 	}
-	if got.Metadata["installer"] != "obey-installer" || got.Metadata["build"] != "release" {
+	if got.Metadata["installer"] != "festival-installer" || got.Metadata["build"] != "release" {
 		t.Fatalf("metadata mismatch: %+v", got.Metadata)
 	}
 }
@@ -85,7 +85,7 @@ func TestUpsert_ReplacesFilesAndMetadata(t *testing.T) {
 	second.OwnedFiles = []receipts.OwnedFile{
 		{Path: "/opt/obey/fest", Hash: "sha256:zzz", Mode: 0755},
 	}
-	second.Metadata = map[string]string{"installer": "obey-installer-v2"}
+	second.Metadata = map[string]string{"installer": "festival-installer-v2"}
 	if err := receipts.Write(ctx, db.Raw(), second); err != nil {
 		t.Fatalf("second write: %v", err)
 	}

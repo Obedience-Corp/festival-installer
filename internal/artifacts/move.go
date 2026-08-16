@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func AtomicMove(ctx context.Context, src, dst string) error {

@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 )
 
 func TestDownload_SizeCap(t *testing.T) {

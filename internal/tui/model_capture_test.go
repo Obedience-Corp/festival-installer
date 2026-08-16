@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Obedience-Corp/obey-installer/internal/launch"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
 func keyMsg(s string) tea.KeyMsg {

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 // constraintOps are the comparison operators the version-constraint grammar

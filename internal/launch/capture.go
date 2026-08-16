@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 // captureStopGrace is how long Stop waits for the child to honor SIGINT

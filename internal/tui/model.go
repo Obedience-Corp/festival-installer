@@ -8,10 +8,10 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Obedience-Corp/obey-installer/internal/app"
-	"github.com/Obedience-Corp/obey-installer/internal/launch"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 type screen int

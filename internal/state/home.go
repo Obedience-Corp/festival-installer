@@ -6,25 +6,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 const (
-	homeEnvVar         = "OBEY_INSTALLER_HOME"
-	homeEnvVarFestival = "FESTIVAL_HOME"
+	homeEnvVar       = "FESTIVAL_HOME"
+	legacyHomeEnvVar = "OBEY_INSTALLER_HOME"
 )
 
 func Home(ctx context.Context) (string, error) {
-	// Prefer FESTIVAL_HOME; keep OBEY_INSTALLER_HOME for incubation compatibility.
-	if v := strings.TrimSpace(os.Getenv(homeEnvVarFestival)); v != "" {
-		if !filepath.IsAbs(v) {
-			return "", errpkg.New("E_HOME_NOT_ABS", homeEnvVarFestival+" must be an absolute path")
-		}
-		return v, nil
-	}
 	if v := strings.TrimSpace(os.Getenv(homeEnvVar)); v != "" {
 		if !filepath.IsAbs(v) {
 			return "", errpkg.New("E_HOME_NOT_ABS", homeEnvVar+" must be an absolute path")
+		}
+		return v, nil
+	}
+	// Deprecated pre-release fallback. FESTIVAL_HOME is the public contract.
+	if v := strings.TrimSpace(os.Getenv(legacyHomeEnvVar)); v != "" {
+		if !filepath.IsAbs(v) {
+			return "", errpkg.New("E_HOME_NOT_ABS", legacyHomeEnvVar+" must be an absolute path")
 		}
 		return v, nil
 	}

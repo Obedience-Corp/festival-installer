@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 )
 
 func TestSatisfiesConstraint_SupportedOperators(t *testing.T) {

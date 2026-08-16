@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/Obedience-Corp/obey-installer/internal/launch"
+import "github.com/Obedience-Corp/festival-installer/internal/launch"
 
 // SessionResult is returned when one hub TUI program ends.
 // The outer festival loop either quits or runs Launch then restarts the hub.

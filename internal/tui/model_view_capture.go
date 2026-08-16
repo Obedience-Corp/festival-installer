@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obedience-Corp/obey-installer/internal/launch"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
 // viewChildOutput renders a capture-mode child: a status line and the

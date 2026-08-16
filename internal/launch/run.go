@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // HubEnvKey is set in the child environment so products may detect hub launch.

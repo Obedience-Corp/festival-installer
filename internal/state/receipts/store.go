@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 var (

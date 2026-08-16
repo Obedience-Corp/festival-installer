@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state/lock"
+	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
 )
 
 // envHelperMode is set when the test binary re-executes itself to play
