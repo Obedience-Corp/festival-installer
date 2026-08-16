@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 // brandMark is a single-cell fire chip (avoid emoji width quirks in VHS/pty).

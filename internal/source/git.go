@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/gitsafe"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/gitsafe"
 )
 
 var (

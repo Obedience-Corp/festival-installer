@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Obedience-Corp/obey-installer/internal/launch"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
 func TestFormatChildBanner(t *testing.T) {

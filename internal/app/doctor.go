@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.

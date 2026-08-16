@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 func TestMarshal_GoldenFixtures(t *testing.T) {
@@ -117,6 +117,22 @@ func TestMarshal_RejectsNonFiniteBehindPointer(t *testing.T) {
 				t.Fatalf("expected ErrNonFiniteNumber for non-finite behind a *T pointer, got %v", err)
 			}
 		})
+	}
+}
+
+func TestCanonicalizeJSON(t *testing.T) {
+	got, err := verify.CanonicalizeJSON([]byte("{\n  \"z\": 1.0, \"a\": 9007199254740993\n}"))
+	if err != nil {
+		t.Fatalf("CanonicalizeJSON: %v", err)
+	}
+	if want := `{"a":9007199254740993,"z":1}`; string(got) != want {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
+func TestCanonicalizeJSONRejectsTrailingDocument(t *testing.T) {
+	if _, err := verify.CanonicalizeJSON([]byte(`{"a":1} {"b":2}`)); !errors.Is(err, verify.ErrTrailingJSON) {
+		t.Fatalf("expected ErrTrailingJSON, got %v", err)
 	}
 }
 

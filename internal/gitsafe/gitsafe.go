@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 var ErrUnsafeRemote = errpkg.New("E_GIT_UNSAFE_REMOTE", "git remote uses a disallowed scheme or form")

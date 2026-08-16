@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 func browseFixture() []source.BrowsePackage {

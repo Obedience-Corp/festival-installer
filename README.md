@@ -30,27 +30,29 @@ just vhs all   # requires vhs, ttyd, ffmpeg
 
 ## Status
 
-Private incubation in `obey-installer` (Go module still
-`github.com/Obedience-Corp/obey-installer`). The public command name is
-**`festival`**. The mature engine will later ship with the public Festival
-distribution; until then `projects/festival` remains the public bootstrap
-(npm/Homebrew/`install.sh`).
+Festival Installer lives at `github.com/Obedience-Corp/festival-installer`; its
+public command name is **`festival`**. The strict production path installs the
+official Festival suite only after verifying signed marketplace metadata and
+artifact checksums. CI tests the supported Linux and macOS targets on amd64 and
+arm64. Tags matching `v*` publish portable binaries and checksums through GitHub
+Releases. Until the first tag is published, build the installer from source.
 
 ### Security (important)
 
 **Default install policy is refuse-by-default for unsigned package metadata**
-(VER-01 / OI0007). Pass `--allow-unverified` for unsigned dogfood content (loud
-warning on stderr). Detached `.sig` files are verified when present against the
-pinned trust root (`internal/verify` — empty until marketplace keys are
-embedded). The TUI tries the strict policy first and asks for explicit consent
-only when unsigned content is refused (same override as the CLI flag).
+(VER-01 / OI0007). Official marketplace metadata is signed with Ed25519 and
+verified against the pinned, rotation-friendly trust root in `internal/verify`.
+Pass `--allow-unverified` only for unsigned development content; it emits a loud
+warning on stderr. The TUI tries the strict policy first and asks for explicit
+consent only when unsigned content is refused (the same override as the CLI
+flag).
 Artifact downloads are HTTPS-only, git remotes are restricted to HTTPS, SSH, and
 local paths, and archive extraction is bounded.
 
 ## Quick start (humans)
 
 ```bash
-just build          # → bin/festival  (+ bin/obey-installer alias)
+just build          # → bin/festival
 ./bin/festival      # opens the TUI on a terminal
 ```
 
@@ -99,10 +101,9 @@ JSON envelopes use schema version `festival/v1alpha1`.
 
 ## Home directory
 
-| Env                   | Role                                                    |
-| --------------------- | ------------------------------------------------------- |
-| `FESTIVAL_HOME`       | Preferred absolute path for manager state (wins if set) |
-| `OBEY_INSTALLER_HOME` | Legacy alias                                            |
+| Env             | Role                                       |
+| --------------- | ------------------------------------------ |
+| `FESTIVAL_HOME` | Absolute path override for manager state   |
 
 Default: `~/.obey/installer` with `bin/`, `state.db`, marketplace clones, receipts.
 
@@ -133,7 +134,7 @@ internal/tui/          # bubbletea manager (theme, anim, screens)
 | `internal/state`          | SQLite + WAL, home, config                                |
 | `internal/state/receipts` | Install receipts                                          |
 | `internal/state/lock`     | Cross-process install lock                                |
-| `internal/verify`         | Canonical JSON + ed25519 (not yet mandatory on live path) |
+| `internal/verify`         | Canonical JSON + Ed25519 verification and pinned trust    |
 | `internal/artifacts`      | HTTPS download, bounded tar.gz, atomic move               |
 | `internal/source`         | Marketplace clone cache + package index                   |
 

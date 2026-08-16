@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 func gitEnv() []string {

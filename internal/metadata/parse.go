@@ -9,7 +9,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 type SchemaError struct {

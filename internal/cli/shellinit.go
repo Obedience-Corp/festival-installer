@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obedience-Corp/obey-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 )
 
 func NewShellInitCommand() *cobra.Command {

@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 var ErrSignatureMalformed = errpkg.New("E_SIG_MALFORMED", "detached signature is malformed")
@@ -13,6 +13,17 @@ type detachedSignature struct {
 	KeyID     string `json:"key_id"`
 	Algorithm string `json:"algorithm"`
 	Signature string `json:"signature"`
+}
+
+func MarshalDetachedSignature(sig Signature) ([]byte, error) {
+	if sig.KeyID == "" || sig.Algorithm == "" || len(sig.Bytes) == 0 {
+		return nil, errpkg.Wrap("E_SIG_MALFORMED", ErrSignatureMalformed, "missing key_id, algorithm, or signature")
+	}
+	return json.Marshal(detachedSignature{
+		KeyID:     sig.KeyID,
+		Algorithm: sig.Algorithm,
+		Signature: base64.StdEncoding.EncodeToString(sig.Bytes),
+	})
 }
 
 func ParseDetachedSignature(raw []byte) (Signature, error) {

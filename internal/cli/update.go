@@ -6,11 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obedience-Corp/obey-installer/internal/app"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
+	"github.com/Obedience-Corp/festival-installer/internal/app"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 )
 
 func NewUpdateCommand() *cobra.Command {

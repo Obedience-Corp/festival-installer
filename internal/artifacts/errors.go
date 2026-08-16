@@ -1,6 +1,6 @@
 package artifacts
 
-import errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+import errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 
 var (
 	ErrChecksumMismatch = errpkg.New("E_ARTIFACT_SHA256", "sha256 does not match expected digest")

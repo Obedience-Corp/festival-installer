@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func TestHome(t *testing.T) {
@@ -46,7 +46,7 @@ func TestHome(t *testing.T) {
 
 func TestHome_FestivalEnvPreferred(t *testing.T) {
 	t.Setenv("FESTIVAL_HOME", "/tmp/festival-home-pref")
-	t.Setenv("OBEY_INSTALLER_HOME", "/tmp/obey-installer-home")
+	t.Setenv("OBEY_INSTALLER_HOME", "/tmp/festival-installer-home")
 	got, err := Home(context.Background())
 	if err != nil {
 		t.Fatalf("Home: %v", err)

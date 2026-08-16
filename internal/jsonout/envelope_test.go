@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 )
 
 func TestSuccess_EnvelopeShape(t *testing.T) {

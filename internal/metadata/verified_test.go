@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 func TestParseVerifiedSource_EndToEnd(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/fest"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/fest"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
 var featureOn = []string{fest.FeatureMarketplaceExtensionSource}

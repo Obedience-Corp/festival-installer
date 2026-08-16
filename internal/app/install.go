@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/Obedience-Corp/obey-installer/internal/artifacts"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/hosts/shared"
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // InstallOptions configure a suite or plugin install.

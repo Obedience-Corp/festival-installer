@@ -3,7 +3,7 @@ package source
 import (
 	"context"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 var officialMarketplaceURL = "https://github.com/Obedience-Corp/marketplace.git"

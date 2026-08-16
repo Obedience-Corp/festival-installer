@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 func CopyTreeSafe(src, dst string) error {

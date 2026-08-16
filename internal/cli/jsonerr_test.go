@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 )
 
 type failureEnvelope struct {

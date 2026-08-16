@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/tui/theme"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 type stubFriendlyError struct {
