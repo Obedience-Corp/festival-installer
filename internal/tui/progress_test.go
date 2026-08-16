@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Obedience-Corp/obey-installer/internal/app"
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/app"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 // drain runs the cmd waitProgress produced and fails if no message arrives.

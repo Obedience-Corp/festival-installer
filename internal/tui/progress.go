@@ -3,7 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/Obedience-Corp/obey-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 )
 
 // progressBuf bounds undelivered progress events. The installer goroutine must
