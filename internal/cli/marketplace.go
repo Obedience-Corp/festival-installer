@@ -23,6 +23,14 @@ func shortCommit(c string) string {
 	return c
 }
 
+// seedWarnings renders a seed warning for a jsonout envelope's warnings field.
+func seedWarnings(w *app.MarketplaceSeedWarning) []string {
+	if w == nil {
+		return nil
+	}
+	return []string{w.Friendly()}
+}
+
 func NewMarketplaceCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "marketplace",
@@ -77,15 +85,17 @@ func newMarketplaceListCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			views, err := app.MarketplaceList(cmd.Context())
+			var warning *app.MarketplaceSeedWarning
 			if err != nil {
-				var warning *app.MarketplaceSeedWarning
 				if !errors.As(err, &warning) {
 					return err
 				}
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
 			}
 			if asJSON {
-				return jsonout.Print(cmd.OutOrStdout(), views)
+				return jsonout.Success(cmd.OutOrStdout(), jsonAction(cmd), views, seedWarnings(warning))
+			}
+			if warning != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())
 			}
 			var buf strings.Builder
 			tw := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
@@ -120,15 +130,17 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 				name = args[0]
 			}
 			views, err := app.MarketplaceRefresh(cmd.Context(), name)
+			var warning *app.MarketplaceSeedWarning
 			if err != nil {
-				var warning *app.MarketplaceSeedWarning
 				if !errors.As(err, &warning) {
 					return err
 				}
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %v\n", warning)
 			}
 			if asJSON {
-				return jsonout.Print(cmd.OutOrStdout(), views)
+				return jsonout.Success(cmd.OutOrStdout(), jsonAction(cmd), views, seedWarnings(warning))
+			}
+			if warning != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", warning.Friendly())
 			}
 			var buf strings.Builder
 			for _, v := range views {

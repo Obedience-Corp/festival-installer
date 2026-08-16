@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -91,10 +92,22 @@ func ConfirmBox(msg string, yesSelected bool, s theme.Styles) string {
 	return s.Title.Render(msg) + "\n\n" + yes + "  " + no
 }
 
-// ErrorBox shows an error without using brand orange.
+// friendlyError is implemented by warnings (e.g. app.MarketplaceSeedWarning)
+// whose Error() carries diagnostic detail, such as raw git command output,
+// that must never reach the terminal.
+type friendlyError interface {
+	Friendly() string
+}
+
+// ErrorBox shows an error without using brand orange. Errors that carry a
+// Friendly() rendering are non-fatal warnings and are presented as such.
 func ErrorBox(err error, s theme.Styles) string {
 	if err == nil {
 		return ""
+	}
+	var f friendlyError
+	if errors.As(err, &f) {
+		return s.Warn.Render("warning: ") + s.Normal.Render(textsafe.Block(f.Friendly()))
 	}
 	return s.Err.Render("error: ") + s.Normal.Render(textsafe.Block(err.Error()))
 }

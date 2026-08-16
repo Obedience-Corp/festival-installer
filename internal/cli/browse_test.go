@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -108,5 +109,50 @@ func TestBrowse_AllGroupedJSON(t *testing.T) {
 		if !groups[want] {
 			t.Fatalf("missing group %s in %v", want, groups)
 		}
+	}
+}
+
+// When the official source is already registered, ensureOfficialSeed's
+// len(sources) > 0 guard skips the clone entirely, so browse must render the
+// catalog with no seed warning at all (JSON envelope and table stderr alike).
+func TestBrowse_AlreadySeededOfficialSourceNoWarning(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	repo := browseFixtureRepo(t)
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	jsonOut, jsonErrOut, err := runInstaller(t, "browse", "--json")
+	if err != nil {
+		t.Fatalf("browse --json: %v\n%s", err, jsonErrOut)
+	}
+	if jsonErrOut != "" {
+		t.Fatalf("expected no stderr for an already-seeded home, got %q", jsonErrOut)
+	}
+	var env struct {
+		Warnings []string `json:"warnings"`
+	}
+	if jsonErr := json.Unmarshal([]byte(jsonOut), &env); jsonErr != nil {
+		t.Fatalf("decode envelope: %v\n%s", jsonErr, jsonOut)
+	}
+	if len(env.Warnings) != 0 {
+		t.Fatalf("expected no warnings in the envelope, got %v", env.Warnings)
+	}
+	var res browseJSON
+	dataOf(t, jsonOut, &res)
+	if len(res.Groups) == 0 {
+		t.Fatalf("expected catalog populated from the pre-registered source, got none: %s", jsonOut)
+	}
+
+	tableOut, tableErrOut, err := runInstaller(t, "browse")
+	if err != nil {
+		t.Fatalf("browse: %v\n%s", err, tableErrOut)
+	}
+	if tableErrOut != "" {
+		t.Fatalf("expected no stderr warning in table mode, got %q", tableErrOut)
+	}
+	if !strings.Contains(tableOut, "obedience-corp/fest") {
+		t.Fatalf("expected table output populated, got: %s", tableOut)
 	}
 }
