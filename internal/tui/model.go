@@ -61,7 +61,11 @@ type marketMsg struct {
 	err   error
 }
 
+// opDoneMsg is an operation's final result. It carries the operation's
+// progressStream so completion can release the live stream directly instead
+// of depending on progressClosedMsg arriving first.
 type opDoneMsg struct {
+	stream  *progressStream
 	title   string
 	body    string
 	err     error
@@ -75,8 +79,17 @@ type consentNeededMsg struct {
 	cause  error
 }
 
+// progressMsg is one event drained from an operation's progressStream. The
+// stream identifies the producer so events from a superseded operation are
+// dropped instead of driving the current bar.
 type progressMsg struct {
-	ev app.ProgressEvent
+	stream *progressStream
+	ev     app.ProgressEvent
+}
+
+// progressClosedMsg ends the drain loop: its stream produced its last event.
+type progressClosedMsg struct {
+	stream *progressStream
 }
 
 // childChunkMsg carries one piped output chunk from a capture-mode child.
@@ -133,6 +146,10 @@ type model struct {
 	resultTitle string
 	resultBody  string
 	resultOK    bool
+
+	// progressStream is the in-flight operation's event channel, drained by
+	// waitProgress. Nil when no operation is reporting.
+	progressStream *progressStream
 
 	// confirm
 	confirmMsg string
@@ -331,12 +348,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case progressMsg:
-		m.progress = msg.ev
+		if m.progressStream == nil || msg.stream != m.progressStream {
+			return m, nil
+		}
+		if m.busy {
+			m.progress = msg.ev
+		}
+		return m, waitProgress(m.progressStream)
+
+	case progressClosedMsg:
+		if msg.stream == m.progressStream {
+			m.progressStream = nil
+		}
 		return m, nil
 
 	case opDoneMsg:
 		m.busy = false
 		m.opCancel = nil
+		if msg.stream == m.progressStream {
+			m.progressStream = nil
+		}
 		m.screen = screenResult
 		m.resultTitle = msg.title
 		m.resultBody = msg.body
