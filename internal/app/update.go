@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/installer"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
-	"github.com/Obedience-Corp/obey-installer/internal/state"
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 // UpdateOptions configure a suite update.

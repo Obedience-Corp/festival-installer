@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
 var (

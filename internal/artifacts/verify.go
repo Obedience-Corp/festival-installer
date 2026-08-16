@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	errpkg "github.com/Obedience-Corp/obey-installer/internal/errors"
+	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 func SHA256(ctx context.Context, path string) (string, error) {

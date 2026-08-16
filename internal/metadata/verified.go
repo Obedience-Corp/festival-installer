@@ -3,7 +3,7 @@ package metadata
 import (
 	"context"
 
-	"github.com/Obedience-Corp/obey-installer/internal/verify"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 // ParseVerifiedSource verifies that signed is a valid ed25519 signature over

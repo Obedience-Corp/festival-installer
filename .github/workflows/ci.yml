@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+  portable-builds:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build supported platforms
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/festival-linux-amd64 ./cmd/festival
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o dist/festival-linux-arm64 ./cmd/festival
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -o dist/festival-darwin-amd64 ./cmd/festival
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -o dist/festival-darwin-arm64 ./cmd/festival
+      - name: Reject dynamically linked Linux artifacts
+        run: |
+          file dist/festival-linux-amd64 | grep -q "statically linked"
+          file dist/festival-linux-arm64 | grep -q "statically linked"
+

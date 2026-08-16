@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/state/receipts"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 func TestUninstall_RemovesOwnedFilesOnly(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"golang.org/x/term"
 
 	// bginit must load before bubbletea (via tui) so lipgloss skips OSC queries.
-	_ "github.com/Obedience-Corp/obey-installer/internal/bginit"
-	"github.com/Obedience-Corp/obey-installer/internal/cli"
-	"github.com/Obedience-Corp/obey-installer/internal/tui"
+	_ "github.com/Obedience-Corp/festival-installer/internal/bginit"
+	"github.com/Obedience-Corp/festival-installer/internal/cli"
+	"github.com/Obedience-Corp/festival-installer/internal/tui"
 )
 
 var version = "0.0.0-dev"

@@ -6,9 +6,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obedience-Corp/obey-installer/internal/textsafe"
-	"github.com/Obedience-Corp/obey-installer/internal/tui/anim"
-	"github.com/Obedience-Corp/obey-installer/internal/tui/components"
+	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/anim"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/components"
 )
 
 func (m model) View() string {

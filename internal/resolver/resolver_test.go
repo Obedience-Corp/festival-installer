@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/obey-installer/internal/metadata"
-	"github.com/Obedience-Corp/obey-installer/internal/resolver"
-	"github.com/Obedience-Corp/obey-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/resolver"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 type fakeIndex struct {
