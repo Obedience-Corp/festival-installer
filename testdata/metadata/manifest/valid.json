@@ -4,7 +4,7 @@
   "class": "product",
   "display_name": "Festival",
   "summary": "Camp + Fest planning and execution suite",
-  "provides_binaries": ["camp", "fest"],
+  "provides_binaries": ["camp", "fest", "festival"],
   "host_runtimes": [
     { "runtime": "camp-cli", "display_name": "Camp CLI plugins", "features": [] },
     { "runtime": "fest-cli", "display_name": "Fest CLI plugins", "features": [] }
@@ -14,8 +14,8 @@
       "version": "0.2.10",
       "channel": "stable",
       "published_at": "2026-06-08T00:00:00Z",
-      "components": { "camp": "0.2.11", "fest": "0.4.5" },
-      "provides_binaries": ["camp", "fest"],
+      "components": { "camp": "0.2.11", "fest": "0.4.5", "festival": "0.2.10" },
+      "provides_binaries": ["camp", "fest", "festival"],
       "compatibility": { "os": ["darwin", "linux"], "arch": ["amd64", "arm64"] },
       "dependencies": [],
       "artifacts": [
@@ -26,13 +26,14 @@
           "url": "https://github.com/Obedience-Corp/festival/releases/download/v0.2.10/festival-0.2.10-macOS-all.tar.gz",
           "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
           "filename": "festival-0.2.10-macOS-all.tar.gz",
-          "binaries": ["camp", "fest"]
+          "binaries": ["camp", "fest", "festival"]
         }
       ],
       "install": {
         "entries": [
           { "kind": "binary", "source": "camp", "executable_name": "camp" },
-          { "kind": "binary", "source": "fest", "executable_name": "fest" }
+          { "kind": "binary", "source": "fest", "executable_name": "fest" },
+          { "kind": "binary", "source": "festival", "executable_name": "festival" }
         ]
       }
     }

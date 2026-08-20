@@ -5,19 +5,29 @@ const FestivalPackageID = "obedience-corp/festival"
 
 // InstallResult is returned by install operations.
 type InstallResult struct {
-	Package string   `json:"package"`
-	Version string   `json:"version"`
-	Channel string   `json:"channel"`
-	Source  string   `json:"source"`
-	Files   []string `json:"files"`
+	Package       string        `json:"package"`
+	Version       string        `json:"version"`
+	Channel       string        `json:"channel"`
+	Source        string        `json:"source"`
+	Files         []string      `json:"files"`
+	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
+	SelfPath      string        `json:"self_path,omitempty"`
+	// SelfSkipped is true when the manifest named the hub itself but it was
+	// left in place because the running hub is not the managed binary.
+	SelfSkipped bool `json:"self_skipped,omitempty"`
 }
 
 // UpdateResult is returned by update operations.
 type UpdateResult struct {
-	Package string `json:"package"`
-	Action  string `json:"action"` // upgraded | current | unmanaged | absent
-	Version string `json:"version,omitempty"`
-	From    string `json:"from,omitempty"`
+	Package       string        `json:"package"`
+	Action        string        `json:"action"` // upgraded | current | unmanaged | absent
+	Version       string        `json:"version,omitempty"`
+	From          string        `json:"from,omitempty"`
+	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
+	SelfPath      string        `json:"self_path,omitempty"`
+	// SelfReplaced is true when this update replaced the running hub binary,
+	// which means the process printing this message is the previous version.
+	SelfReplaced bool `json:"self_replaced"`
 }
 
 // UninstallResult is returned by uninstall operations.

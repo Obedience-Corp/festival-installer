@@ -61,14 +61,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
-
-	root.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print the festival manager version",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(version)
-		},
-	})
+	root.AddCommand(cli.NewVersionCommand(version))
 
 	cli.WrapJSONErrors(root)
 

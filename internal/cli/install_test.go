@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	"github.com/Obedience-Corp/festival-installer/internal/cli"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
@@ -93,19 +94,20 @@ func productManifest(url, sha string) string {
   "class": "product",
   "display_name": "Festival",
   "summary": "Camp + Fest suite",
-  "provides_binaries": ["camp", "fest"],
+  "provides_binaries": ["camp", "fest", "festival"],
   "releases": [
     {
       "version": "0.2.10",
       "channel": "stable",
       "published_at": "2026-06-08T00:00:00Z",
-      "components": {"camp": "0.2.11", "fest": "0.4.5"},
+      "components": {"camp": "0.2.11", "fest": "0.4.5", "festival": "0.2.10"},
       "compatibility": {"os": [%q], "arch": [%q]},
       "dependencies": [],
       "artifacts": [
-        {"kind": "suite-archive", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "festival.tar.gz", "binaries": ["camp", "fest"]}
+        {"kind": "suite-archive", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "festival.tar.gz", "binaries": ["camp", "fest", "festival"]}
       ],
       "install": {"entries": [
+        {"kind": "binary", "source": "festival", "executable_name": "festival"},
         {"kind": "binary", "source": "camp", "executable_name": "camp"},
         {"kind": "binary", "source": "fest", "executable_name": "fest"}
       ]}
@@ -177,6 +179,8 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewBrowseCommand())
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewListCommand())
+	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
 	cli.WrapJSONErrors(root)
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
@@ -186,14 +190,44 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
+// symlinkSelfAsManagedFestival makes the running test binary resolve as the
+// managed hub (app.ResolveWhich/app.ResolveSelf compare os.Executable against
+// binDir/festival with symlinks resolved on both sides). Suite install/update
+// tests use this to exercise the common case: an already-managed hub
+// replacing itself. Tests that omit this call exercise the external-hub case
+// instead, since the go test binary is never binDir/festival on its own.
+// symlinkSelfAsManagedFestival is idempotent: callers may need to call it
+// again after a real install/update replaces the symlink with a placed
+// regular file, to keep the running test binary resolving as managed.
+func symlinkSelfAsManagedFestival(t *testing.T, home string) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	managed := filepath.Join(binDir, "festival")
+	if err := os.RemoveAll(managed); err != nil {
+		t.Fatalf("remove existing managed festival: %v", err)
+	}
+	if err := os.Symlink(exe, managed); err != nil {
+		t.Fatalf("symlink self as managed festival: %v", err)
+	}
+}
+
 func TestInstallFestival_E2E(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	symlinkSelfAsManagedFestival(t, home)
 	ctx := context.Background()
 
 	campBody := "#!/bin/sh\necho camp\n"
 	festBody := "#!/bin/sh\necho fest\n"
-	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody})
+	festivalBody := "#!/bin/sh\necho festival\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(tarball)
@@ -211,18 +245,28 @@ func TestInstallFestival_E2E(t *testing.T) {
 	}
 
 	var res struct {
-		Package string   `json:"package"`
-		Version string   `json:"version"`
-		Channel string   `json:"channel"`
-		Files   []string `json:"files"`
+		Package     string   `json:"package"`
+		Version     string   `json:"version"`
+		Channel     string   `json:"channel"`
+		Files       []string `json:"files"`
+		SelfSkipped bool     `json:"self_skipped"`
 	}
 	dataOf(t, out, &res)
-	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 2 {
+	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 3 {
 		t.Fatalf("unexpected install result: %+v", res)
+	}
+	if res.SelfSkipped {
+		t.Fatalf("expected self_skipped false when the hub is managed and gets placed, got %+v", res)
+	}
+	// The manifest lists festival first among install.entries; the placement
+	// order must still put the hub last so a crash mid-transaction never
+	// leaves camp and fest stale next to a newer hub.
+	if last := res.Files[len(res.Files)-1]; filepath.Base(last) != "festival" {
+		t.Fatalf("expected hub placed last, got files=%v", res.Files)
 	}
 
 	binDir, _ := state.BinDir(ctx)
-	for name, body := range map[string]string{"camp": campBody, "fest": festBody} {
+	for name, body := range map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody} {
 		p := filepath.Join(binDir, name)
 		fi, statErr := os.Stat(p)
 		if statErr != nil {
@@ -241,17 +285,118 @@ func TestInstallFestival_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receipt: %v", err)
 	}
-	if rec.Version != "0.2.10" || rec.Channel != "stable" || len(rec.OwnedFiles) != 2 {
+	if rec.Version != "0.2.10" || rec.Channel != "stable" || len(rec.OwnedFiles) != 3 {
 		t.Fatalf("receipt wrong: %+v", rec)
 	}
 	wantHash := map[string]string{
-		filepath.Join(binDir, "camp"): sha256Hex([]byte(campBody)),
-		filepath.Join(binDir, "fest"): sha256Hex([]byte(festBody)),
+		filepath.Join(binDir, "camp"):     sha256Hex([]byte(campBody)),
+		filepath.Join(binDir, "fest"):     sha256Hex([]byte(festBody)),
+		filepath.Join(binDir, "festival"): sha256Hex([]byte(festivalBody)),
 	}
+	sawHub := false
 	for _, of := range rec.OwnedFiles {
 		if wantHash[of.Path] != of.Hash {
 			t.Fatalf("owned file %s hash = %s, want %s", of.Path, of.Hash, wantHash[of.Path])
 		}
+		if of.Mode.Perm() != 0o755 {
+			t.Fatalf("owned file %s mode = %o, want 0755", of.Path, of.Mode.Perm())
+		}
+		if filepath.Base(of.Path) == "festival" {
+			sawHub = true
+		}
+	}
+	if !sawHub {
+		t.Fatalf("receipt missing the hub binary: %+v", rec.OwnedFiles)
+	}
+
+	which, err := app.ResolveWhich(ctx, "festival")
+	if err != nil {
+		t.Fatalf("ResolveWhich festival: %v", err)
+	}
+	if which.Managed == "" {
+		t.Fatalf("expected festival's managed path to be set after a suite install, got %+v", which)
+	}
+
+	listOut, _, err := runInstaller(t, "list", "--json")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var listRes struct {
+		Packages []struct {
+			PackageID string   `json:"package_id"`
+			Files     []string `json:"files"`
+		} `json:"packages"`
+	}
+	dataOf(t, listOut, &listRes)
+	if len(listRes.Packages) != 1 || listRes.Packages[0].PackageID != festivalPackageIDForTest {
+		t.Fatalf("expected one package %q, got %+v", festivalPackageIDForTest, listRes.Packages)
+	}
+	if len(listRes.Packages[0].Files) != 3 {
+		t.Fatalf("festival list: got %d owned files, want 3: %v", len(listRes.Packages[0].Files), listRes.Packages[0].Files)
+	}
+}
+
+func TestInstallFestival_ExternalHubSkipsAndWarns(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	// No symlinkSelfAsManagedFestival call: the running test binary is not
+	// binDir/festival, so the hub resolves as external and must be skipped.
+
+	campBody := "#!/bin/sh\necho camp\n"
+	festBody := "#!/bin/sh\necho fest\n"
+	festivalBody := "#!/bin/sh\necho festival\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	out, errOut, err := runInstaller(t, "install", "festival", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("install: %v\n%s", err, errOut)
+	}
+
+	var res struct {
+		Package       string   `json:"package"`
+		Version       string   `json:"version"`
+		Files         []string `json:"files"`
+		SelfPlacement string   `json:"self_placement"`
+		SelfSkipped   bool     `json:"self_skipped"`
+	}
+	dataOf(t, out, &res)
+	if res.SelfPlacement != "external" {
+		t.Fatalf("expected self_placement external, got %+v", res)
+	}
+	if !res.SelfSkipped {
+		t.Fatalf("expected self_skipped true when the hub is external, got %+v", res)
+	}
+	if len(res.Files) != 2 {
+		t.Fatalf("expected only camp and fest to be placed, got %v", res.Files)
+	}
+
+	if !strings.Contains(errOut, "install: ") || !strings.Contains(errOut, "left untouched") {
+		t.Fatalf("expected a left-untouched note on stderr, got %q", errOut)
+	}
+
+	var envelope struct {
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	if len(envelope.Warnings) != 1 || !strings.Contains(envelope.Warnings[0], "left untouched") {
+		t.Fatalf("expected a left-untouched warning in the JSON warnings array, got %v", envelope.Warnings)
+	}
+
+	binDir, _ := state.BinDir(context.Background())
+	if _, statErr := os.Stat(filepath.Join(binDir, "festival")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no managed festival binary to be written, stat err=%v", statErr)
 	}
 }
 
@@ -333,6 +478,8 @@ func TestInstall_InvalidChannelAndTarget(t *testing.T) {
 }
 
 const festivalPackageIDForTest = "obedience-corp/festival"
+
+const testFestivalVersion = "9.9.9"
 
 func mustDB(t *testing.T, ctx context.Context, home string) *sql.DB {
 	t.Helper()

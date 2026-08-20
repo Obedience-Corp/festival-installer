@@ -51,11 +51,13 @@ func NewUpdateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var warnings []string
 			if warning != "" {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: "+warning)
+				warnings = []string{warning}
 			}
 			if asJSON {
-				return jsonout.Success(cmd.OutOrStdout(), "update", res, nil)
+				return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
 			}
 			return renderUpdateResult(cmd.OutOrStdout(), res)
 		},
@@ -70,8 +72,14 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 	pkg := textsafe.Line(res.Package)
 	switch res.Action {
 	case "upgraded":
-		_, err := fmt.Fprintf(w, "upgraded %s %s -> %s\n", pkg, textsafe.Line(res.From), textsafe.Line(res.Version))
-		return err
+		if _, err := fmt.Fprintf(w, "upgraded %s %s -> %s\n", pkg, textsafe.Line(res.From), textsafe.Line(res.Version)); err != nil {
+			return err
+		}
+		if res.SelfReplaced {
+			_, err := fmt.Fprintf(w, "festival was updated to %s; restart it to use the new version\n", textsafe.Line(res.Version))
+			return err
+		}
+		return nil
 	case "current":
 		_, err := fmt.Fprintf(w, "%s is already current at %s\n", pkg, textsafe.Line(res.Version))
 		return err

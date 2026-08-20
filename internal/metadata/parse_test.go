@@ -115,8 +115,8 @@ func TestParseManifest_Valid(t *testing.T) {
 	if m.ID != "obedience-corp/festival" || m.Class != "product" {
 		t.Fatalf("unexpected manifest header: %+v", m)
 	}
-	if len(m.ProvidesBinaries) != 2 {
-		t.Fatalf("provides_binaries: got %d, want 2", len(m.ProvidesBinaries))
+	if len(m.ProvidesBinaries) != 3 {
+		t.Fatalf("provides_binaries: got %d, want 3", len(m.ProvidesBinaries))
 	}
 	if len(m.Releases) != 1 {
 		t.Fatalf("releases: got %d, want 1", len(m.Releases))
@@ -125,7 +125,7 @@ func TestParseManifest_Valid(t *testing.T) {
 	if rel.Version != "0.2.10" || rel.Channel != "stable" {
 		t.Fatalf("release header: %+v", rel)
 	}
-	if rel.Components["camp"] != "0.2.11" || rel.Components["fest"] != "0.4.5" {
+	if rel.Components["camp"] != "0.2.11" || rel.Components["fest"] != "0.4.5" || rel.Components["festival"] != "0.2.10" {
 		t.Fatalf("components: %+v", rel.Components)
 	}
 	if rel.Dependencies == nil || len(rel.Dependencies) != 0 {
@@ -134,7 +134,7 @@ func TestParseManifest_Valid(t *testing.T) {
 	if len(rel.Artifacts) != 1 || rel.Artifacts[0].Kind != "suite-archive" || rel.Artifacts[0].Arch != "all" {
 		t.Fatalf("artifact: %+v", rel.Artifacts)
 	}
-	if len(rel.Install.Entries) != 2 || rel.Install.Entries[0].ExecutableName != "camp" {
+	if len(rel.Install.Entries) != 3 || rel.Install.Entries[0].ExecutableName != "camp" || rel.Install.Entries[2].ExecutableName != "festival" {
 		t.Fatalf("install entries: %+v", rel.Install.Entries)
 	}
 }

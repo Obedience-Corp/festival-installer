@@ -428,3 +428,226 @@ func TestCommit_FailedUpgradeRestoresViaJournal(t *testing.T) {
 	}
 	_ = tx.Rollback(ctx)
 }
+
+// writeRawJournal hand-writes an install-intent journal file, simulating a
+// process that was killed after the journal was durably written but before
+// the in-process Commit()/abortActivation ever ran. Recovery in this
+// scenario only happens later, via a fresh Reconcile call, which is what a
+// new process's Begin() performs before starting its own activation.
+func writeRawJournal(t *testing.T, home, journalID, packageID string, placed []map[string]string) {
+	t.Helper()
+	journal := map[string]any{
+		"id":         journalID,
+		"package_id": packageID,
+		"version":    "1.1.0",
+		"channel":    "stable",
+		"source":     "official-obey",
+		"placed":     placed,
+	}
+	raw, err := json.Marshal(journal)
+	if err != nil {
+		t.Fatalf("marshal journal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(home, installer.JournalName), raw, 0o600); err != nil {
+		t.Fatalf("write journal: %v", err)
+	}
+}
+
+// TestReconcile_KillDuringHubPlacementRollsBackAtomically is the test that
+// justifies "hub last": camp and fest were already fully placed by this
+// transaction (new bytes on disk, old bytes backed up); festival was
+// journaled last but the crash lands before its backup or move ever ran.
+//
+// The task doc for this sequence predicted that camp and fest would keep
+// their new bytes after Reconcile, with only festival reverted. That is not
+// what the code does: Reconcile reverses every entry recorded in the
+// journal, not only the one that was mid-flight. Verified empirically
+// before writing this assertion (see the sequence's task-05 report). The
+// real, load-bearing guarantee "hub last" provides is atomicity: a crash
+// anywhere in suite placement, including mid-hub, always unwinds the whole
+// transaction back to the prior consistent state. Camp and fest are never
+// left stale next to a newer hub, and the hub is never left stale next to a
+// newer camp/fest, because nothing is ever left partially newer at all.
+func TestReconcile_KillDuringHubPlacementRollsBackAtomically(t *testing.T) {
+	home, _ := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	campDst := filepath.Join(binDir, "camp")
+	festDst := filepath.Join(binDir, "fest")
+	hubDst := filepath.Join(binDir, "festival")
+	if err := os.WriteFile(hubDst, []byte("old-festival"), 0o755); err != nil {
+		t.Fatalf("seed festival: %v", err)
+	}
+
+	// Simulate the state a real Commit() reaches partway through: camp and
+	// fest already fully activated (new bytes live, old bytes backed up).
+	if err := os.WriteFile(campDst, []byte("new-camp"), 0o755); err != nil {
+		t.Fatalf("place camp: %v", err)
+	}
+	if err := os.WriteFile(festDst, []byte("new-fest"), 0o755); err != nil {
+		t.Fatalf("place fest: %v", err)
+	}
+	backupDir := filepath.Join(home, installer.IntentBackupsDir, "kill-hub")
+	if err := os.MkdirAll(backupDir, 0o700); err != nil {
+		t.Fatalf("mkdir intent-backups: %v", err)
+	}
+	campBackup := filepath.Join(backupDir, "backup-0")
+	festBackup := filepath.Join(backupDir, "backup-1")
+	hubBackup := filepath.Join(backupDir, "backup-2") // never created: hub backup/move never ran
+	if err := os.WriteFile(campBackup, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp backup: %v", err)
+	}
+	if err := os.WriteFile(festBackup, []byte("old-fest"), 0o755); err != nil {
+		t.Fatalf("seed fest backup: %v", err)
+	}
+
+	writeRawJournal(t, home, "kill-hub", "obedience-corp/festival", []map[string]string{
+		{"dest": campDst, "backup": campBackup},
+		{"dest": festDst, "backup": festBackup},
+		{"dest": hubDst, "backup": hubBackup},
+	})
+
+	if err := installer.Reconcile(ctx, home, nil); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	gotCamp, err := os.ReadFile(campDst)
+	if err != nil || string(gotCamp) != "old-camp" {
+		t.Fatalf("camp = %q err=%v, want old-camp (backup-present state: removed and restored)", gotCamp, err)
+	}
+	gotFest, err := os.ReadFile(festDst)
+	if err != nil || string(gotFest) != "old-fest" {
+		t.Fatalf("fest = %q err=%v, want old-fest (backup-present state: removed and restored)", gotFest, err)
+	}
+	gotHub, err := os.ReadFile(hubDst)
+	if err != nil || string(gotHub) != "old-festival" {
+		t.Fatalf("festival = %q err=%v, want old-festival untouched (backup-missing state: not started)", gotHub, err)
+	}
+
+	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); !os.IsNotExist(err) {
+		t.Fatalf("journal should be cleared after reconcile, err=%v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, installer.IntentBackupsDir))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read intent-backups: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("intent-backups should be empty after reconcile, got %v", entries)
+	}
+}
+
+// TestReconcile_KillDuringFreshInstallRemovesPartialPlacements covers the
+// third journal recovery state that TestReconcile_KillDuringHubPlacementRollsBackAtomically
+// does not reach: a fresh install (nothing pre-existing, so Backup is empty)
+// killed mid-placement. There is no pre-image to restore, so the correct
+// reversal is deletion, not restoration.
+func TestReconcile_KillDuringFreshInstallRemovesPartialPlacements(t *testing.T) {
+	home, _ := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	campDst := filepath.Join(binDir, "camp")
+	festDst := filepath.Join(binDir, "fest")
+	hubDst := filepath.Join(binDir, "festival")
+
+	// camp and fest were placed fresh (no pre-existing file, so no backup).
+	if err := os.WriteFile(campDst, []byte("new-camp"), 0o755); err != nil {
+		t.Fatalf("place camp: %v", err)
+	}
+	if err := os.WriteFile(festDst, []byte("new-fest"), 0o755); err != nil {
+		t.Fatalf("place fest: %v", err)
+	}
+	// festival never existed and was never placed: no file, no backup.
+
+	writeRawJournal(t, home, "kill-fresh", "obedience-corp/festival", []map[string]string{
+		{"dest": campDst, "backup": ""},
+		{"dest": festDst, "backup": ""},
+		{"dest": hubDst, "backup": ""},
+	})
+
+	if err := installer.Reconcile(ctx, home, nil); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	if _, err := os.Stat(campDst); !os.IsNotExist(err) {
+		t.Fatalf("camp should be removed (fresh-install state: no backup to restore), err=%v", err)
+	}
+	if _, err := os.Stat(festDst); !os.IsNotExist(err) {
+		t.Fatalf("fest should be removed (fresh-install state: no backup to restore), err=%v", err)
+	}
+	if _, err := os.Stat(hubDst); !os.IsNotExist(err) {
+		t.Fatalf("festival should not exist, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); !os.IsNotExist(err) {
+		t.Fatalf("journal should be cleared after reconcile, err=%v", err)
+	}
+}
+
+// TestReconcile_CompletedTransactionNotUndoneByLaterReconcile proves the
+// other direction of correctness: once a receipt records the same
+// install_journal_id as a stale journal, Reconcile treats the transaction as
+// a completed success and clears the journal without reversing anything.
+// Getting this backwards would silently roll a user back a version every
+// time a leftover journal (e.g. from a clear that failed after Commit
+// otherwise succeeded) was found on a later run.
+func TestReconcile_CompletedTransactionNotUndoneByLaterReconcile(t *testing.T) {
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	campDst := filepath.Join(binDir, "camp")
+	if err := os.WriteFile(campDst, []byte("new-camp"), 0o755); err != nil {
+		t.Fatalf("place camp: %v", err)
+	}
+	campBackupDir := filepath.Join(home, installer.IntentBackupsDir, "completed-txn")
+	if err := os.MkdirAll(campBackupDir, 0o700); err != nil {
+		t.Fatalf("mkdir intent-backups: %v", err)
+	}
+	campBackup := filepath.Join(campBackupDir, "backup-0")
+	if err := os.WriteFile(campBackup, []byte("old-camp"), 0o755); err != nil {
+		t.Fatalf("seed camp backup: %v", err)
+	}
+
+	rec := receipts.Receipt{
+		PackageID:   "obedience-corp/festival",
+		Version:     "1.1.0",
+		Source:      "official-obey",
+		Channel:     "stable",
+		InstalledAt: time.Now().UTC(),
+		OwnedFiles: []receipts.OwnedFile{
+			{Path: campDst, Hash: "deadbeef", Mode: 0o755},
+		},
+		Metadata: map[string]string{"install_journal_id": "completed-txn"},
+	}
+	if err := receipts.Write(ctx, db.Raw(), rec); err != nil {
+		t.Fatalf("write receipt: %v", err)
+	}
+
+	// A stale journal survives even though Commit() actually succeeded (its
+	// best-effort clearJournal call failed or never ran).
+	writeRawJournal(t, home, "completed-txn", "obedience-corp/festival", []map[string]string{
+		{"dest": campDst, "backup": campBackup},
+	})
+
+	if err := installer.Reconcile(ctx, home, db.Raw()); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got, err := os.ReadFile(campDst)
+	if err != nil || string(got) != "new-camp" {
+		t.Fatalf("camp = %q err=%v, want new-camp: a completed transaction must not be reversed", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); !os.IsNotExist(err) {
+		t.Fatalf("journal should still be cleared, err=%v", err)
+	}
+}

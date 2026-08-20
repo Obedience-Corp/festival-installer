@@ -70,6 +70,9 @@ type opDoneMsg struct {
 	body    string
 	err     error
 	success bool
+	// restart is true when the result screen should offer a hub restart
+	// (the update just replaced the running festival binary).
+	restart bool
 }
 
 // consentNeededMsg is returned when a strict install/update hit E_UNVERIFIED_REFUSED.
@@ -146,6 +149,9 @@ type model struct {
 	resultTitle string
 	resultBody  string
 	resultOK    bool
+	// resultRestart is true when the result screen should offer to restart
+	// the hub (an update just replaced the running festival binary).
+	resultRestart bool
 
 	// progressStream is the in-flight operation's event channel, drained by
 	// waitProgress. Nil when no operation is reporting.
@@ -372,6 +378,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resultTitle = msg.title
 		m.resultBody = msg.body
 		m.resultOK = msg.success
+		m.resultRestart = msg.restart
 		m.err = msg.err
 		return m, m.loadStatus()
 
@@ -528,6 +535,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.screen == screenDoctor {
 			return m, m.loadDoctor()
+		}
+		if m.screen == screenResult && m.resultRestart {
+			return m.restartHub()
 		}
 	case "a":
 		if m.screen == screenMarketplace {

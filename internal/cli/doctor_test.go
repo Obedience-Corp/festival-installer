@@ -84,6 +84,23 @@ func TestDoctor_OrphanReceipt(t *testing.T) {
 	}
 }
 
+func TestDoctor_PathShadowing_Festival(t *testing.T) {
+	home := t.TempDir()
+	managedBin := filepath.Join(home, "bin")
+	fakeBinary(t, managedBin, "festival")
+	otherDir := t.TempDir()
+	fakeBinary(t, otherDir, "festival")
+
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("PATH", otherDir+string(os.PathListSeparator)+managedBin)
+
+	out, _, _ := runInstaller(t, "doctor", "--json")
+	status := doctorChecks(t, out)
+	if status["path_shadowing"] != "warn" {
+		t.Fatalf("expected path_shadowing warn for a shadowed festival, got %q", status["path_shadowing"])
+	}
+}
+
 func TestDoctor_JSONShapeStable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)

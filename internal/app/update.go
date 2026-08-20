@@ -28,12 +28,22 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
 	}
 
+	// Resolve self-placement up front so it is reported regardless of which
+	// action the update ends up taking.
+	selfPlacement, selfPath, err := ResolveSelf(ctx)
+	if err != nil {
+		return UpdateResult{}, "", err
+	}
+
 	rec, found, err := ReadFestivalReceipt(ctx)
 	if err != nil {
 		return UpdateResult{}, "", err
 	}
 	if !found {
-		return handleUnmanaged(ctx)
+		res, warning, herr := handleUnmanaged(ctx)
+		res.SelfPlacement = selfPlacement
+		res.SelfPath = selfPath
+		return res, warning, herr
 	}
 
 	channel := rec.Channel
@@ -49,7 +59,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 
 	installedVersion := rec.Version
 	warning := ""
-	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && looksLikeVersion(live) && live != installedVersion {
+	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && LooksLikeVersion(live) && live != installedVersion {
 		warning = "receipt reports " + installedVersion + " but the managed camp reports " + live + "; comparing against the live version"
 		installedVersion = live
 	}
@@ -66,7 +76,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 
 	if !installer.VersionLess(installedVersion, latest.Version) {
-		return UpdateResult{Package: FestivalPackageID, Action: "current", Version: installedVersion}, warning, nil
+		return UpdateResult{Package: FestivalPackageID, Action: "current", Version: installedVersion, SelfPlacement: selfPlacement, SelfPath: selfPath}, warning, nil
 	}
 
 	res, err := InstallFestival(ctx, InstallOptions{
@@ -78,7 +88,31 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
-	return UpdateResult{Package: FestivalPackageID, Action: "upgraded", Version: res.Version, From: installedVersion}, warning, nil
+	selfReplaced := false
+	if selfPlacement != SelfManaged {
+		note := SelfSkippedNote(selfPlacement, selfPath)
+		if warning == "" {
+			warning = note
+		} else {
+			warning = warning + "; " + note
+		}
+	} else {
+		for _, f := range res.Files {
+			if filepath.Base(f) == selfBinaryName {
+				selfReplaced = true
+				break
+			}
+		}
+	}
+	return UpdateResult{
+		Package:       FestivalPackageID,
+		Action:        "upgraded",
+		Version:       res.Version,
+		From:          installedVersion,
+		SelfPlacement: selfPlacement,
+		SelfPath:      selfPath,
+		SelfReplaced:  selfReplaced,
+	}, warning, nil
 }
 
 // ReadFestivalReceipt loads the suite receipt if present.
@@ -129,7 +163,10 @@ func detectLiveVersion(ctx context.Context, tool string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func looksLikeVersion(s string) bool {
+// LooksLikeVersion reports whether s starts with a plausible dotted version
+// number, the same check the live-skew probe uses to trust a tool's own
+// `version --short` output.
+func LooksLikeVersion(s string) bool {
 	parts := strings.SplitN(s, ".", 3)
 	if len(parts) < 3 {
 		return false
