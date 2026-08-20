@@ -181,6 +181,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewWhichCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
+	root.AddCommand(cli.NewGendocsCommand())
 	cli.WrapJSONErrors(root)
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
