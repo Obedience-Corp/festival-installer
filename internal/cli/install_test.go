@@ -196,6 +196,9 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 // tests use this to exercise the common case: an already-managed hub
 // replacing itself. Tests that omit this call exercise the external-hub case
 // instead, since the go test binary is never binDir/festival on its own.
+// symlinkSelfAsManagedFestival is idempotent: callers may need to call it
+// again after a real install/update replaces the symlink with a placed
+// regular file, to keep the running test binary resolving as managed.
 func symlinkSelfAsManagedFestival(t *testing.T, home string) {
 	t.Helper()
 	exe, err := os.Executable()
@@ -206,7 +209,11 @@ func symlinkSelfAsManagedFestival(t *testing.T, home string) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin: %v", err)
 	}
-	if err := os.Symlink(exe, filepath.Join(binDir, "festival")); err != nil {
+	managed := filepath.Join(binDir, "festival")
+	if err := os.RemoveAll(managed); err != nil {
+		t.Fatalf("remove existing managed festival: %v", err)
+	}
+	if err := os.Symlink(exe, managed); err != nil {
 		t.Fatalf("symlink self as managed festival: %v", err)
 	}
 }

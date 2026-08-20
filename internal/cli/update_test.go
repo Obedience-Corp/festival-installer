@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -387,6 +388,15 @@ func TestUpdate_ExternalHubUpdatesPairAndWarns(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "left untouched") {
 		t.Fatalf("expected a left-untouched warning on stderr, got %q", errOut)
+	}
+	var envelope struct {
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	if len(envelope.Warnings) != 1 || !strings.Contains(envelope.Warnings[0], "left untouched") {
+		t.Fatalf("expected a left-untouched warning in the JSON warnings array, got %v", envelope.Warnings)
 	}
 
 	campGot, _ := os.ReadFile(filepath.Join(binDir, "camp"))

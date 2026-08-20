@@ -51,11 +51,13 @@ func NewUpdateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var warnings []string
 			if warning != "" {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: "+warning)
+				warnings = []string{warning}
 			}
 			if asJSON {
-				return jsonout.Success(cmd.OutOrStdout(), "update", res, nil)
+				return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
 			}
 			return renderUpdateResult(cmd.OutOrStdout(), res)
 		},
