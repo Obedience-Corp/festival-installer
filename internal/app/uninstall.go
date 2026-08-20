@@ -42,6 +42,17 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 	if err := ctx.Err(); err != nil {
 		return UninstallResult{}, errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
 	}
+	if packageID == FestivalPackageID {
+		placement, selfPath, err := ResolveSelf(ctx)
+		if err != nil {
+			return UninstallResult{}, err
+		}
+		if placement == SelfManaged {
+			return UninstallResult{}, errpkg.New("E_UNINSTALL_SELF",
+				"refusing to uninstall the running festival binary at "+selfPath+
+					"; remove it with the package manager that installed it")
+		}
+	}
 	home, err := state.Home(ctx)
 	if err != nil {
 		return UninstallResult{}, err

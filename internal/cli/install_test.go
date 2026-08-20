@@ -180,6 +180,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewWhichCommand())
 	root.AddCommand(cli.NewListCommand())
+	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
 	cli.WrapJSONErrors(root)
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
@@ -402,6 +403,8 @@ func TestInstall_InvalidChannelAndTarget(t *testing.T) {
 }
 
 const festivalPackageIDForTest = "obedience-corp/festival"
+
+const testFestivalVersion = "9.9.9"
 
 func mustDB(t *testing.T, ctx context.Context, home string) *sql.DB {
 	t.Helper()

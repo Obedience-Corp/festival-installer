@@ -44,6 +44,26 @@ func writeFestivalReceipt(t *testing.T, ctx context.Context, home, version, sour
 	}
 }
 
+func writeFestivalReceiptWithHub(t *testing.T, ctx context.Context, home, version, sourceName, binDir string) {
+	t.Helper()
+	rec := receipts.Receipt{
+		PackageID:   festivalPackageIDForTest,
+		Version:     version,
+		Source:      sourceName,
+		Channel:     "stable",
+		InstalledAt: time.Now().UTC(),
+		OwnedFiles: []receipts.OwnedFile{
+			{Path: filepath.Join(binDir, "camp"), Hash: "deadbeef", Mode: 0o755},
+			{Path: filepath.Join(binDir, "fest"), Hash: "deadbeef", Mode: 0o755},
+			{Path: filepath.Join(binDir, "festival"), Hash: "deadbeef", Mode: 0o755},
+		},
+		Metadata: map[string]string{},
+	}
+	if err := receipts.Write(ctx, mustDB(t, ctx, home), rec); err != nil {
+		t.Fatalf("write receipt: %v", err)
+	}
+}
+
 func TestUpdate_CompletionOffersOptionalTargets(t *testing.T) {
 	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
 

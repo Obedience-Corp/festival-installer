@@ -59,7 +59,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 
 	installedVersion := rec.Version
 	warning := ""
-	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && looksLikeVersion(live) && live != installedVersion {
+	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && LooksLikeVersion(live) && live != installedVersion {
 		warning = "receipt reports " + installedVersion + " but the managed camp reports " + live + "; comparing against the live version"
 		installedVersion = live
 	}
@@ -147,7 +147,10 @@ func detectLiveVersion(ctx context.Context, tool string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func looksLikeVersion(s string) bool {
+// LooksLikeVersion reports whether s starts with a plausible dotted version
+// number, the same check the live-skew probe uses to trust a tool's own
+// `version --short` output.
+func LooksLikeVersion(s string) bool {
 	parts := strings.SplitN(s, ".", 3)
 	if len(parts) < 3 {
 		return false

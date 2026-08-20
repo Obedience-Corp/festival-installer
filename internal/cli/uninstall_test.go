@@ -59,6 +59,35 @@ func TestUninstall_RemovesOwnedFilesOnly(t *testing.T) {
 	}
 }
 
+func TestUninstall_RefusesToRemoveRunningHub(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	ctx := context.Background()
+	binDir := filepath.Join(home, "bin")
+
+	writeManagedBinary(t, binDir, "camp", "0.2.10")
+	writeManagedBinary(t, binDir, "fest", "0.2.10")
+	symlinkSelfAsManagedFestival(t, home)
+	writeFestivalReceiptWithHub(t, ctx, home, "0.2.10", "official-obey", binDir)
+
+	_, errOut, err := runInstaller(t, "uninstall", "festival")
+	if err == nil {
+		t.Fatal("expected uninstall to refuse removing the running hub")
+	}
+	if !hasErrorCode(err, "E_UNINSTALL_SELF") {
+		t.Fatalf("expected E_UNINSTALL_SELF, got err=%v errOut=%s", err, errOut)
+	}
+
+	for _, name := range []string{"camp", "fest", "festival"} {
+		if _, statErr := os.Stat(filepath.Join(binDir, name)); statErr != nil {
+			t.Fatalf("%s should still exist after a refused uninstall: %v", name, statErr)
+		}
+	}
+	if _, err := receipts.Get(ctx, mustDB(t, ctx, home), festivalPackageIDForTest); err != nil {
+		t.Fatalf("receipt should still exist after a refused uninstall: %v", err)
+	}
+}
+
 func TestUninstall_NoReceiptIsNoOp(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)

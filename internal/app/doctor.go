@@ -11,6 +11,12 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
+// managedBinaries are the binaries the suite places and therefore the ones
+// doctor checks for shadowing. Kept as a constant list rather than derived
+// from the receipt because the check must also work on a fresh home where no
+// receipt exists yet, which is exactly the first-run case doctor cares about.
+var managedBinaries = []string{"camp", "fest", selfBinaryName}
+
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.
 func Doctor(ctx context.Context) []DoctorCheck {
 	// Ensure the manager home exists so source/receipt checks do not fail with
@@ -130,7 +136,7 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 func checkPathShadowing(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "path_shadowing", Status: "ok", Message: "no managed binary is shadowed"}
 	var shadowed []string
-	for _, tool := range []string{"camp", "fest"} {
+	for _, tool := range managedBinaries {
 		res, err := ResolveWhich(ctx, tool)
 		if err != nil {
 			continue
