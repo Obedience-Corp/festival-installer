@@ -26,7 +26,7 @@ In scope:
   file writes or command execution through a crafted manifest.
 
 Out of scope: vulnerabilities in `camp`, `fest`, or plugins installed
-*through* `festival` — report those to the repository that owns the affected
+*through* `festival`. Report those to the repository that owns the affected
 tool.
 
 ## What the trust root guarantees, and what it does not
@@ -43,8 +43,8 @@ marketplace signing key, and has not been altered in transit or at rest since
 it was signed.
 
 It does **not** currently cover every file `festival` reads. As of
-2026-08-17, `index.json` and `obey-marketplace.json` — the marketplace and
-package index files themselves — are unsigned. A party who can tamper with
+2026-08-17, `index.json` and `obey-marketplace.json` (the marketplace and
+package index files themselves) are unsigned. A party who can tamper with
 those files (for example, a compromised marketplace git remote) can still
 influence what `festival` offers to install, even though it cannot forge a
 signed package's contents. Do not assume index/marketplace-level integrity

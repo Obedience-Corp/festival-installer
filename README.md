@@ -1,7 +1,7 @@
 # festival
 
-`festival` installs, updates, and launches the Festival CLI suite — `camp` and
-`fest` — and their plugins, pulling packages from a signed marketplace. Bare
+`festival` installs, updates, and launches the Festival CLI suite (`camp` and
+`fest`) and their plugins, pulling packages from a signed marketplace. Bare
 `festival` opens a fire-themed TUI; the same binary answers to CLI
 subcommands for scripts and agents.
 
@@ -11,19 +11,19 @@ subcommands for scripts and agents.
 
 Recorded against a real `./bin/festival` binary (VHS + PTY).
 
-**Home — boot splash, ambient flame, multi-activity booths, menu → doctor**
+**Home: boot splash, ambient flame, multi-activity booths, menu → doctor**
 
 <p align="center">
   <img src="docs/demos/festival-home.gif" alt="festival TUI: boot splash, fire ambient, multi-activity booths, and home menu" width="900">
 </p>
 
-**Tour — install channel picker, shell/PATH, installed list**
+**Tour: install channel picker, shell/PATH, installed list**
 
 <p align="center">
   <img src="docs/demos/festival-tour.gif" alt="festival TUI tour: install channel picker, shell/PATH, and installed packages" width="900">
 </p>
 
-**Launchpad — open camp as a child tool, quit back to the hub**
+**Launchpad: open camp as a child tool, quit back to the hub**
 
 <p align="center">
   <img src="docs/demos/festival-launchpad.gif" alt="festival TUI launchpad: opening camp as a child tool and returning to the hub on quit" width="900">
@@ -53,7 +53,7 @@ Package metadata is signed with an Ed25519 key, id
 binary (`internal/verify/trust.go`). By default `festival` refuses to install
 or update anything whose metadata it cannot verify against that pinned key.
 To proceed anyway with unsigned development content, pass
-`--allow-unverified` on the CLI — it prints a loud warning to stderr — or
+`--allow-unverified` on the CLI (it prints a loud warning to stderr) or
 accept the equivalent explicit consent prompt the TUI shows when it refuses
 unsigned content. Artifact downloads are HTTPS-only, git remotes are
 restricted to HTTPS, SSH, and local paths, and archive extraction is bounded.
@@ -73,7 +73,7 @@ The TUI home screen lets you:
 - Uninstall receipt-owned packages
 - Manage marketplaces
 - Run doctor and PATH / shell-init guidance
-- **Launchpad** — open camp/fest tools (`camp wi`, `fest watch`, …) as real
+- **Launchpad**: open camp/fest tools (`camp wi`, `fest watch`, …) as real
   subprocesses; quit the tool to return to the hub without relaunching `festival`
   (suspend → child → resume)
 
