@@ -1,7 +1,9 @@
 # festival
 
-Interactive Festival manager — install, update, and browse `camp`, `fest`, and
-plugins with a fire-themed TUI. CLI subcommands remain for scripts and agents.
+`festival` installs, updates, and launches the Festival CLI suite — `camp` and
+`fest` — and their plugins, pulling packages from a signed marketplace. Bare
+`festival` opens a fire-themed TUI; the same binary answers to CLI
+subcommands for scripts and agents.
 
 > _All your work, where you can find it._
 
@@ -21,6 +23,12 @@ Recorded against a real `./bin/festival` binary (VHS + PTY).
   <img src="docs/demos/festival-tour.gif" alt="festival TUI tour: install channel picker, shell/PATH, and installed packages" width="900">
 </p>
 
+**Launchpad — open camp as a child tool, quit back to the hub**
+
+<p align="center">
+  <img src="docs/demos/festival-launchpad.gif" alt="festival TUI launchpad: opening camp as a child tool and returning to the hub on quit" width="900">
+</p>
+
 Reproduce locally:
 
 ```bash
@@ -28,26 +36,27 @@ just build
 just vhs all   # requires vhs, ttyd, ffmpeg
 ```
 
-## Status
+## Install
 
-Festival Installer lives at `github.com/Obedience-Corp/festival-installer`; its
-public command name is **`festival`**. The strict production path installs the
-official Festival suite only after verifying signed marketplace metadata and
-artifact checksums. CI tests the supported Linux and macOS targets on amd64 and
-arm64. Tags matching `v*` publish portable binaries and checksums through GitHub
-Releases. Until the first tag is published, build the installer from source.
+<!-- filled by FH0002 sequence 04 -->
 
-### Security (important)
+Festival Installer lives at `github.com/Obedience-Corp/festival-installer`;
+its public command name is **`festival`**. CI tests the supported Linux and
+macOS targets on amd64 and arm64. Tags matching `v*` publish portable
+binaries and checksums through GitHub Releases. Until the first tag is
+published, [build it from source](#build-from-source).
 
-**Default install policy is refuse-by-default for unsigned package metadata**
-(VER-01 / OI0007). Official marketplace metadata is signed with Ed25519 and
-verified against the pinned, rotation-friendly trust root in `internal/verify`.
-Pass `--allow-unverified` only for unsigned development content; it emits a loud
-warning on stderr. The TUI tries the strict policy first and asks for explicit
-consent only when unsigned content is refused (the same override as the CLI
-flag).
-Artifact downloads are HTTPS-only, git remotes are restricted to HTTPS, SSH, and
-local paths, and archive extraction is bounded.
+## Trust model
+
+Package metadata is signed with an Ed25519 key, id
+`obedience-marketplace-2026-01`, whose public half is compiled into the
+binary (`internal/verify/trust.go`). By default `festival` refuses to install
+or update anything whose metadata it cannot verify against that pinned key.
+To proceed anyway with unsigned development content, pass
+`--allow-unverified` on the CLI — it prints a loud warning to stderr — or
+accept the equivalent explicit consent prompt the TUI shows when it refuses
+unsigned content. Artifact downloads are HTTPS-only, git remotes are
+restricted to HTTPS, SSH, and local paths, and archive extraction is bounded.
 
 ## Quick start (humans)
 
@@ -66,7 +75,7 @@ The TUI home screen lets you:
 - Run doctor and PATH / shell-init guidance
 - **Launchpad** — open camp/fest tools (`camp wi`, `fest watch`, …) as real
   subprocesses; quit the tool to return to the hub without relaunching `festival`
-  (suspend → child → resume; see hub design docs)
+  (suspend → child → resume)
 
 **Animations:** boot splash, ambient multi-activity “booths”, progress flame, and
 a short success burst. Disable ambient motion with:
@@ -107,7 +116,9 @@ JSON envelopes use schema version `festival/v1alpha1`.
 
 Default: `~/.obey/installer` with `bin/`, `state.db`, marketplace clones, receipts.
 
-## Development
+## Build from source
+
+Requires Go 1.25.6 or newer (see `go.mod`).
 
 ```bash
 just                  # list recipes
@@ -116,6 +127,7 @@ just run version
 just check            # fmt + vet + lint + test
 just test
 just release all      # cross-platform festival-{os}-{arch}
+just ci                # full gate: check + all four release builds + static-link check
 ```
 
 ### Layout
@@ -137,13 +149,6 @@ internal/tui/          # bubbletea manager (theme, anim, screens)
 | `internal/verify`         | Canonical JSON + Ed25519 verification and pinned trust    |
 | `internal/artifacts`      | HTTPS download, bounded tar.gz, atomic move               |
 | `internal/source`         | Marketplace clone cache + package index                   |
-
-## Design reference
-
-- **Festival Hub (control plane / launchpad / getting started):**  
-  `workflow/design/festival-hub-control-plane/` in the campaign workspace — product contract, planes, and how the hub launches camp/fest TUIs then returns without relaunching `festival`.
-- Marketplace architecture: `workflow/design/dungeon/completed/2026-06-08/festival-plugin-marketplace/`
-- Brand fire colors: fest.build flame logo `#F2721C` / `#EA5513`
 
 ## License
 
