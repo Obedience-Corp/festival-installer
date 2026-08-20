@@ -19,7 +19,7 @@ const HubEnvKey = "FESTIVAL_HUB"
 // camp/fest TUIs work. The caller must leave the hub alt-screen before Run.
 //
 // While the child runs the hub ignores SIGINT so Ctrl+C aborts the child (same
-// foreground process group) without killing festival — design AC: quit child →
+// foreground process group) without killing festival. Design AC: quit child →
 // back in hub. Interactive handoff does not use CommandContext (which would
 // SIGKILL the child on context cancel).
 func Run(ctx context.Context, spec Spec) Result {

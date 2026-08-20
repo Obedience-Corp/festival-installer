@@ -40,7 +40,7 @@ func TestShellInit_FishPrependPath(t *testing.T) {
 
 func TestShellInit_QuotesHomeWithSpaces(t *testing.T) {
 	home := t.TempDir()
-	// Nested dir with spaces — FESTIVAL_HOME can be any absolute path.
+	// Nested dir with spaces: FESTIVAL_HOME can be any absolute path.
 	spaced := filepath.Join(home, "festival home")
 	if err := os.MkdirAll(filepath.Join(spaced, "bin"), 0o755); err != nil {
 		t.Fatal(err)

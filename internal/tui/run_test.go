@@ -20,7 +20,7 @@ func TestFormatChildBanner(t *testing.T) {
 		{
 			name: "success",
 			res:  launch.Result{Started: true, ExitCode: 0},
-			want: "returned from camp wi — back in festival hub",
+			want: "returned from camp wi, back in festival hub",
 		},
 		{
 			name: "exit 3",
@@ -30,7 +30,7 @@ func TestFormatChildBanner(t *testing.T) {
 		{
 			name: "signal interrupt",
 			res:  launch.Result{Started: true, ExitCode: 130, Signal: "interrupt", Err: errors.New("signal: interrupt")},
-			want: "returned from camp wi (interrupt) — back in festival hub",
+			want: "returned from camp wi (interrupt), back in festival hub",
 		},
 		{
 			name: "resolve failure",

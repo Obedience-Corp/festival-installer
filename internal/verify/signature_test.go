@@ -142,7 +142,7 @@ func TestVerify_ErrorMessagesAvoidSecretMaterial(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, b := range pub {
-		// printable ASCII check is irrelevant — what matters is no full key/sig substring leaks.
+		// printable ASCII check is irrelevant: what matters is no full key/sig substring leaks.
 		_ = b
 	}
 	// Cheap heuristic: error message must not contain hex of full signature or key.

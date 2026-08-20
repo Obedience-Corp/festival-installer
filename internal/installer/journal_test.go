@@ -259,7 +259,7 @@ func TestReconcile_MissingBackupDoesNotDeleteLive(t *testing.T) {
 	if err := os.WriteFile(dest, []byte("LIVE"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Point at a backup under a path that does not exist — Lstat fails with NotExist.
+	// Point at a backup under a path that does not exist: Lstat fails with NotExist.
 	backup := filepath.Join(home, "intent-backups", "gone", "backup-0")
 	if err := writeJournal(home, Journal{
 		ID:     "jid",

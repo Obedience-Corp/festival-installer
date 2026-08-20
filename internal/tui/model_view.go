@@ -163,7 +163,7 @@ func (m model) viewLaunchpad() string {
 		}
 	}
 	intro := s.Title.Render("Open a camp / fest tool") + "\n" +
-		s.Muted.Render("Runs the real binary. Quit that tool to return here — no need to relaunch festival.") + "\n\n"
+		s.Muted.Render("Runs the real binary. Quit that tool to return here. No need to relaunch festival.") + "\n\n"
 	return intro + components.Menu(items, m.cursor, s)
 }
 
@@ -250,7 +250,7 @@ func (m model) viewDoctor() string {
 		default:
 			badge = s.Err.Render(fmt.Sprintf("[%s fail] ", spin))
 		}
-		msg := c.ID + " — " + textsafe.Line(c.Message)
+		msg := c.ID + ": " + textsafe.Line(c.Message)
 		wrapped := wrapWords(msg, msgWidth)
 		for j, part := range wrapped {
 			if j == 0 {
@@ -341,7 +341,7 @@ func homeBoothIndex(cursor int) int {
 		return 3
 	case 7: // shell / path
 		return 4
-	case 8: // launchpad — multi-activity energy
+	case 8: // launchpad: multi-activity energy
 		return 0
 	default:
 		return 0

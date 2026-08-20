@@ -202,7 +202,7 @@ func (t *Transaction) Rollback(ctx context.Context) error {
 	if !t.committed {
 		// Prefer journal recovery when an intent remains (failed Commit that
 		// could not fully reverse). Do not wipe staging backups that may still
-		// be referenced — pre-images live under intent-backups/, not staging.
+		// be referenced: pre-images live under intent-backups/, not staging.
 		if j, ok, err := readJournal(t.home); err == nil && ok {
 			if rerr := Reconcile(ctx, t.home, nil); rerr != nil {
 				// Keep journal; still release lock/staging so the process can exit.

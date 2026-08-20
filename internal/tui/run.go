@@ -124,12 +124,12 @@ func formatChildBanner(spec launch.Spec, res launch.Result) string {
 		return fmt.Sprintf("could not launch %s", label)
 	}
 	if res.Signal != "" {
-		return fmt.Sprintf("returned from %s (%s) — back in festival hub", label, res.Signal)
+		return fmt.Sprintf("returned from %s (%s), back in festival hub", label, res.Signal)
 	}
 	if res.ExitCode != 0 {
 		return fmt.Sprintf("returned from %s (exit %d)", label, res.ExitCode)
 	}
-	return fmt.Sprintf("returned from %s — back in festival hub", label)
+	return fmt.Sprintf("returned from %s, back in festival hub", label)
 }
 
 // resetTerminalAfterChild best-effort restores cursor and SGR if a child left

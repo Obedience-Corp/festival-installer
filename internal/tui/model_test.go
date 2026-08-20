@@ -20,7 +20,7 @@ func TestHomeNavigation_Quit(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected quit cmd")
 	}
-	// execute cmd — tea.Quit returns a quit msg
+	// execute cmd: tea.Quit returns a quit msg
 	msg := cmd()
 	if _, ok := msg.(tea.QuitMsg); !ok {
 		// tea.Quit may return tea.QuitMsg via special internal; accept non-nil

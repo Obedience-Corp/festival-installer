@@ -53,5 +53,5 @@ func Celebrate(frame int, s theme.Styles) string {
 		"  .  *  .  *  . ",
 	}
 	p := patterns[frame%len(patterns)]
-	return s.FireTip.Render(p) + "\n" + s.OK.Render("  ready — the fire is lit")
+	return s.FireTip.Render(p) + "\n" + s.OK.Render("  ready: the fire is lit")
 }

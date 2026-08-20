@@ -174,7 +174,7 @@ func removePlacement(p JournalPlace) error {
 		_, berr := os.Lstat(p.Backup)
 		if berr != nil {
 			if os.IsNotExist(berr) {
-				// Journaled before backupExisting completed — live Dest is still
+				// Journaled before backupExisting completed. Live Dest is still
 				// the previous binary (or absent). Do not delete it.
 				return nil
 			}
