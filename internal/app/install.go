@@ -9,9 +9,30 @@ import (
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
+
+// selfBinaryName is the managed name of the hub itself. Entries naming it are
+// placed last so a failure during suite placement never leaves camp and fest
+// stale beside a newer hub.
+const selfBinaryName = "festival"
+
+// orderEntriesSelfLast reorders install entries so any entry naming the hub
+// itself lands after every other entry, regardless of manifest order.
+func orderEntriesSelfLast(entries []metadata.InstallEntry) []metadata.InstallEntry {
+	ordered := make([]metadata.InstallEntry, 0, len(entries))
+	var deferred []metadata.InstallEntry
+	for _, e := range entries {
+		if entryExecutableName(e) == selfBinaryName {
+			deferred = append(deferred, e)
+			continue
+		}
+		ordered = append(ordered, e)
+	}
+	return append(ordered, deferred...)
+}
 
 // InstallOptions configure a suite or plugin install.
 type InstallOptions struct {
@@ -112,7 +133,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 
 	report(progress, ProgressEvent{Stage: "activate", Package: FestivalPackageID, Percent: 0.85, Message: "lighting camp & fest"})
 	var files []string
-	for _, entry := range rel.Install.Entries {
+	for _, entry := range orderEntriesSelfLast(rel.Install.Entries) {
 		if entry.Kind != "binary" {
 			continue
 		}

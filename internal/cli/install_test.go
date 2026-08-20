@@ -21,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	"github.com/Obedience-Corp/festival-installer/internal/cli"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
@@ -93,19 +94,20 @@ func productManifest(url, sha string) string {
   "class": "product",
   "display_name": "Festival",
   "summary": "Camp + Fest suite",
-  "provides_binaries": ["camp", "fest"],
+  "provides_binaries": ["camp", "fest", "festival"],
   "releases": [
     {
       "version": "0.2.10",
       "channel": "stable",
       "published_at": "2026-06-08T00:00:00Z",
-      "components": {"camp": "0.2.11", "fest": "0.4.5"},
+      "components": {"camp": "0.2.11", "fest": "0.4.5", "festival": "0.2.10"},
       "compatibility": {"os": [%q], "arch": [%q]},
       "dependencies": [],
       "artifacts": [
-        {"kind": "suite-archive", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "festival.tar.gz", "binaries": ["camp", "fest"]}
+        {"kind": "suite-archive", "os": %q, "arch": %q, "url": %q, "sha256": %q, "filename": "festival.tar.gz", "binaries": ["camp", "fest", "festival"]}
       ],
       "install": {"entries": [
+        {"kind": "binary", "source": "festival", "executable_name": "festival"},
         {"kind": "binary", "source": "camp", "executable_name": "camp"},
         {"kind": "binary", "source": "fest", "executable_name": "fest"}
       ]}
@@ -177,6 +179,7 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewBrowseCommand())
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewListCommand())
 	cli.WrapJSONErrors(root)
 	var out, errOut bytes.Buffer
 	root.SetOut(&out)
@@ -193,7 +196,8 @@ func TestInstallFestival_E2E(t *testing.T) {
 
 	campBody := "#!/bin/sh\necho camp\n"
 	festBody := "#!/bin/sh\necho fest\n"
-	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody})
+	festivalBody := "#!/bin/sh\necho festival\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(tarball)
@@ -217,12 +221,18 @@ func TestInstallFestival_E2E(t *testing.T) {
 		Files   []string `json:"files"`
 	}
 	dataOf(t, out, &res)
-	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 2 {
+	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 3 {
 		t.Fatalf("unexpected install result: %+v", res)
+	}
+	// The manifest lists festival first among install.entries; the placement
+	// order must still put the hub last so a crash mid-transaction never
+	// leaves camp and fest stale next to a newer hub.
+	if last := res.Files[len(res.Files)-1]; filepath.Base(last) != "festival" {
+		t.Fatalf("expected hub placed last, got files=%v", res.Files)
 	}
 
 	binDir, _ := state.BinDir(ctx)
-	for name, body := range map[string]string{"camp": campBody, "fest": festBody} {
+	for name, body := range map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody} {
 		p := filepath.Join(binDir, name)
 		fi, statErr := os.Stat(p)
 		if statErr != nil {
@@ -241,17 +251,54 @@ func TestInstallFestival_E2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receipt: %v", err)
 	}
-	if rec.Version != "0.2.10" || rec.Channel != "stable" || len(rec.OwnedFiles) != 2 {
+	if rec.Version != "0.2.10" || rec.Channel != "stable" || len(rec.OwnedFiles) != 3 {
 		t.Fatalf("receipt wrong: %+v", rec)
 	}
 	wantHash := map[string]string{
-		filepath.Join(binDir, "camp"): sha256Hex([]byte(campBody)),
-		filepath.Join(binDir, "fest"): sha256Hex([]byte(festBody)),
+		filepath.Join(binDir, "camp"):     sha256Hex([]byte(campBody)),
+		filepath.Join(binDir, "fest"):     sha256Hex([]byte(festBody)),
+		filepath.Join(binDir, "festival"): sha256Hex([]byte(festivalBody)),
 	}
+	sawHub := false
 	for _, of := range rec.OwnedFiles {
 		if wantHash[of.Path] != of.Hash {
 			t.Fatalf("owned file %s hash = %s, want %s", of.Path, of.Hash, wantHash[of.Path])
 		}
+		if of.Mode.Perm() != 0o755 {
+			t.Fatalf("owned file %s mode = %o, want 0755", of.Path, of.Mode.Perm())
+		}
+		if filepath.Base(of.Path) == "festival" {
+			sawHub = true
+		}
+	}
+	if !sawHub {
+		t.Fatalf("receipt missing the hub binary: %+v", rec.OwnedFiles)
+	}
+
+	which, err := app.ResolveWhich(ctx, "festival")
+	if err != nil {
+		t.Fatalf("ResolveWhich festival: %v", err)
+	}
+	if which.Managed == "" {
+		t.Fatalf("expected festival's managed path to be set after a suite install, got %+v", which)
+	}
+
+	listOut, _, err := runInstaller(t, "list", "--json")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	var listRes struct {
+		Packages []struct {
+			PackageID string   `json:"package_id"`
+			Files     []string `json:"files"`
+		} `json:"packages"`
+	}
+	dataOf(t, listOut, &listRes)
+	if len(listRes.Packages) != 1 || listRes.Packages[0].PackageID != festivalPackageIDForTest {
+		t.Fatalf("expected one package %q, got %+v", festivalPackageIDForTest, listRes.Packages)
+	}
+	if len(listRes.Packages[0].Files) != 3 {
+		t.Fatalf("festival list: got %d owned files, want 3: %v", len(listRes.Packages[0].Files), listRes.Packages[0].Files)
 	}
 }
 

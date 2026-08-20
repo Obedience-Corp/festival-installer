@@ -206,10 +206,12 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 
 	writeManagedBinary(t, binDir, "camp", "0.2.9")
 	writeManagedBinary(t, binDir, "fest", "0.2.9")
+	writeManagedBinary(t, binDir, "festival", "0.2.9")
 
 	newCamp := "#!/bin/sh\necho new-camp\n"
 	newFest := "#!/bin/sh\necho new-fest\n"
-	tarball := buildSuiteTarGz(t, map[string]string{"camp": newCamp, "fest": newFest})
+	newFestival := "#!/bin/sh\necho new-festival\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": newCamp, "fest": newFest, "festival": newFestival})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(tarball)
 	}))
@@ -237,6 +239,10 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Join(binDir, "camp"))
 	if string(got) != newCamp {
 		t.Fatalf("camp not replaced: %q", got)
+	}
+	gotFestival, _ := os.ReadFile(filepath.Join(binDir, "festival"))
+	if string(gotFestival) != newFestival {
+		t.Fatalf("festival not replaced: %q", gotFestival)
 	}
 	rec, err := receipts.Get(ctx, mustDB(t, ctx, home), festivalPackageIDForTest)
 	if err != nil || rec.Version != "0.2.10" {
