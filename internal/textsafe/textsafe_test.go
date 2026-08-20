@@ -19,8 +19,8 @@ func TestLine(t *testing.T) {
 		},
 		{
 			name: "unicode text passes through unchanged",
-			in:   "café — naïve Ω 日本語 🔥",
-			want: "café — naïve Ω 日本語 🔥",
+			in:   "café · naïve Ω 日本語 🔥",
+			want: "café · naïve Ω 日本語 🔥",
 		},
 		{
 			name: "empty stays empty",

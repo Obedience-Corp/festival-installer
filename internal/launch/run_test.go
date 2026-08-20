@@ -84,7 +84,7 @@ func TestRun_HubEnvAndManagedPath(t *testing.T) {
 	decoy := t.TempDir()
 	t.Setenv("PATH", decoy+string(os.PathListSeparator)+bin)
 
-	// Capture stdout via a wrapper that writes to a file — Run uses os.Stdout.
+	// Capture stdout via a wrapper that writes to a file. Run uses os.Stdout.
 	// Instead assert by running a tool that exits non-zero with message in stderr...
 	// Simpler: use Spec with a script that writes marker file.
 	marker := filepath.Join(home, "env.out")

@@ -19,7 +19,7 @@ func main() {
 	var forceTUI bool
 	root := &cobra.Command{
 		Use:   "festival",
-		Short: "Festival hub — install, onboard, and launch camp/fest tools",
+		Short: "Festival hub: install, onboard, and launch camp/fest tools",
 		Long: `festival is the Festival hub: install and update camp/fest, browse plugins,
 and open key camp/fest TUIs from one branded home.
 

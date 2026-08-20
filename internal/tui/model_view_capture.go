@@ -19,7 +19,7 @@ func (m model) viewChildOutput() string {
 	if m.captureRes != nil {
 		status = childOutputStatus(*m.captureRes)
 	}
-	head := s.FireTip.Render("▸ " + m.captureTitle + " — " + status)
+	head := s.FireTip.Render("▸ " + m.captureTitle + ": " + status)
 	return lipgloss.JoinVertical(lipgloss.Left, head, m.captureVP.View())
 }
 

@@ -19,7 +19,7 @@ func TestResolve_ManagedBinPreferred(t *testing.T) {
 	if err := os.WriteFile(tool, []byte("#!/bin/sh\necho managed\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Also put a decoy earlier on PATH — managed must win.
+	// Also put a decoy earlier on PATH. Managed must win.
 	decoyDir := t.TempDir()
 	decoy := filepath.Join(decoyDir, "camp")
 	if err := os.WriteFile(decoy, []byte("#!/bin/sh\necho path\n"), 0o755); err != nil {
