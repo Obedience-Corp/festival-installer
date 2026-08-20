@@ -79,6 +79,9 @@ func (m model) View() string {
 		title = "result"
 		body = m.viewResult()
 		footer = "enter continue  esc home"
+		if m.resultRestart {
+			footer = "r restart  enter continue  esc home"
+		}
 	}
 
 	if m.help {

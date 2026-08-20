@@ -20,6 +20,9 @@ type UpdateResult struct {
 	From          string        `json:"from,omitempty"`
 	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
 	SelfPath      string        `json:"self_path,omitempty"`
+	// SelfReplaced is true when this update replaced the running hub binary,
+	// which means the process printing this message is the previous version.
+	SelfReplaced bool `json:"self_replaced"`
 }
 
 // UninstallResult is returned by uninstall operations.

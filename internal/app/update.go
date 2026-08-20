@@ -88,6 +88,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
+	selfReplaced := false
 	if selfPlacement != SelfManaged {
 		note := "festival is installed outside this managed bin dir (" + selfPath + "); left untouched"
 		if warning == "" {
@@ -95,8 +96,23 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		} else {
 			warning = warning + "; " + note
 		}
+	} else {
+		for _, f := range res.Files {
+			if filepath.Base(f) == selfBinaryName {
+				selfReplaced = true
+				break
+			}
+		}
 	}
-	return UpdateResult{Package: FestivalPackageID, Action: "upgraded", Version: res.Version, From: installedVersion, SelfPlacement: selfPlacement, SelfPath: selfPath}, warning, nil
+	return UpdateResult{
+		Package:       FestivalPackageID,
+		Action:        "upgraded",
+		Version:       res.Version,
+		From:          installedVersion,
+		SelfPlacement: selfPlacement,
+		SelfPath:      selfPath,
+		SelfReplaced:  selfReplaced,
+	}, warning, nil
 }
 
 // ReadFestivalReceipt loads the suite receipt if present.

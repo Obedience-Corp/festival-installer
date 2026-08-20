@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -188,6 +189,23 @@ func (m model) launchSelected() (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
+// selfToolName is the managed name of the hub binary itself.
+const selfToolName = "festival"
+
+// restartHub re-execs into the newly-updated festival binary with the same
+// arguments this session started with. It only runs when the user presses r
+// on a result screen offering the restart, never on its own: the update that
+// replaced the binary does not quit the process by itself.
+func (m model) restartHub() (tea.Model, tea.Cmd) {
+	if _, err := launch.Resolve(m.ctx, selfToolName); err != nil {
+		m.err = err
+		return m, nil
+	}
+	spec := launch.Spec{Tool: selfToolName, Args: append([]string{}, os.Args[1:]...)}
+	m.pendingLaunch = &spec
+	return m, tea.Quit
+}
+
 // startCapture spawns a capture-mode child and switches to the output screen.
 func (m model) startCapture(entry launch.Entry) (tea.Model, tea.Cmd) {
 	cs, err := launch.StartCapture(m.ctx, entry.Spec)
@@ -293,29 +311,38 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			}
 			return opDoneMsg{stream: ps, title: "Update failed", body: err.Error(), err: err, success: false}
 		}
-		body := fmt.Sprintf("action: %s\nversion: %s\n", res.Action, res.Version)
-		if res.From != "" {
-			body += "from: " + res.From + "\n"
-		}
-		if warning != "" {
-			body += "\n" + warning + "\n"
-		}
-		ok := res.Action == "upgraded" || res.Action == "current"
-		title := "Update"
-		switch res.Action {
-		case "upgraded":
-			title = "Updated"
-		case "current":
-			title = "Already current"
-		case "unmanaged":
-			title = "Unmanaged install"
-			ok = false
-		case "absent":
-			title = "Not installed"
-			ok = false
-		}
-		return opDoneMsg{stream: ps, title: title, body: body, success: ok}
+		return updateOpDoneMsg(ps, res, warning)
 	}
+}
+
+// updateOpDoneMsg builds the result-screen message for a completed update,
+// including the restart offer when the update replaced the running hub.
+func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) opDoneMsg {
+	body := fmt.Sprintf("action: %s\nversion: %s\n", res.Action, res.Version)
+	if res.From != "" {
+		body += "from: " + res.From + "\n"
+	}
+	if warning != "" {
+		body += "\n" + warning + "\n"
+	}
+	if res.SelfReplaced {
+		body += "\nfestival was updated to " + res.Version + "; restart to use the new version\n"
+	}
+	ok := res.Action == "upgraded" || res.Action == "current"
+	title := "Update"
+	switch res.Action {
+	case "upgraded":
+		title = "Updated"
+	case "current":
+		title = "Already current"
+	case "unmanaged":
+		title = "Unmanaged install"
+		ok = false
+	case "absent":
+		title = "Not installed"
+		ok = false
+	}
+	return opDoneMsg{stream: ps, title: title, body: body, success: ok, restart: res.SelfReplaced}
 }
 
 func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {

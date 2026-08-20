@@ -248,13 +248,17 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 		t.Fatalf("update: %v", err)
 	}
 	var res struct {
-		Action  string `json:"action"`
-		Version string `json:"version"`
-		From    string `json:"from"`
+		Action       string `json:"action"`
+		Version      string `json:"version"`
+		From         string `json:"from"`
+		SelfReplaced bool   `json:"self_replaced"`
 	}
 	dataOf(t, out, &res)
 	if res.Action != "upgraded" || res.Version != "0.2.10" || res.From != "0.2.9" {
 		t.Fatalf("expected upgraded 0.2.9 -> 0.2.10, got %+v", res)
+	}
+	if !res.SelfReplaced {
+		t.Fatalf("expected self_replaced true when the managed hub was placed, got %+v", res)
 	}
 	got, _ := os.ReadFile(filepath.Join(binDir, "camp"))
 	if string(got) != newCamp {
@@ -267,6 +271,66 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 	rec, err := receipts.Get(ctx, mustDB(t, ctx, home), festivalPackageIDForTest)
 	if err != nil || rec.Version != "0.2.10" {
 		t.Fatalf("receipt not updated to 0.2.10: %+v err=%v", rec, err)
+	}
+}
+
+func TestUpdate_UpgradedSelfReplacedPrintsRestartLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	ctx := context.Background()
+	binDir := filepath.Join(home, "bin")
+
+	writeManagedBinary(t, binDir, "camp", "0.2.9")
+	writeManagedBinary(t, binDir, "fest", "0.2.9")
+	symlinkSelfAsManagedFestival(t, home)
+
+	tarball := buildSuiteTarGz(t, map[string]string{
+		"camp":     "#!/bin/sh\necho new-camp\n",
+		"fest":     "#!/bin/sh\necho new-fest\n",
+		"festival": "#!/bin/sh\necho new-festival\n",
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+	writeFestivalReceipt(t, ctx, home, "0.2.9", "official-obey", binDir)
+
+	out, _, err := runInstaller(t, "update", "festival", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if !strings.Contains(out, "restart it to use the new version") {
+		t.Fatalf("expected a restart line for a self-replaced hub, got %q", out)
+	}
+}
+
+func TestUpdate_CurrentActionHasNoRestartLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	ctx := context.Background()
+	binDir := filepath.Join(home, "bin")
+
+	writeManagedBinary(t, binDir, "camp", "0.2.10")
+	writeManagedBinary(t, binDir, "fest", "0.2.10")
+	symlinkSelfAsManagedFestival(t, home)
+
+	repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
+
+	out, _, err := runInstaller(t, "update", "festival", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if strings.Contains(out, "restart it to use the new version") {
+		t.Fatalf("expected no restart line for an already-current update, got %q", out)
 	}
 }
 
@@ -306,6 +370,7 @@ func TestUpdate_ExternalHubUpdatesPairAndWarns(t *testing.T) {
 		From          string `json:"from"`
 		SelfPlacement string `json:"self_placement"`
 		SelfPath      string `json:"self_path"`
+		SelfReplaced  bool   `json:"self_replaced"`
 	}
 	dataOf(t, out, &res)
 	if res.Action != "upgraded" || res.Version != "0.2.10" || res.From != "0.2.9" {
@@ -316,6 +381,9 @@ func TestUpdate_ExternalHubUpdatesPairAndWarns(t *testing.T) {
 	}
 	if res.SelfPath == "" {
 		t.Fatalf("expected self_path to be set: %+v", res)
+	}
+	if res.SelfReplaced {
+		t.Fatalf("expected self_replaced false for an external hub, got %+v", res)
 	}
 	if !strings.Contains(errOut, "left untouched") {
 		t.Fatalf("expected a left-untouched warning on stderr, got %q", errOut)
