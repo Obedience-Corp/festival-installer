@@ -14,10 +14,12 @@ type InstallResult struct {
 
 // UpdateResult is returned by update operations.
 type UpdateResult struct {
-	Package string `json:"package"`
-	Action  string `json:"action"` // upgraded | current | unmanaged | absent
-	Version string `json:"version,omitempty"`
-	From    string `json:"from,omitempty"`
+	Package       string        `json:"package"`
+	Action        string        `json:"action"` // upgraded | current | unmanaged | absent
+	Version       string        `json:"version,omitempty"`
+	From          string        `json:"from,omitempty"`
+	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
+	SelfPath      string        `json:"self_path,omitempty"`
 }
 
 // UninstallResult is returned by uninstall operations.

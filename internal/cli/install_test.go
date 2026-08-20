@@ -189,9 +189,31 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
+// symlinkSelfAsManagedFestival makes the running test binary resolve as the
+// managed hub (app.ResolveWhich/app.ResolveSelf compare os.Executable against
+// binDir/festival with symlinks resolved on both sides). Suite install/update
+// tests use this to exercise the common case: an already-managed hub
+// replacing itself. Tests that omit this call exercise the external-hub case
+// instead, since the go test binary is never binDir/festival on its own.
+func symlinkSelfAsManagedFestival(t *testing.T, home string) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	if err := os.Symlink(exe, filepath.Join(binDir, "festival")); err != nil {
+		t.Fatalf("symlink self as managed festival: %v", err)
+	}
+}
+
 func TestInstallFestival_E2E(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	symlinkSelfAsManagedFestival(t, home)
 	ctx := context.Background()
 
 	campBody := "#!/bin/sh\necho camp\n"

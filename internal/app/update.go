@@ -28,12 +28,22 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
 	}
 
+	// Resolve self-placement up front so it is reported regardless of which
+	// action the update ends up taking.
+	selfPlacement, selfPath, err := ResolveSelf(ctx)
+	if err != nil {
+		return UpdateResult{}, "", err
+	}
+
 	rec, found, err := ReadFestivalReceipt(ctx)
 	if err != nil {
 		return UpdateResult{}, "", err
 	}
 	if !found {
-		return handleUnmanaged(ctx)
+		res, warning, herr := handleUnmanaged(ctx)
+		res.SelfPlacement = selfPlacement
+		res.SelfPath = selfPath
+		return res, warning, herr
 	}
 
 	channel := rec.Channel
@@ -66,7 +76,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 
 	if !installer.VersionLess(installedVersion, latest.Version) {
-		return UpdateResult{Package: FestivalPackageID, Action: "current", Version: installedVersion}, warning, nil
+		return UpdateResult{Package: FestivalPackageID, Action: "current", Version: installedVersion, SelfPlacement: selfPlacement, SelfPath: selfPath}, warning, nil
 	}
 
 	res, err := InstallFestival(ctx, InstallOptions{
@@ -78,7 +88,15 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
-	return UpdateResult{Package: FestivalPackageID, Action: "upgraded", Version: res.Version, From: installedVersion}, warning, nil
+	if selfPlacement != SelfManaged {
+		note := "festival is installed outside this managed bin dir (" + selfPath + "); left untouched"
+		if warning == "" {
+			warning = note
+		} else {
+			warning = warning + "; " + note
+		}
+	}
+	return UpdateResult{Package: FestivalPackageID, Action: "upgraded", Version: res.Version, From: installedVersion, SelfPlacement: selfPlacement, SelfPath: selfPath}, warning, nil
 }
 
 // ReadFestivalReceipt loads the suite receipt if present.

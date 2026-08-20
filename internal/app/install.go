@@ -131,10 +131,18 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		return InstallResult{}, err
 	}
 
+	placement, _, err := ResolveSelf(ctx)
+	if err != nil {
+		return InstallResult{}, err
+	}
+
 	report(progress, ProgressEvent{Stage: "activate", Package: FestivalPackageID, Percent: 0.85, Message: "lighting camp & fest"})
 	var files []string
 	for _, entry := range orderEntriesSelfLast(rel.Install.Entries) {
 		if entry.Kind != "binary" {
+			continue
+		}
+		if entryExecutableName(entry) == selfBinaryName && placement != SelfManaged {
 			continue
 		}
 		srcName := entry.Source
