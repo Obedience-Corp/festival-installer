@@ -90,7 +90,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 	selfReplaced := false
 	if selfPlacement != SelfManaged {
-		note := "festival is installed outside this managed bin dir (" + selfPath + "); left untouched"
+		note := SelfSkippedNote(selfPlacement, selfPath)
 		if warning == "" {
 			warning = note
 		} else {

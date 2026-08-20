@@ -127,6 +127,45 @@ func TestResolveSelf_PathLookupInvocation(t *testing.T) {
 	}
 }
 
+func TestResolveSelf_UnknownOnResolutionError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses directory permission checks")
+	}
+	dir := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", dir)
+	t.Setenv("FESTIVAL_HOME", "")
+
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(binDir, 0o755); err != nil {
+			t.Fatalf("restore bin dir mode: %v", err)
+		}
+	})
+	// Strip search permission on the managed bin dir itself so resolving
+	// binDir/festival fails with a permission error rather than not-exist.
+	if err := os.Chmod(binDir, 0o000); err != nil {
+		t.Fatalf("chmod bin dir: %v", err)
+	}
+
+	placement, path, err := ResolveSelf(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveSelf: %v", err)
+	}
+	if placement != SelfUnknown {
+		t.Fatalf("placement = %q, want %q", placement, SelfUnknown)
+	}
+	exe, exeErr := os.Executable()
+	if exeErr != nil {
+		t.Fatalf("os.Executable: %v", exeErr)
+	}
+	if path != exe {
+		t.Fatalf("path = %q, want %q", path, exe)
+	}
+}
+
 func TestResolveSelf_ContextCancelledSkipsFilesystem(t *testing.T) {
 	// If ResolveSelf reached state.BinDir before checking ctx, this would
 	// fail with E_HOME_NOT_ABS instead of the context error.

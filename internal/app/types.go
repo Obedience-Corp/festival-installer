@@ -5,11 +5,16 @@ const FestivalPackageID = "obedience-corp/festival"
 
 // InstallResult is returned by install operations.
 type InstallResult struct {
-	Package string   `json:"package"`
-	Version string   `json:"version"`
-	Channel string   `json:"channel"`
-	Source  string   `json:"source"`
-	Files   []string `json:"files"`
+	Package       string        `json:"package"`
+	Version       string        `json:"version"`
+	Channel       string        `json:"channel"`
+	Source        string        `json:"source"`
+	Files         []string      `json:"files"`
+	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
+	SelfPath      string        `json:"self_path,omitempty"`
+	// SelfSkipped is true when the manifest named the hub itself but it was
+	// left in place because the running hub is not the managed binary.
+	SelfSkipped bool `json:"self_skipped,omitempty"`
 }
 
 // UpdateResult is returned by update operations.

@@ -88,6 +88,38 @@ func TestUninstall_RefusesToRemoveRunningHub(t *testing.T) {
 	}
 }
 
+func TestUninstall_RefusesWhenSelfPlacementUnknown(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root bypasses directory permission checks")
+	}
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	binDir := filepath.Join(home, "bin")
+
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(binDir, 0o755); err != nil {
+			t.Fatalf("restore bin dir mode: %v", err)
+		}
+	})
+	// Strip search permission on the managed bin dir so ResolveSelf cannot
+	// resolve binDir/festival and reports SelfUnknown instead of SelfManaged
+	// or SelfExternal.
+	if err := os.Chmod(binDir, 0o000); err != nil {
+		t.Fatalf("chmod bin dir: %v", err)
+	}
+
+	_, errOut, err := runInstaller(t, "uninstall", "festival")
+	if err == nil {
+		t.Fatal("expected uninstall to refuse when self placement cannot be resolved")
+	}
+	if !hasErrorCode(err, "E_UNINSTALL_SELF") {
+		t.Fatalf("expected E_UNINSTALL_SELF, got err=%v errOut=%s", err, errOut)
+	}
+}
+
 func TestUninstall_NoReceiptIsNoOp(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)

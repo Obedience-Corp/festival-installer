@@ -245,14 +245,18 @@ func TestInstallFestival_E2E(t *testing.T) {
 	}
 
 	var res struct {
-		Package string   `json:"package"`
-		Version string   `json:"version"`
-		Channel string   `json:"channel"`
-		Files   []string `json:"files"`
+		Package     string   `json:"package"`
+		Version     string   `json:"version"`
+		Channel     string   `json:"channel"`
+		Files       []string `json:"files"`
+		SelfSkipped bool     `json:"self_skipped"`
 	}
 	dataOf(t, out, &res)
 	if res.Version != "0.2.10" || res.Channel != "stable" || len(res.Files) != 3 {
 		t.Fatalf("unexpected install result: %+v", res)
+	}
+	if res.SelfSkipped {
+		t.Fatalf("expected self_skipped false when the hub is managed and gets placed, got %+v", res)
 	}
 	// The manifest lists festival first among install.entries; the placement
 	// order must still put the hub last so a crash mid-transaction never
@@ -329,6 +333,70 @@ func TestInstallFestival_E2E(t *testing.T) {
 	}
 	if len(listRes.Packages[0].Files) != 3 {
 		t.Fatalf("festival list: got %d owned files, want 3: %v", len(listRes.Packages[0].Files), listRes.Packages[0].Files)
+	}
+}
+
+func TestInstallFestival_ExternalHubSkipsAndWarns(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	// No symlinkSelfAsManagedFestival call: the running test binary is not
+	// binDir/festival, so the hub resolves as external and must be skipped.
+
+	campBody := "#!/bin/sh\necho camp\n"
+	festBody := "#!/bin/sh\necho fest\n"
+	festivalBody := "#!/bin/sh\necho festival\n"
+	tarball := buildSuiteTarGz(t, map[string]string{"camp": campBody, "fest": festBody, "festival": festivalBody})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(tarball)
+	}))
+	t.Cleanup(srv.Close)
+
+	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	out, errOut, err := runInstaller(t, "install", "festival", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("install: %v\n%s", err, errOut)
+	}
+
+	var res struct {
+		Package       string   `json:"package"`
+		Version       string   `json:"version"`
+		Files         []string `json:"files"`
+		SelfPlacement string   `json:"self_placement"`
+		SelfSkipped   bool     `json:"self_skipped"`
+	}
+	dataOf(t, out, &res)
+	if res.SelfPlacement != "external" {
+		t.Fatalf("expected self_placement external, got %+v", res)
+	}
+	if !res.SelfSkipped {
+		t.Fatalf("expected self_skipped true when the hub is external, got %+v", res)
+	}
+	if len(res.Files) != 2 {
+		t.Fatalf("expected only camp and fest to be placed, got %v", res.Files)
+	}
+
+	if !strings.Contains(errOut, "install: ") || !strings.Contains(errOut, "left untouched") {
+		t.Fatalf("expected a left-untouched note on stderr, got %q", errOut)
+	}
+
+	var envelope struct {
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, out)
+	}
+	if len(envelope.Warnings) != 1 || !strings.Contains(envelope.Warnings[0], "left untouched") {
+		t.Fatalf("expected a left-untouched warning in the JSON warnings array, got %v", envelope.Warnings)
+	}
+
+	binDir, _ := state.BinDir(context.Background())
+	if _, statErr := os.Stat(filepath.Join(binDir, "festival")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no managed festival binary to be written, stat err=%v", statErr)
 	}
 }
 

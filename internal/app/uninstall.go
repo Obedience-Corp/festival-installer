@@ -47,10 +47,16 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 		if err != nil {
 			return UninstallResult{}, err
 		}
-		if placement == SelfManaged {
+		switch placement {
+		case SelfManaged:
 			return UninstallResult{}, errpkg.New("E_UNINSTALL_SELF",
-				"refusing to uninstall the running festival binary at "+selfPath+
-					"; remove it with the package manager that installed it")
+				"the running festival binary at "+selfPath+" cannot delete itself. "+
+					"Run uninstall from a festival binary outside the managed bin dir, "+
+					"or delete the managed files manually after this process exits.")
+		case SelfUnknown:
+			return UninstallResult{}, errpkg.New("E_UNINSTALL_SELF",
+				"could not determine whether the running festival binary at "+selfPath+
+					" is the managed one; retry once the underlying error clears.")
 		}
 	}
 	home, err := state.Home(ctx)
