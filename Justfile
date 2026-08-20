@@ -39,8 +39,22 @@ lint:
     @just tools require-golangci-lint
     golangci-lint run ./...
 
-# Combined pre-commit gate: fmt + vet + lint + test
-check: fmt vet lint test
+# Fail if an em dash (U+2014) appears in tracked .go or .md files
+no-em-dash:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    hits="$(git grep -n $'\xe2\x80\x94' -- '*.go' '*.md' || true)"
+    if [ -n "$hits" ]; then
+        echo "em dash (U+2014) found in tracked .go/.md files:" >&2
+        echo "$hits" >&2
+        echo "" >&2
+        echo "This repo does not allow em dashes in source or docs. Use a colon, a comma, parentheses, or two sentences instead." >&2
+        exit 1
+    fi
+    echo "no em dashes found in tracked .go/.md files"
+
+# Combined pre-commit gate: fmt + vet + lint + no-em-dash + test
+check: fmt vet lint no-em-dash test
 
 # What CI runs: full check plus cross-platform release build
 ci: check
