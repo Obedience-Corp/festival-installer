@@ -523,3 +523,19 @@ func TestInstallFestival_UnsignedRefusedWithoutAllowUnverified(t *testing.T) {
 		}
 	}
 }
+
+func TestInstall_HelpDescribesThreeBinarySuite(t *testing.T) {
+	out, _, err := runInstaller(t, "install", "--help")
+	if err != nil {
+		t.Fatalf("install --help: %v", err)
+	}
+	if strings.Contains(out, "Install the festival suite (camp + fest)") {
+		t.Fatalf("stale two-binary Short still present:\n%s", out)
+	}
+	if strings.Contains(out, "(camp + fest)") {
+		t.Fatalf("help still describes the suite as camp + fest:\n%s", out)
+	}
+	if !strings.Contains(out, "camp, fest, and festival") {
+		t.Fatalf("expected three-binary suite copy in help, got:\n%s", out)
+	}
+}
