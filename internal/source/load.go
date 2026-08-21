@@ -21,6 +21,10 @@ type VerifyOptions struct {
 	Policy          metadata.Policy
 	AllowUnverified bool
 	WarnWriter      io.Writer
+	// SourceLabel names the source being verified, for the refusal message and
+	// the unverified-content warning (metadata.IngestOptions.SourceLabel).
+	// Empty falls back to the bare "source" label.
+	SourceLabel string
 }
 
 // DefaultVerifyOptions is the live-path policy for install/update/plugin.
@@ -56,7 +60,7 @@ func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo V
 }
 
 func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {
-	mp, err := LoadMarketplace(ctx, dest)
+	mp, err := LoadMarketplace(ctx, dest, vo)
 	if err != nil {
 		return metadata.PackageManifest{}, err
 	}
@@ -72,7 +76,7 @@ func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID
 		if err != nil {
 			return metadata.PackageManifest{}, errpkg.Wrap("E_PKG_MANIFEST_READ", err, "read "+ref.ManifestPath)
 		}
-		sig, err := loadDetachedSignature(manifestPath, ref.ManifestPath)
+		sig, err := loadDetachedSignature(manifestPath, ref.ManifestPath, "E_PKG_SIG_READ")
 		if err != nil {
 			return metadata.PackageManifest{}, err
 		}
@@ -94,13 +98,18 @@ func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID
 	return metadata.PackageManifest{}, errpkg.Wrap("E_PKG_NOT_FOUND", ErrPackageNotFound, packageID+" in source "+sourceName)
 }
 
-func loadDetachedSignature(manifestPath, relPath string) (*verify.Signature, error) {
-	sigRaw, err := os.ReadFile(manifestPath + ".sig")
+// loadDetachedSignature reads path+".sig". An absent signature is not an
+// error: it returns (nil, nil) and leaves the decision to the caller's
+// policy. errCode identifies the caller for an unreadable (but present)
+// signature file, since package manifests and the marketplace document want
+// distinct codes here.
+func loadDetachedSignature(path, relPath, errCode string) (*verify.Signature, error) {
+	sigRaw, err := os.ReadFile(path + ".sig")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, errpkg.Wrap("E_PKG_SIG_READ", err, "read "+relPath+".sig")
+		return nil, errpkg.Wrap(errCode, err, "read "+relPath+".sig")
 	}
 	sig, err := verify.ParseDetachedSignature(sigRaw)
 	if err != nil {

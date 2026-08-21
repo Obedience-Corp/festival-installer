@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -65,7 +66,8 @@ func AddMarketplace(ctx context.Context, gitURL, name string) (Source, error) {
 		if err != nil {
 			return err
 		}
-		if _, err := LoadMarketplace(ctx, dest); err != nil {
+		// TODO(task 02): placeholder policy, replaced once AddMarketplace threads vo.
+		if _, err := LoadMarketplace(ctx, dest, DefaultVerifyOptions(os.Stderr, false)); err != nil {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}
@@ -127,7 +129,8 @@ func ListMarketplaces(ctx context.Context) ([]ListView, error) {
 				views = append(views, view)
 				continue
 			}
-			m, merr := LoadMarketplace(ctx, dest)
+			// TODO(task 02): placeholder policy, replaced once ListMarketplaces threads vo.
+			m, merr := LoadMarketplace(ctx, dest, DefaultVerifyOptions(os.Stderr, false))
 			if merr != nil {
 				view.Err = merr.Error()
 				views = append(views, view)
@@ -158,7 +161,8 @@ func AllPackages(ctx context.Context) ([]BrowsePackage, error) {
 			if derr != nil {
 				return derr
 			}
-			m, merr := LoadMarketplace(ctx, dest)
+			// TODO(task 02): placeholder policy, replaced once AllPackages threads vo.
+			m, merr := LoadMarketplace(ctx, dest, DefaultVerifyOptions(os.Stderr, false))
 			if merr != nil {
 				return errpkg.Wrap("E_BROWSE_LOAD", merr, "load marketplace "+src.Name)
 			}

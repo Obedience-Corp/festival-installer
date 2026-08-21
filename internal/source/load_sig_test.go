@@ -16,7 +16,7 @@ func TestLoadDetachedSignature_Absent(t *testing.T) {
 	if err := os.WriteFile(manifestPath, []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
-	sig, err := loadDetachedSignature(manifestPath, "manifest.json")
+	sig, err := loadDetachedSignature(manifestPath, "manifest.json", "E_PKG_SIG_READ")
 	if err != nil {
 		t.Fatalf("absent signature should not error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestLoadDetachedSignature_Present(t *testing.T) {
 	if err := os.WriteFile(manifestPath+".sig", []byte(sigJSON), 0o600); err != nil {
 		t.Fatalf("write sig: %v", err)
 	}
-	sig, err := loadDetachedSignature(manifestPath, "manifest.json")
+	sig, err := loadDetachedSignature(manifestPath, "manifest.json", "E_PKG_SIG_READ")
 	if err != nil {
 		t.Fatalf("present signature: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestLoadDetachedSignature_Malformed(t *testing.T) {
 	if err := os.WriteFile(manifestPath+".sig", []byte("not json"), 0o600); err != nil {
 		t.Fatalf("write sig: %v", err)
 	}
-	if _, err := loadDetachedSignature(manifestPath, "manifest.json"); err == nil {
+	if _, err := loadDetachedSignature(manifestPath, "manifest.json", "E_PKG_SIG_READ"); err == nil {
 		t.Fatal("expected an error for a malformed .sig file")
 	}
 }

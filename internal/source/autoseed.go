@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"os"
 
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
@@ -41,7 +42,9 @@ func seedFromURL(ctx context.Context, gitURL string) (bool, error) {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}
-		if _, err := LoadMarketplace(ctx, dest); err != nil {
+		// TODO(task 02): this placeholder policy is replaced with the real
+		// per-site VerifyOptions once EnsureOfficialSeed/seedFromURL thread vo.
+		if _, err := LoadMarketplace(ctx, dest, DefaultVerifyOptions(os.Stderr, false)); err != nil {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}

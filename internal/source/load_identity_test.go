@@ -58,6 +58,15 @@ func signedManifestSourceDir(t *testing.T, indexPackageID string) (string, verif
 	if err := os.WriteFile(filepath.Join(dir, manifestFilename), []byte(index), 0o600); err != nil {
 		t.Fatalf("write index: %v", err)
 	}
+	// LoadMarketplace now verifies the index document itself, not only the
+	// package manifests it references, so the fixture signs it with the same
+	// key. Otherwise every case here would refuse on the unsigned index
+	// before ever reaching the id-matching behavior these tests exercise.
+	indexSigJSON := `{"key_id":"test-key","algorithm":"ed25519","signature":"` +
+		base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(index))) + `"}`
+	if err := os.WriteFile(filepath.Join(dir, manifestFilename+".sig"), []byte(indexSigJSON), 0o600); err != nil {
+		t.Fatalf("write index sig: %v", err)
+	}
 	return dir, ks
 }
 
