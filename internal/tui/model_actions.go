@@ -13,7 +13,6 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
-	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 func (m model) handleEnter() (tea.Model, tea.Cmd) {
@@ -69,22 +68,22 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor >= len(m.markets) {
 			// refresh all
 			return m, tea.Batch(func() tea.Msg {
-				_, err := app.MarketplaceRefresh(ctx, "", source.DefaultVerifyOptions(nil, false))
+				_, err := app.MarketplaceRefresh(ctx, "", tuiVerifyOptions(nil, false))
 				if err != nil {
 					return marketMsg{err: err}
 				}
-				views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
+				views, err := app.MarketplaceList(ctx, tuiVerifyOptions(nil, false))
 				return marketMsg{views: views, err: err}
 			})
 		}
 		// remove selected marketplace? use 'd' - for enter, refresh single
 		name := m.markets[m.cursor].Name
 		return m, tea.Batch(func() tea.Msg {
-			_, err := app.MarketplaceRefresh(ctx, name, source.DefaultVerifyOptions(nil, false))
+			_, err := app.MarketplaceRefresh(ctx, name, tuiVerifyOptions(nil, false))
 			if err != nil {
 				return marketMsg{err: err}
 			}
-			views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
+			views, err := app.MarketplaceList(ctx, tuiVerifyOptions(nil, false))
 			return marketMsg{views: views, err: err}
 		})
 	case screenResult:
@@ -274,7 +273,7 @@ func runInstall(ctx context.Context, channel string, allowUnverified bool, ps *p
 		defer ps.close()
 		res, err := app.InstallFestival(ctx, app.InstallOptions{
 			Channel:  channel,
-			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
+			Verify:   tuiVerifyOptions(ps, allowUnverified),
 			Progress: ps.report,
 		})
 		if err != nil {
@@ -302,7 +301,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 	return func() tea.Msg {
 		defer ps.close()
 		res, warning, err := app.UpdateFestival(ctx, app.UpdateOptions{
-			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
+			Verify:   tuiVerifyOptions(ps, allowUnverified),
 			Progress: ps.report,
 		})
 		if err != nil {
@@ -399,7 +398,7 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 		defer ps.close()
 		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
 			Channel:  "stable",
-			Verify:   source.DefaultVerifyOptions(nil, allowUnverified),
+			Verify:   tuiVerifyOptions(ps, allowUnverified),
 			Progress: ps.report,
 		})
 		if err != nil {
@@ -425,11 +424,11 @@ func (m model) submitMarketplaceAdd() (tea.Model, tea.Cmd) {
 	m.marketMode = "list"
 	ctx := m.ctx
 	return m, func() tea.Msg {
-		_, err := app.MarketplaceAdd(ctx, url, "", source.DefaultVerifyOptions(nil, false))
+		_, err := app.MarketplaceAdd(ctx, url, "", tuiVerifyOptions(nil, false))
 		if err != nil {
 			return marketMsg{err: err}
 		}
-		views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
+		views, err := app.MarketplaceList(ctx, tuiVerifyOptions(nil, false))
 		return marketMsg{views: views, err: err}
 	}
 }

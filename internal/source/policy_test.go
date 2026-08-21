@@ -1,6 +1,7 @@
 package source
 
 import (
+	"os"
 	"testing"
 
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
@@ -27,5 +28,12 @@ func TestDefaultVerifyOptions_AllowUnverifiedFlag(t *testing.T) {
 	}
 	if vo.Policy != metadata.PolicyRefuseByDefault {
 		t.Fatal("policy stays refuse-by-default even with allow flag (flag is the escape)")
+	}
+}
+
+func TestDefaultVerifyOptions_NilWriterFallsBackToStderr(t *testing.T) {
+	vo := DefaultVerifyOptions(nil, false)
+	if vo.WarnWriter != os.Stderr {
+		t.Fatal("CLI nil writer must remain stderr; TUI callers pass an explicit writer")
 	}
 }

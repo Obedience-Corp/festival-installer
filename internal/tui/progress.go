@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"sync"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
@@ -11,10 +13,18 @@ import (
 // instead of blocking the install.
 const progressBuf = 32
 
+// warnStage is a progress event that carries a verification warning rather
+// than a bar update. Update must not assign it to m.progress.
+const warnStage = "unverified-warn"
+
 // progressStream carries app.ProgressEvent from an operation's goroutine into
-// the bubbletea update loop, which drains it with waitProgress.
+// the bubbletea update loop, which drains it with waitProgress. It also
+// implements io.Writer so TUI-driven verify options can route unverified-
+// content warnings into the working screen instead of os.Stderr.
 type progressStream struct {
 	events chan app.ProgressEvent
+	mu     sync.Mutex
+	warn   string
 }
 
 func newProgressStream() *progressStream {
@@ -74,6 +84,7 @@ func (m model) beginProgress(ev app.ProgressEvent) (model, *progressStream) {
 	m.busy = true
 	m.screen = screenProgress
 	m.err = nil
+	m.warnText = ""
 	m.progress = ev
 	m.progressStream = newProgressStream()
 	return m, m.progressStream

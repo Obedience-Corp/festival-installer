@@ -37,7 +37,7 @@ func (m model) View() string {
 		footer = "←→ channel  enter install  esc back"
 	case screenUpdate, screenProgress:
 		title = "working"
-		body = anim.ProgressFlame(m.progress.Percent, m.progress.Stage, m.progress.Message, m.animationFrame(), s)
+		body = m.viewWorking()
 		footer = "ctrl+c cancel"
 	case screenList:
 		title = "installed"
@@ -165,6 +165,15 @@ func (m model) viewLaunchpad() string {
 	intro := s.Title.Render("Open a camp / fest tool") + "\n" +
 		s.Muted.Render("Runs the real binary. Quit that tool to return here. No need to relaunch festival.") + "\n\n"
 	return intro + components.Menu(items, m.cursor, s)
+}
+
+func (m model) viewWorking() string {
+	s := m.styles
+	body := anim.ProgressFlame(m.progress.Percent, m.progress.Stage, m.progress.Message, m.animationFrame(), s)
+	if m.warnText == "" {
+		return body
+	}
+	return body + "\n\n" + s.Warn.Render(textsafe.Block(m.warnText))
 }
 
 func (m model) viewInstall() string {

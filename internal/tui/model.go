@@ -149,6 +149,11 @@ type model struct {
 	resultTitle string
 	resultBody  string
 	resultOK    bool
+	// warnText is unverified-content (and similar) warnings captured from the
+	// in-flight operation's WarnWriter. Shown on the working screen and
+	// copied onto the result screen. Never written to stderr while the
+	// alt-screen is live.
+	warnText string
 	// resultRestart is true when the result screen should offer to restart
 	// the hub (an update just replaced the running festival binary).
 	resultRestart bool
@@ -264,7 +269,7 @@ func (m model) loadBrowse(product, kind string) tea.Cmd {
 		res, err := app.Browse(ctx, app.BrowseOptions{
 			Product: product,
 			Kind:    kind,
-			Verify:  source.DefaultVerifyOptions(nil, false),
+			Verify:  tuiVerifyOptions(nil, false),
 		})
 		return browseMsg{res: res, err: err}
 	}
@@ -280,7 +285,7 @@ func (m model) loadDoctor() tea.Cmd {
 func (m model) loadMarkets() tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
-		views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
+		views, err := app.MarketplaceList(ctx, tuiVerifyOptions(nil, false))
 		return marketMsg{views: views, err: err}
 	}
 }
@@ -358,13 +363,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case progressMsg:
-		if m.progressStream == nil || msg.stream != m.progressStream {
-			return m, nil
-		}
-		if m.busy {
-			m.progress = msg.ev
-		}
-		return m, waitProgress(m.progressStream)
+		return m.applyProgress(msg)
 
 	case progressClosedMsg:
 		if msg.stream == m.progressStream {
@@ -373,18 +372,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case opDoneMsg:
-		m.busy = false
-		m.opCancel = nil
-		if msg.stream == m.progressStream {
-			m.progressStream = nil
-		}
-		m.screen = screenResult
-		m.resultTitle = msg.title
-		m.resultBody = msg.body
-		m.resultOK = msg.success
-		m.resultRestart = msg.restart
-		m.err = msg.err
-		return m, m.loadStatus()
+		return m.applyOpDone(msg)
 
 	case consentNeededMsg:
 		m.busy = false
