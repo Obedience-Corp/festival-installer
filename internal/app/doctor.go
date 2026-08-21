@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
-	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
@@ -102,10 +101,11 @@ func checkMarketplaceTrust(ctx context.Context) DoctorCheck {
 	// or corrupt `doctor --json` output. This does not weaken verification: a
 	// tampered document still fails with E_SIG_INVALID (surfaced via
 	// ListView.Err), and ListView.Verified is still false for anything
-	// unsigned.
+	// unsigned. Policy is intentionally not set here: ListMarketplaces routes
+	// every source through voFor, which overwrites Policy per source anyway
+	// (internal/source/manager.go), so a value here would never take effect.
 	vo := source.VerifyOptions{
 		KeyStore:        verify.PinnedKeyStore(),
-		Policy:          metadata.PolicyWarnAllow,
 		AllowUnverified: true,
 		WarnWriter:      io.Discard,
 	}
@@ -116,14 +116,36 @@ func checkMarketplaceTrust(ctx context.Context) DoctorCheck {
 	return marketplaceTrustFrom(views)
 }
 
-// marketplaceTrustFrom is the pure decision logic behind checkMarketplaceTrust,
-// exported for tests so it can be driven without a database or a filesystem.
-// An unverified official source always fails, even alongside an unverified
-// third party, because the official source is signed and unsigned content
-// there means something is wrong.
+// signatureErrorCodes are errpkg codes that mean a signature was present but
+// could not be trusted: malformed, wrong algorithm, unknown key id, does not
+// verify, or the .sig file itself could not be read. Distinct from an absent
+// signature (ListView.Err == "", ListView.Verified == false), which is the
+// benign, expected state for a third-party source with no key infrastructure.
+var signatureErrorCodes = []string{
+	"E_SIG_INVALID", "E_SIG_MALFORMED", "E_SIG_ALG", "E_SIG_CTX", "E_KEY_NOT_FOUND", "E_MARKETPLACE_SIG_READ",
+}
+
+func isSignatureError(errText string) bool {
+	for _, code := range signatureErrorCodes {
+		if strings.Contains(errText, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// marketplaceTrustFrom is the pure decision logic behind checkMarketplaceTrust.
+// It is unexported but tested directly (package app, doctor_internal_test.go)
+// so it can be table-tested without a database or a filesystem. An unverified
+// official source always fails, even alongside an unverified third party,
+// because the official source is signed and unsigned content there means
+// something is wrong. A third-party source with a present-but-invalid
+// signature also fails, distinctly from one with no signature at all: a
+// tampered document must not read the same as a normal, knowingly-unsigned
+// add, or the message stops being actionable.
 func marketplaceTrustFrom(views []source.ListView) DoctorCheck {
 	c := DoctorCheck{ID: "marketplace_trust"}
-	var officialUnverified, thirdPartyUnverified []string
+	var officialUnverified, thirdPartyInvalid, thirdPartyUnsigned []string
 	for _, v := range views {
 		if v.Verified {
 			continue
@@ -132,7 +154,11 @@ func marketplaceTrustFrom(views []source.ListView) DoctorCheck {
 			officialUnverified = append(officialUnverified, v.Name)
 			continue
 		}
-		thirdPartyUnverified = append(thirdPartyUnverified, v.Name)
+		if isSignatureError(v.Err) {
+			thirdPartyInvalid = append(thirdPartyInvalid, v.Name)
+			continue
+		}
+		thirdPartyUnsigned = append(thirdPartyUnsigned, v.Name)
 	}
 	switch {
 	case len(views) == 0:
@@ -142,9 +168,13 @@ func marketplaceTrustFrom(views []source.ListView) DoctorCheck {
 		c.Status = "fail"
 		c.Message = "official marketplace metadata is not signed or does not verify: " +
 			strings.Join(officialUnverified, ", ")
-	case len(thirdPartyUnverified) > 0:
+	case len(thirdPartyInvalid) > 0:
+		c.Status = "fail"
+		c.Message = "third-party source has a signature that does not verify: " +
+			strings.Join(thirdPartyInvalid, ", ")
+	case len(thirdPartyUnsigned) > 0:
 		c.Status = "warn"
-		c.Message = "unsigned third-party sources: " + strings.Join(thirdPartyUnverified, ", ")
+		c.Message = "unsigned third-party sources: " + strings.Join(thirdPartyUnsigned, ", ")
 	default:
 		c.Status = "ok"
 		c.Message = fmt.Sprintf("%d source(s) verified against the pinned key", len(views))

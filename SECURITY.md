@@ -38,9 +38,18 @@ are each signed with a detached Ed25519 signature over the exact canonical
 bytes stored on disk, verified against the key pinned in
 `internal/verify/trust.go` (id `obedience-marketplace-2026-01`).
 
+`index.json` is signed and independently verifiable
+(`festival-metadata verify --pinned --kind index`), but `festival` itself
+does not read `index.json` on any path today; it is signed for the
+publisher's own integrity guarantee and for future consumers, not because
+the installer enforces it. Do not assume signing a document means `festival`
+checks it: the next two paragraphs describe only `obey-marketplace.json` and
+the package manifests, which is everything the installer actually reads.
+
 ### Where it is enforced
 
-Every read path checks the signature: seed, `marketplace add`,
+Every read path checks the signature of `obey-marketplace.json` and, when
+installing a package, its manifest: seed, `marketplace add`,
 `marketplace list`, `marketplace refresh`, `browse`, `install`, and plugin
 update. The official marketplace refuses unsigned or non-verifying content by
 default; a present but invalid signature is never overridable, on the

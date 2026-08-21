@@ -14,18 +14,26 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
-// buildFestivalMetadataBinary builds the real cmd/festival-metadata binary
-// (the same tool the marketplace repo's signing pipeline uses) into a temp
-// directory, so this test signs fixtures the same way a publisher does
-// rather than reimplementing signing inline.
-func buildFestivalMetadataBinary(t *testing.T) string {
+// buildBinary builds the real Go binary at pkgPath (an import path under
+// this module, e.g. ".../cmd/festival" or ".../cmd/festival-metadata") into
+// a temp directory, so tests exercise the same code `just build` ships
+// rather than reimplementing its logic inline.
+func buildBinary(t *testing.T, pkgPath, name string) string {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "festival-metadata")
-	cmd := exec.Command("go", "build", "-o", out, "github.com/Obedience-Corp/festival-installer/cmd/festival-metadata")
+	out := filepath.Join(t.TempDir(), name)
+	cmd := exec.Command("go", "build", "-o", out, pkgPath)
 	if combined, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build festival-metadata: %v\n%s", err, combined)
+		t.Fatalf("build %s: %v\n%s", name, err, combined)
 	}
 	return out
+}
+
+// buildFestivalMetadataBinary builds the real cmd/festival-metadata binary
+// (the same tool the marketplace repo's signing pipeline uses), so this test
+// signs fixtures the same way a publisher does.
+func buildFestivalMetadataBinary(t *testing.T) string {
+	t.Helper()
+	return buildBinary(t, "github.com/Obedience-Corp/festival-installer/cmd/festival-metadata", "festival-metadata")
 }
 
 // generateThrowawayKey runs the real generate-key subcommand, returning the
@@ -151,9 +159,12 @@ func buildTamperedFixture(t *testing.T, goodDir string) string {
 // what marketplace add/list/refresh and browse call; internal/app/doctor.go
 // builds its own literal pinned key store and is deliberately left
 // unswapped, so this test also observes what a real operator's `doctor`
-// would show for a fixture registered this way: a source doctor considers
-// reachable but not trust-verified. See task 04 for a trust-root-level
-// check against the real, publicly signed marketplace.
+// would show for a fixture registered this way: doctor's own, unswapped key
+// store does not recognize the throwaway key id, so it reports the source's
+// present signature as unverifiable (fail), not as plain-unsigned (warn).
+// Proving the trust root itself needs a real signature from the real,
+// GitHub-secret-held private key against the real, published marketplace,
+// which by definition cannot run inside this test suite.
 func TestMarketplaceTrustFixture_GoodAndBadFixtures(t *testing.T) {
 	metaBin := buildFestivalMetadataBinary(t)
 	privateKeyPath, pub := generateThrowawayKey(t, metaBin)
@@ -232,11 +243,16 @@ func TestMarketplaceTrustFixture_GoodAndBadFixtures(t *testing.T) {
 		t.Fatalf("browse --json output should not carry warning text: %s", browseOut)
 	}
 
-	// doctor --json: marketplace_trust present.
+	// doctor --json: marketplace_trust present, and fail (not warn), because
+	// doctor's own unswapped key store cannot recognize the throwaway key
+	// that signed "good", so it correctly reports a present-but-unverifiable
+	// signature rather than mistaking it for a plain-unsigned source.
 	doctorOut, _, _ := runInstaller(t, "doctor", "--json")
 	status := doctorChecks(t, doctorOut)
-	if _, ok := status["marketplace_trust"]; !ok {
+	if got, ok := status["marketplace_trust"]; !ok {
 		t.Fatalf("doctor --json missing marketplace_trust: %s", doctorOut)
+	} else if got != "fail" {
+		t.Fatalf("marketplace_trust status = %q, want fail: %s", got, doctorOut)
 	}
 
 	t.Logf("fixture transcript:\nadd bad: exit-error=%v stdout=%s stderr=%s\nadd good: stdout=%s\nlist --json: %s\nbrowse --json: %s\ndoctor --json: %s\ndoctor marketplace_trust status: %s",
@@ -247,12 +263,7 @@ func TestMarketplaceTrustFixture_GoodAndBadFixtures(t *testing.T) {
 // produces) into a temp directory.
 func buildFestivalBinary(t *testing.T) string {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "festival")
-	cmd := exec.Command("go", "build", "-o", out, "github.com/Obedience-Corp/festival-installer/cmd/festival")
-	if combined, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build festival: %v\n%s", err, combined)
-	}
-	return out
+	return buildBinary(t, "github.com/Obedience-Corp/festival-installer/cmd/festival", "festival")
 }
 
 // runRealBinary execs the real compiled binary as a subprocess (not the

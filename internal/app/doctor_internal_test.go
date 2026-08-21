@@ -1,10 +1,12 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 func TestMarketplaceTrustFrom(t *testing.T) {
@@ -18,22 +20,39 @@ func TestMarketplaceTrustFrom(t *testing.T) {
 		{
 			name: "official source unverified",
 			views: []source.ListView{
-				{Name: "official-obey", Verified: false},
+				{Name: state.OfficialSeedKey, Verified: false},
 			},
 			wantStatus: "fail",
-			wantNames:  []string{"official-obey"},
+			wantNames:  []string{state.OfficialSeedKey},
 		},
 		{
 			name: "official and third party both unverified: official wins",
 			views: []source.ListView{
-				{Name: "official-obey", Verified: false},
+				{Name: state.OfficialSeedKey, Verified: false},
 				{Name: "acme-plugins", Verified: false},
 			},
 			wantStatus: "fail",
-			wantNames:  []string{"official-obey"},
+			wantNames:  []string{state.OfficialSeedKey},
 		},
 		{
-			name: "third party only, unverified",
+			name: "third party signature present but invalid: distinct fail, not lumped in with unsigned",
+			views: []source.ListView{
+				{Name: "acme-plugins", Verified: false, Err: "E_SIG_INVALID: signature failed verification"},
+			},
+			wantStatus: "fail",
+			wantNames:  []string{"acme-plugins"},
+		},
+		{
+			name: "third party signature invalid alongside a plain unsigned third party: invalid wins, unsigned does not mask it",
+			views: []source.ListView{
+				{Name: "acme-plugins", Verified: false, Err: "E_SIG_INVALID: signature failed verification"},
+				{Name: "other-plugins", Verified: false},
+			},
+			wantStatus: "fail",
+			wantNames:  []string{"acme-plugins"},
+		},
+		{
+			name: "third party only, unverified, no signature at all",
 			views: []source.ListView{
 				{Name: "acme-plugins", Verified: false},
 			},
@@ -49,7 +68,7 @@ func TestMarketplaceTrustFrom(t *testing.T) {
 		{
 			name: "official and third party both verified",
 			views: []source.ListView{
-				{Name: "official-obey", Verified: true},
+				{Name: state.OfficialSeedKey, Verified: true},
 				{Name: "acme-plugins", Verified: true},
 			},
 			wantStatus: "ok",
@@ -58,7 +77,7 @@ func TestMarketplaceTrustFrom(t *testing.T) {
 		{
 			name: "official verified, third party unverified",
 			views: []source.ListView{
-				{Name: "official-obey", Verified: true},
+				{Name: state.OfficialSeedKey, Verified: true},
 				{Name: "acme-plugins", Verified: false},
 			},
 			wantStatus: "warn",
@@ -80,8 +99,35 @@ func TestMarketplaceTrustFrom(t *testing.T) {
 					t.Fatalf("Message %q does not mention %q", got.Message, name)
 				}
 			}
-			if tt.wantCount > 0 && !strings.Contains(got.Message, "2 source(s)") {
-				t.Fatalf("Message %q does not report the verified count", got.Message)
+			if tt.wantCount > 0 {
+				want := fmt.Sprintf("%d source(s)", tt.wantCount)
+				if !strings.Contains(got.Message, want) {
+					t.Fatalf("Message %q does not report the verified count %q", got.Message, want)
+				}
+			}
+		})
+	}
+}
+
+func TestIsSignatureError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  string
+		want bool
+	}{
+		{"empty", "", false},
+		{"sig invalid", "E_SIG_INVALID: signature failed verification", true},
+		{"sig malformed", "E_SIG_MALFORMED: missing key_id, algorithm, or signature", true},
+		{"unsupported algorithm", "E_SIG_ALG: unsupported algorithm", true},
+		{"context cancelled during verify", "E_SIG_CTX: context cancelled", true},
+		{"unknown key id", "E_KEY_NOT_FOUND: verification key not found", true},
+		{"sig file unreadable", "E_MARKETPLACE_SIG_READ: read obey-marketplace.json.sig", true},
+		{"unrelated error, not a signature problem", "E_GIT_CLONE: could not read Username", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isSignatureError(tt.err); got != tt.want {
+				t.Fatalf("isSignatureError(%q) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}
