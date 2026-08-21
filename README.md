@@ -38,7 +38,33 @@ just vhs all   # requires vhs, ttyd, ffmpeg
 
 ## Install
 
-<!-- filled by FH0002 sequence 04 -->
+**npm / pnpm / bun:**
+
+```bash
+npm install -g @obedience-corp/festival
+```
+
+**macOS:**
+
+```bash
+brew install --cask Obedience-Corp/tap/festival
+```
+
+**Arch Linux:**
+
+```bash
+yay -S festival-bin
+```
+
+**Shell script (macOS and Linux):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Obedience-Corp/festival/main/install.sh | bash
+```
+
+Each of these installs the whole suite (`camp`, `fest`, and `festival`), not
+just this binary; they mirror the [`festival` distribution repo's
+README](https://github.com/Obedience-Corp/festival#install).
 
 Festival Installer lives at `github.com/Obedience-Corp/festival-installer`;
 its public command name is **`festival`**. CI tests the supported Linux and
