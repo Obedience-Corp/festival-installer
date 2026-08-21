@@ -39,11 +39,32 @@ func DefaultVerifyOptions(warnWriter io.Writer, allowUnverified bool) VerifyOpti
 		warnWriter = os.Stderr
 	}
 	return VerifyOptions{
-		KeyStore:        verify.PinnedKeyStore(),
+		KeyStore:        pinnedKeyStore(),
 		Policy:          metadata.PolicyRefuseByDefault,
 		AllowUnverified: allowUnverified,
 		WarnWriter:      warnWriter,
 	}
+}
+
+// pinnedKeyStore is the trust root DefaultVerifyOptions resolves against. It
+// is a variable, not a direct call to verify.PinnedKeyStore, only so
+// WithPinnedKeyStoreForTest (below) can swap it out. No flag, environment
+// variable, or production code path reaches this; every real caller of
+// DefaultVerifyOptions gets the pinned key store unless a test has swapped
+// it for the duration of that test.
+var pinnedKeyStore = verify.PinnedKeyStore
+
+// WithPinnedKeyStoreForTest swaps the trust root DefaultVerifyOptions
+// resolves against for the duration of a test and returns a restore
+// function. Test-only: it exists so a CLI-level test can drive the real
+// command tree (the same one cmd/festival wires up) against a marketplace
+// signed with a throwaway key, without weakening or ever reaching production
+// trust. Nothing in internal/cli, internal/app, or cmd/festival calls this;
+// only tests do.
+func WithPinnedKeyStoreForTest(ks verify.KeyStore) (restore func()) {
+	prev := pinnedKeyStore
+	pinnedKeyStore = func() verify.KeyStore { return ks }
+	return func() { pinnedKeyStore = prev }
 }
 
 // policyFor returns the trust policy for a source by name. The official seed

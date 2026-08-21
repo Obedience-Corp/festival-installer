@@ -122,7 +122,7 @@ func TestDoctor_JSONShapeStable(t *testing.T) {
 	if !env.OK || env.Action != "doctor" {
 		t.Fatalf("unexpected doctor envelope: %+v", env)
 	}
-	wantIDs := map[string]bool{"managed_bin_on_path": true, "sources_reachable": true, "receipts_integrity": true, "path_shadowing": true}
+	wantIDs := map[string]bool{"managed_bin_on_path": true, "sources_reachable": true, "marketplace_trust": true, "receipts_integrity": true, "path_shadowing": true}
 	for _, c := range env.Data.Checks {
 		delete(wantIDs, c.ID)
 		if c.Status == "" || c.ID == "" {

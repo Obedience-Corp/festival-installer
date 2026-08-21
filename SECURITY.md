@@ -31,21 +31,57 @@ tool.
 
 ## What the trust root guarantees, and what it does not
 
-Official marketplace package metadata is signed with an Ed25519 key (id
-`obedience-marketplace-2026-01`) whose public half is compiled into the
-`festival` binary. By default, `festival` refuses to install or update
-anything whose metadata does not verify against that pinned key
-(`--allow-unverified` overrides this for unsigned development content, with a
-loud warning).
+### What is signed
 
-This guarantees that verified package metadata came from the holder of the
-marketplace signing key, and has not been altered in transit or at rest since
-it was signed.
+`obey-marketplace.json`, `index.json`, and every `packages/**/obey-package.json`
+are each signed with a detached Ed25519 signature over the exact canonical
+bytes stored on disk, verified against the key pinned in
+`internal/verify/trust.go` (id `obedience-marketplace-2026-01`).
 
-It does **not** currently cover every file `festival` reads. As of
-2026-08-17, `index.json` and `obey-marketplace.json` (the marketplace and
-package index files themselves) are unsigned. A party who can tamper with
-those files (for example, a compromised marketplace git remote) can still
-influence what `festival` offers to install, even though it cannot forge a
-signed package's contents. Do not assume index/marketplace-level integrity
-beyond what HTTPS/git transport and the marketplace host already provide.
+`index.json` is signed and independently verifiable
+(`festival-metadata verify --pinned --kind index`), but `festival` itself
+does not read `index.json` on any path today; it is signed for the
+publisher's own integrity guarantee and for future consumers, not because
+the installer enforces it. Do not assume signing a document means `festival`
+checks it: the next two paragraphs describe only `obey-marketplace.json` and
+the package manifests, which is everything the installer actually reads.
+
+### Where it is enforced
+
+Every read path checks the signature of `obey-marketplace.json` and, when
+installing a package, its manifest: seed, `marketplace add`,
+`marketplace list`, `marketplace refresh`, `browse`, `install`, and plugin
+update. The official marketplace refuses unsigned or non-verifying content by
+default; a present but invalid signature is never overridable, on the
+official source or any other. A user-added third-party marketplace has no key
+infrastructure behind it, so unsigned content there is allowed with a loud
+warning instead of refused (`--allow-unverified` on `marketplace add`,
+`marketplace refresh`, and `browse` makes that warning path explicit).
+
+### What the chain buys for plugins
+
+A git-release plugin installed from a verified marketplace source is
+verified by chain: pinned key, signed marketplace document, the
+`checksums_url` it declares, sha256, then the asset itself. The plugin never
+carries its own signature; it inherits trust from the marketplace document
+that names it.
+
+### What is still not covered
+
+- **Freshness.** A signature proves who produced a document and that it has
+  not changed since, not which version you were served. A party that can
+  serve an older, validly signed commit of the marketplace can roll a fresh
+  install back to a previous version, and a fresh install has no prior state
+  to compare against. There is no signed timestamp and no maximum-age policy
+  on any of the three documents today. See `festival doctor`'s
+  `marketplace_trust` check for the current verification state of every
+  registered source; it does not detect this, because a rolled-back document
+  still verifies.
+- **Key rotation.** Exactly one key is pinned
+  (`internal/verify/trust.go`). There is no second key and no rotation
+  procedure, so a key compromise requires a new hub release.
+- **Third-party marketplaces.** Unsigned by design, warned about, not
+  refused.
+- **The host serving `checksums_url` and artifact URLs.** The sha256
+  comparison assumes that host is honest about what it serves under a given
+  URL, the same assumption the signed package manifest path already makes.
