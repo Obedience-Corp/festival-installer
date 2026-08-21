@@ -236,7 +236,7 @@ func TestInstallFestival_E2E(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -354,7 +354,7 @@ func TestInstallFestival_ExternalHubSkipsAndWarns(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -414,7 +414,7 @@ func TestInstallFestival_ChecksumMismatchRollsBack(t *testing.T) {
 
 	wrongSha := sha256Hex([]byte("not-the-tarball"))
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", wrongSha)
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -452,7 +452,7 @@ func TestInstallFestival_RejectsUnsafeInstallEntry(t *testing.T) {
 			t.Cleanup(srv.Close)
 
 			repo := fixtureInstallMarketplaceManifest(t, productManifestUnsafeEntry(srv.URL+"/festival.tar.gz", sha256Hex(tarball), tc.source, tc.execName))
-			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 				t.Fatalf("marketplace add: %v\n%s", err, errOut)
 			}
 
@@ -507,7 +507,7 @@ func TestInstallFestival_UnsignedRefusedWithoutAllowUnverified(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 

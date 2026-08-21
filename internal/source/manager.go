@@ -6,7 +6,6 @@ import (
 	"time"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
-	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
 )
@@ -48,13 +47,14 @@ func withManager(ctx context.Context, fn func(ctx context.Context, db *state.DB)
 	return fn(ctx, db)
 }
 
-// AddMarketplace clones and registers gitURL as name. A source being added is
-// by definition not the official seed, so it always uses PolicyWarnAllow
-// rather than policyFor(name): the caller has no key infrastructure for a
-// freshly added third-party marketplace, and refusing it outright would make
-// third-party marketplaces impossible to add at all. The signature still
-// fails closed on a present-but-invalid signature (E_SIG_INVALID), which is
-// never overridable.
+// AddMarketplace clones and registers gitURL as name. The trust policy is
+// chosen by policyFor(name), the same rule every read path uses: adding a
+// source under the official seed's name is refused when unsigned (matching
+// case 1 of the sequence's CLI test table, "marketplace add with no flag,
+// official-policy source refuses"), and every other name gets
+// PolicyWarnAllow so third-party marketplaces remain addable unsigned. The
+// signature still fails closed on a present-but-invalid signature
+// (E_SIG_INVALID), which is never overridable by either policy.
 func AddMarketplace(ctx context.Context, gitURL, name string, vo VerifyOptions) (Source, error) {
 	if name == "" {
 		name = DeriveName(gitURL)
@@ -73,9 +73,7 @@ func AddMarketplace(ctx context.Context, gitURL, name string, vo VerifyOptions) 
 		if err != nil {
 			return err
 		}
-		vo.Policy = metadata.PolicyWarnAllow
-		vo.SourceLabel = name
-		if _, err := LoadMarketplace(ctx, dest, vo); err != nil {
+		if _, err := LoadMarketplace(ctx, dest, voFor(name, vo)); err != nil {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}

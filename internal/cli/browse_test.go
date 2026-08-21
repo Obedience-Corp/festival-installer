@@ -170,3 +170,44 @@ func TestBrowse_AlreadySeededNoSeedWarning(t *testing.T) {
 		t.Fatalf("expected table output populated, got: %s", tableOut)
 	}
 }
+
+// Case 4 of the sequence 05 task 04 table: browse --json against an unsigned
+// source registered under the official-policy name, with --allow-unverified,
+// succeeds with clean JSON on stdout and no warning text leaking into it.
+// This catches the classic bug where a warning is printed to stdout and
+// breaks every JSON consumer.
+func TestBrowse_AllowUnverifiedOfficialPolicySourceCleanStdout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	repo := browseFixtureRepo(t)
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	out, errOut, err := runInstaller(t, "browse", "--json", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("browse --json --allow-unverified: %v\n%s", err, errOut)
+	}
+	if strings.Contains(out, "UNVERIFIED") || strings.Contains(out, "WARNING") {
+		t.Fatalf("expected no warning text in stdout, got: %s", out)
+	}
+	var res browseJSON
+	dataOf(t, out, &res)
+	if len(res.Groups) == 0 {
+		t.Fatalf("expected the catalog populated from the unverified official-policy source, got none: %s", out)
+	}
+	if errOut != "" && !strings.Contains(errOut, "UNVERIFIED") {
+		t.Fatalf("expected only the unverified-content warning on stderr, if anything, got %q", errOut)
+	}
+}
+
+// Case 6 (browse half): --help lists --allow-unverified.
+func TestBrowse_HelpListsAllowUnverified(t *testing.T) {
+	out, _, err := runInstaller(t, "browse", "--help")
+	if err != nil {
+		t.Fatalf("browse --help: %v", err)
+	}
+	if !strings.Contains(out, "--allow-unverified") {
+		t.Fatalf("expected --allow-unverified in help output, got:\n%s", out)
+	}
+}
