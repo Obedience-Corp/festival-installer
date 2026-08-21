@@ -25,8 +25,10 @@ Usage:
   festival-metadata generate-key --private-key PATH
   festival-metadata sign --private-key PATH --key-id ID [--signature PATH] DOCUMENT
   festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--kind KIND] [--signature PATH] DOCUMENT
+  festival-metadata validate [--kind KIND] DOCUMENT
 
 Kinds: manifest (default), marketplace, index, source
+validate checks schema only. It does not require a signature or canonical JSON.
 `
 
 func main() {
@@ -48,6 +50,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runSign(args[1:], stdout, stderr)
 	case "verify":
 		return runVerify(args[1:], stdout, stderr)
+	case "validate":
+		return runValidate(args[1:], stdout, stderr)
 	default:
 		_, _ = io.WriteString(stderr, usage)
 		return fmt.Errorf("unknown command %q", args[0])
@@ -166,10 +170,8 @@ func parseVerifyFlags(args []string, stderr io.Writer) (verifyFlags, error) {
 	if err := fs.Parse(args); err != nil {
 		return verifyFlags{}, err
 	}
-	switch *kind {
-	case "manifest", "marketplace", "index", "source":
-	default:
-		return verifyFlags{}, fmt.Errorf("unknown --kind %q: want manifest, marketplace, index, or source", *kind)
+	if err := knownKind(*kind); err != nil {
+		return verifyFlags{}, err
 	}
 	if fs.NArg() != 1 || !exactlyOneKeySource(*publicValue, *publicPath, *pinned) {
 		return verifyFlags{}, errors.New("verify requires exactly one public key source and one manifest")

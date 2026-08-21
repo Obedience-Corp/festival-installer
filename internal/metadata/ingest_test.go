@@ -33,7 +33,7 @@ func TestIngestManifest_TamperedSignedRefused(t *testing.T) {
 	ks, sig := signedKeyStore(t, original)
 	tampered := append(append([]byte{}, original...), '\n')
 
-	if _, err := parseManifest(context.Background(), tampered); err != nil {
+	if _, err := ParseManifest(context.Background(), tampered); err != nil {
 		t.Fatalf("baseline: the unverified parse path should accept the tampered manifest, got %v", err)
 	}
 

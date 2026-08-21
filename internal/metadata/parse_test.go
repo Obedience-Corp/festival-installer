@@ -19,7 +19,7 @@ func read(t *testing.T, parts ...string) []byte {
 
 func TestParseSource_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "source", "valid.json")
-	s, err := parseSource(context.Background(), raw)
+	s, err := ParseSource(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseSource: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestParseSource_InvalidVariants(t *testing.T) {
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			raw := read(t, "..", "..", "testdata", "metadata", "source", name)
-			_, err := parseSource(context.Background(), raw)
+			_, err := ParseSource(context.Background(), raw)
 			if !errors.Is(err, ErrSchemaInvalid) {
 				t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 			}
@@ -47,7 +47,7 @@ func TestParseSource_InvalidVariants(t *testing.T) {
 
 func TestParseIndex_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "valid.json")
-	idx, err := parseIndex(context.Background(), raw)
+	idx, err := ParseIndex(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseIndex: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestParseIndex_Valid(t *testing.T) {
 
 func TestParseIndex_EnrichedFields(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "valid.json")
-	idx, err := parseIndex(context.Background(), raw)
+	idx, err := ParseIndex(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseIndex: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestParseIndex_EnrichedFields(t *testing.T) {
 
 func TestParseIndex_BadTargetRejected(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "bad_target.json")
-	_, err := parseIndex(context.Background(), raw)
+	_, err := ParseIndex(context.Background(), raw)
 	if !errors.Is(err, ErrSchemaInvalid) {
 		t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 	}
@@ -93,7 +93,7 @@ func TestParseIndex_BadTargetRejected(t *testing.T) {
 
 func TestParseIndex_EmptyChannelsRejected(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "index", "empty_channels.json")
-	_, err := parseIndex(context.Background(), raw)
+	_, err := ParseIndex(context.Background(), raw)
 	if !errors.Is(err, ErrSchemaInvalid) {
 		t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 	}
@@ -108,7 +108,7 @@ func TestParseIndex_EmptyChannelsRejected(t *testing.T) {
 
 func TestParseManifest_Valid(t *testing.T) {
 	raw := read(t, "..", "..", "testdata", "metadata", "manifest", "valid.json")
-	m, err := parseManifest(context.Background(), raw)
+	m, err := ParseManifest(context.Background(), raw)
 	if err != nil {
 		t.Fatalf("ParseManifest: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestParseManifest_InvalidVariants(t *testing.T) {
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			raw := read(t, "..", "..", "testdata", "metadata", "manifest", name)
-			_, err := parseManifest(context.Background(), raw)
+			_, err := ParseManifest(context.Background(), raw)
 			if !errors.Is(err, ErrSchemaInvalid) {
 				t.Fatalf("expected ErrSchemaInvalid, got %v", err)
 			}
@@ -160,5 +160,20 @@ func TestParseManifest_InvalidVariants(t *testing.T) {
 				t.Fatalf("expected *SchemaError, got %T", err)
 			}
 		})
+	}
+}
+
+func TestParse_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	raw := []byte(`{}`)
+	if _, err := ParseSource(ctx, raw); err == nil {
+		t.Fatal("ParseSource: expected cancelled context error")
+	}
+	if _, err := ParseIndex(ctx, raw); err == nil {
+		t.Fatal("ParseIndex: expected cancelled context error")
+	}
+	if _, err := ParseManifest(ctx, raw); err == nil {
+		t.Fatal("ParseManifest: expected cancelled context error")
 	}
 }

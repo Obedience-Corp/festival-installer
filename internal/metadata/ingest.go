@@ -33,7 +33,7 @@ func IngestManifest(ctx context.Context, ks verify.KeyStore, raw []byte, sig *ve
 	if err := EnforceUnverifiedPolicy(opts); err != nil {
 		return PackageManifest{}, err
 	}
-	return parseManifest(ctx, raw)
+	return ParseManifest(ctx, raw)
 }
 
 func EnforceUnverifiedPolicy(opts IngestOptions) error {
