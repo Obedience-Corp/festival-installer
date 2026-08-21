@@ -156,18 +156,37 @@ func SpecFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 	}, nil
 }
 
-// SpecFromGit builds a plugin install plan from a git release_source.
-//
-// VER-02: git-release plugins are an untrusted class (checksums are self-asserted
-// over the same transport as the asset). They go through the same refuse-by-default
-// / --allow-unverified policy as unsigned package manifests.
-func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
-	if err := metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
+// gitReleaseConsentGate is the VER-02 policy check for a git-release plugin,
+// extracted from SpecFromGit so a test can observe the policy decision
+// (error and warning) without going on to release.NewResolver().Resolve,
+// which reaches the network. A verified source (bp.Verified) skips the gate
+// entirely and never touches vo.WarnWriter; see the SpecFromGit doc comment
+// for the trust chain that makes this sound.
+func gitReleaseConsentGate(bp source.BrowsePackage, vo source.VerifyOptions) error {
+	if bp.Verified {
+		return nil
+	}
+	return metadata.EnforceUnverifiedPolicy(metadata.IngestOptions{
 		Policy:          vo.Policy,
 		AllowUnverified: vo.AllowUnverified,
 		WarnWriter:      vo.WarnWriter,
 		SourceLabel:     "git-release plugin " + bp.Source + "/" + bp.Package.ID,
-	}); err != nil {
+	})
+}
+
+// SpecFromGit builds a plugin install plan from a git release_source.
+//
+// VER-02, revised: a git-release plugin's only integrity anchor is the
+// checksums_url declared in the marketplace document. When that document is
+// verified against the pinned key, the anchor is signed and the chain is
+// pinned key -> signed marketplace -> checksums_url -> sha256 -> asset, so the
+// plugin is verified-by-chain and needs no consent.
+//
+// When the source is unverified, the checksums_url is self-asserted over the
+// same transport as the asset, so the refuse-by-default / --allow-unverified
+// policy still applies, exactly as it did before marketplace signing existed.
+func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, channel string, vo source.VerifyOptions) (pluginSpec, error) {
+	if err := gitReleaseConsentGate(bp, vo); err != nil {
 		return pluginSpec{}, err
 	}
 	rs := bp.Package.ReleaseSource

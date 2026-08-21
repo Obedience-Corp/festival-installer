@@ -90,6 +90,32 @@ func TestSpecFromGit_RefuseByDefaultAllowsWithOverride(t *testing.T) {
 	}
 }
 
+// TestSpecFromGit_VerifiedSourceSkipsGateAndNeverWarns is case 4 of the
+// sequence 05 task 03 table: a verified source proceeds under
+// refuse-by-default, and unlike cases 1 through 3, the warn writer stays
+// empty. That second assertion is the real content of this test: without it,
+// this would still pass even if the code still called the policy function
+// and the policy happened to allow, which is not the same thing as the gate
+// never running.
+//
+// Calls gitReleaseConsentGate directly rather than SpecFromGit, which
+// immediately calls release.NewResolver().Resolve and reaches the
+// filesystem/network; the extracted gate is the seam the task document
+// suggests for observing the policy decision in isolation.
+func TestSpecFromGit_VerifiedSourceSkipsGateAndNeverWarns(t *testing.T) {
+	var warn bytes.Buffer
+	vo := source.VerifyOptions{Policy: metadata.PolicyRefuseByDefault, WarnWriter: &warn}
+	bp := gitSourcedBrowsePackage()
+	bp.Verified = true
+
+	if err := gitReleaseConsentGate(bp, vo); err != nil {
+		t.Fatalf("a verified source must skip the consent gate, got %v", err)
+	}
+	if warn.Len() != 0 {
+		t.Fatalf("a verified source must never write to the warn writer, got %q", warn.String())
+	}
+}
+
 func TestSelectPluginArtifact_ExactThenAllFallback(t *testing.T) {
 	rel := metadata.Release{Artifacts: []metadata.Artifact{
 		{Kind: "tar.gz", OS: "darwin", Arch: "all", URL: "u-darwin-all"},

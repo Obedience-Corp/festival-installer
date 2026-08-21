@@ -75,6 +75,7 @@ func BuildBrowseResult(pkgs []source.BrowsePackage, product, kind string) Browse
 			HostRuntimes: nonNilStrings(p.HostRuntimes),
 			Channels:     nonNilStrings(p.Channels),
 			Source:       bp.Source,
+			Verified:     bp.Verified,
 		}
 		runtimes := p.HostRuntimes
 		if len(runtimes) == 0 {

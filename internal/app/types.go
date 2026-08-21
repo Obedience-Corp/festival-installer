@@ -46,6 +46,7 @@ type BrowseEntry struct {
 	HostRuntimes []string `json:"host_runtimes"`
 	Channels     []string `json:"channels"`
 	Source       string   `json:"source"`
+	Verified     bool     `json:"verified"`
 }
 
 // BrowseGroup groups packages by host runtime.
