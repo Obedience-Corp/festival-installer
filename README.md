@@ -64,7 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/Obedience-Corp/festival/main/instal
 
 Each of these installs the whole suite (`camp`, `fest`, and `festival`), not
 just this binary; they mirror the [`festival` distribution repo's
-README](https://github.com/Obedience-Corp/festival#install).
+README](https://github.com/Obedience-Corp/festival#install). Suite releases
+that predate the hub install `camp` and `fest` only; the first release that
+ships all three is the one that adds `festival` to every method above.
 
 Festival Installer lives at `github.com/Obedience-Corp/festival-installer`;
 its public command name is **`festival`**. CI tests the supported Linux and
