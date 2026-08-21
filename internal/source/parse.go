@@ -13,6 +13,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v5"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 const manifestFilename = "obey-marketplace.json"
@@ -91,6 +92,21 @@ func ParseMarketplace(ctx context.Context, raw []byte) (Marketplace, error) {
 		return Marketplace{}, errpkg.Wrap("E_PARSE_MANIFEST", err, "decode marketplace")
 	}
 	return m, nil
+}
+
+// ParseVerifiedMarketplace verifies that sig is a valid signature over signed,
+// which must already be the canonical bytes stored on disk, then schema-validates
+// and decodes into a Marketplace.
+//
+// This is the only entry point downstream code should use to ingest marketplace
+// metadata from an untrusted source. Calling ParseMarketplace directly on
+// untrusted bytes loses the signature guarantee. Nothing here canonicalizes:
+// per decision L8 the stored bytes are the signed bytes.
+func ParseVerifiedMarketplace(ctx context.Context, ks verify.KeyStore, signed []byte, sig verify.Signature) (Marketplace, error) {
+	if err := verify.Verify(ctx, ks, signed, sig); err != nil {
+		return Marketplace{}, err
+	}
+	return ParseMarketplace(ctx, signed)
 }
 
 func LoadMarketplace(ctx context.Context, repoDir string) (Marketplace, error) {
