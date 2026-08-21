@@ -31,7 +31,10 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "$LDFLAGS" -o dist/festival-darwin-arm64 ./cmd/festival
           file dist/festival-linux-amd64 | grep -q "statically linked"
           file dist/festival-linux-arm64 | grep -q "statically linked"
-          sha256sum dist/festival-* > dist/checksums.txt
+          # Hash from inside dist so checksums.txt names match GitHub asset
+          # basenames. Hashing dist/festival-* prefixes every path with dist/,
+          # and shasum -a 256 -c then fails next to the downloaded files.
+          (cd dist && sha256sum festival-* > checksums.txt)
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
