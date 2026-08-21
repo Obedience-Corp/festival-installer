@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
@@ -22,8 +23,10 @@ const usage = `festival-metadata manages canonical Ed25519 metadata signatures.
 
 Usage:
   festival-metadata generate-key --private-key PATH
-  festival-metadata sign --private-key PATH --key-id ID [--signature PATH] MANIFEST
-  festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--signature PATH] MANIFEST
+  festival-metadata sign --private-key PATH --key-id ID [--signature PATH] DOCUMENT
+  festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--kind KIND] [--signature PATH] DOCUMENT
+
+Kinds: manifest (default), marketplace, index, source
 `
 
 func main() {
@@ -130,8 +133,15 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	publicPath := fs.String("public-key-file", "", "file containing a base64 Ed25519 public key")
 	pinned := fs.Bool("pinned", false, "verify with Festival Installer's pinned trust store")
 	signaturePath := fs.String("signature", "", "detached signature path")
+	kind := fs.String("kind", "manifest",
+		"document kind: manifest, marketplace, index, or source")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	switch *kind {
+	case "manifest", "marketplace", "index", "source":
+	default:
+		return fmt.Errorf("unknown --kind %q: want manifest, marketplace, index, or source", *kind)
 	}
 	sources := 0
 	if *publicValue != "" {
@@ -166,7 +176,7 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if !bytes.Equal(raw, canonical) {
-		return errors.New("manifest is not canonical JSON")
+		return fmt.Errorf("%s is not canonical JSON", manifestPath)
 	}
 	sigFile, err := os.ReadFile(*signaturePath)
 	if err != nil {
@@ -186,7 +196,20 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 		}
 		ks = verify.NewStaticStore(map[string]ed25519.PublicKey{sig.KeyID: pub})
 	}
-	if _, err := metadata.ParseVerifiedManifest(context.Background(), ks, raw, sig); err != nil {
+	ctx := context.Background()
+	switch *kind {
+	case "manifest":
+		_, err = metadata.ParseVerifiedManifest(ctx, ks, raw, sig)
+	case "marketplace":
+		_, err = source.ParseVerifiedMarketplace(ctx, ks, raw, sig)
+	case "index":
+		_, err = metadata.ParseVerifiedIndex(ctx, ks, raw, sig)
+	case "source":
+		// No document of this kind is published anywhere today; wired for
+		// completeness because the underlying parser already exists.
+		_, err = metadata.ParseVerifiedSource(ctx, ks, raw, sig)
+	}
+	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(stdout, "verified %s with %s\n", manifestPath, sig.KeyID)
