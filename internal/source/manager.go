@@ -191,58 +191,62 @@ func AllPackages(ctx context.Context, vo VerifyOptions) ([]BrowsePackage, error)
 	return out, err
 }
 
+// refreshTargets resolves name to the sources RefreshMarketplaces should
+// refresh: a single source when name is given, every registered source
+// otherwise.
+func refreshTargets(ctx context.Context, db *state.DB, name string) ([]Source, error) {
+	if name != "" {
+		src, err := Get(ctx, db.Raw(), name)
+		if err != nil {
+			return nil, err
+		}
+		return []Source{src}, nil
+	}
+	return List(ctx, db.Raw())
+}
+
+// refreshOneSource pulls src's clone and verifies the result before
+// recording it. A commit whose document does not verify must not become the
+// source's recorded current commit, or the next `list` would look clean
+// while the clone on disk is bad: the source stays pinned at its
+// last-known-good commit until a verifying refresh succeeds.
+func refreshOneSource(ctx context.Context, db *state.DB, src Source, vo VerifyOptions) RefreshView {
+	view := RefreshView{Name: src.Name, OldCommit: src.Commit, NewCommit: src.Commit}
+	dest, derr := CloneDir(ctx, src.Name)
+	if derr != nil {
+		view.Err = derr.Error()
+		return view
+	}
+	commit, perr := Pull(ctx, dest)
+	if perr != nil {
+		view.Err = perr.Error()
+		return view
+	}
+	if _, lerr := LoadMarketplace(ctx, dest, voFor(src.Name, vo)); lerr != nil {
+		view.Err = lerr.Error()
+		return view
+	}
+	if commit == src.Commit {
+		return view
+	}
+	if uerr := UpdateCommit(ctx, db.Raw(), src.Name, commit); uerr != nil {
+		view.Err = uerr.Error()
+		return view
+	}
+	view.NewCommit = commit
+	view.Changed = true
+	return view
+}
+
 func RefreshMarketplaces(ctx context.Context, name string, vo VerifyOptions) ([]RefreshView, error) {
 	var views []RefreshView
 	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
-		var targets []Source
-		if name != "" {
-			src, err := Get(ctx, db.Raw(), name)
-			if err != nil {
-				return err
-			}
-			targets = []Source{src}
-		} else {
-			all, err := List(ctx, db.Raw())
-			if err != nil {
-				return err
-			}
-			targets = all
+		targets, err := refreshTargets(ctx, db, name)
+		if err != nil {
+			return err
 		}
-
 		for _, src := range targets {
-			view := RefreshView{Name: src.Name, OldCommit: src.Commit, NewCommit: src.Commit}
-			dest, derr := CloneDir(ctx, src.Name)
-			if derr != nil {
-				view.Err = derr.Error()
-				views = append(views, view)
-				continue
-			}
-			commit, perr := Pull(ctx, dest)
-			if perr != nil {
-				view.Err = perr.Error()
-				views = append(views, view)
-				continue
-			}
-			// Verify before recording the new commit: a commit whose document
-			// does not verify must not become the source's recorded current
-			// commit, or the next `list` would look clean while the clone on
-			// disk is bad. The source stays pinned at its last-known-good
-			// commit until a verifying refresh succeeds.
-			if _, lerr := LoadMarketplace(ctx, dest, voFor(src.Name, vo)); lerr != nil {
-				view.Err = lerr.Error()
-				views = append(views, view)
-				continue
-			}
-			if commit != src.Commit {
-				if uerr := UpdateCommit(ctx, db.Raw(), src.Name, commit); uerr != nil {
-					view.Err = uerr.Error()
-					views = append(views, view)
-					continue
-				}
-				view.NewCommit = commit
-				view.Changed = true
-			}
-			views = append(views, view)
+			views = append(views, refreshOneSource(ctx, db, src, vo))
 		}
 		return nil
 	})
