@@ -17,19 +17,19 @@ func ParseVerifiedSource(ctx context.Context, ks verify.KeyStore, signed []byte,
 	if err := verify.Verify(ctx, ks, signed, sig); err != nil {
 		return Source{}, err
 	}
-	return parseSource(ctx, signed)
+	return ParseSource(ctx, signed)
 }
 
 func ParseVerifiedIndex(ctx context.Context, ks verify.KeyStore, signed []byte, sig verify.Signature) (Index, error) {
 	if err := verify.Verify(ctx, ks, signed, sig); err != nil {
 		return Index{}, err
 	}
-	return parseIndex(ctx, signed)
+	return ParseIndex(ctx, signed)
 }
 
 func ParseVerifiedManifest(ctx context.Context, ks verify.KeyStore, signed []byte, sig verify.Signature) (PackageManifest, error) {
 	if err := verify.Verify(ctx, ks, signed, sig); err != nil {
 		return PackageManifest{}, err
 	}
-	return parseManifest(ctx, signed)
+	return ParseManifest(ctx, signed)
 }

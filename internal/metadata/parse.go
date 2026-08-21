@@ -92,7 +92,9 @@ func jsonPointer(verr *jsonschema.ValidationError) string {
 	return verr.InstanceLocation
 }
 
-func parseSource(ctx context.Context, raw []byte) (Source, error) {
+// ParseSource schema-validates and decodes a source document with no
+// signature check. Untrusted bytes must go through ParseVerifiedSource.
+func ParseSource(ctx context.Context, raw []byte) (Source, error) {
 	if err := ctx.Err(); err != nil {
 		return Source{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}
@@ -106,7 +108,9 @@ func parseSource(ctx context.Context, raw []byte) (Source, error) {
 	return s, nil
 }
 
-func parseIndex(ctx context.Context, raw []byte) (Index, error) {
+// ParseIndex schema-validates and decodes an index document with no
+// signature check. Untrusted bytes must go through ParseVerifiedIndex.
+func ParseIndex(ctx context.Context, raw []byte) (Index, error) {
 	if err := ctx.Err(); err != nil {
 		return Index{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}
@@ -120,7 +124,10 @@ func parseIndex(ctx context.Context, raw []byte) (Index, error) {
 	return i, nil
 }
 
-func parseManifest(ctx context.Context, raw []byte) (PackageManifest, error) {
+// ParseManifest schema-validates and decodes a package manifest with no
+// signature check. Untrusted bytes must go through ParseVerifiedManifest
+// or IngestManifest.
+func ParseManifest(ctx context.Context, raw []byte) (PackageManifest, error) {
 	if err := ctx.Err(); err != nil {
 		return PackageManifest{}, errpkg.Wrap("E_PARSE_CTX", err, "context cancelled")
 	}
