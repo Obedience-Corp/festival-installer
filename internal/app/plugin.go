@@ -236,7 +236,7 @@ func InstallPlugin(ctx context.Context, host, name string, opts InstallOptions) 
 	progress := opts.Progress
 	report(progress, ProgressEvent{Stage: "resolve", Package: host + "-" + name, Percent: 0.1, Message: "finding plugin"})
 
-	pkgs, err := source.AllPackages(ctx)
+	pkgs, err := source.AllPackages(ctx, opts.Verify)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -339,8 +339,8 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 }
 
 // ResolvePluginPackageID maps host+name to marketplace package ID.
-func ResolvePluginPackageID(ctx context.Context, host, name string) (string, error) {
-	pkgs, err := source.AllPackages(ctx)
+func ResolvePluginPackageID(ctx context.Context, host, name string, vo source.VerifyOptions) (string, error) {
+	pkgs, err := source.AllPackages(ctx, vo)
 	if err != nil {
 		return "", err
 	}

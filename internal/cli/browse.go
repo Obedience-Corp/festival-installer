@@ -12,18 +12,24 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 )
 
 func NewBrowseCommand() *cobra.Command {
 	var asJSON bool
 	var product, kind string
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "browse",
 		Short: "Browse available packages across registered marketplaces",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			res, err := app.Browse(cmd.Context(), app.BrowseOptions{Product: product, Kind: kind})
+			res, err := app.Browse(cmd.Context(), app.BrowseOptions{
+				Product: product,
+				Kind:    kind,
+				Verify:  source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified),
+			})
 			var warning *app.MarketplaceSeedWarning
 			if err != nil {
 				if !errors.As(err, &warning) {
@@ -42,6 +48,8 @@ func NewBrowseCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.Flags().StringVar(&product, "product", "", "filter by host product (fest|camp|obey)")
 	cmd.Flags().StringVar(&kind, "kind", "", "filter by package class (plugin|tool|product|bundle)")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false,
+		"allow browsing a marketplace with unsigned metadata without prompting")
 	return cmd
 }
 

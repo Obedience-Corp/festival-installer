@@ -261,7 +261,11 @@ func (m model) loadList() tea.Cmd {
 func (m model) loadBrowse(product, kind string) tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
-		res, err := app.Browse(ctx, app.BrowseOptions{Product: product, Kind: kind})
+		res, err := app.Browse(ctx, app.BrowseOptions{
+			Product: product,
+			Kind:    kind,
+			Verify:  source.DefaultVerifyOptions(nil, false),
+		})
 		return browseMsg{res: res, err: err}
 	}
 }
@@ -276,7 +280,7 @@ func (m model) loadDoctor() tea.Cmd {
 func (m model) loadMarkets() tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
-		views, err := app.MarketplaceList(ctx)
+		views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
 		return marketMsg{views: views, err: err}
 	}
 }

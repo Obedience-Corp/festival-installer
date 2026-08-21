@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 func TestInstallFestivalBootstrapsOfficialSourceOnFreshHome(t *testing.T) {
@@ -13,7 +15,7 @@ func TestInstallFestivalBootstrapsOfficialSourceOnFreshHome(t *testing.T) {
 	want := errors.New("seed unavailable")
 	called := false
 	previous := ensureOfficialSeed
-	ensureOfficialSeed = func(context.Context) error {
+	ensureOfficialSeed = func(context.Context, source.VerifyOptions) error {
 		called = true
 		return want
 	}
@@ -34,10 +36,10 @@ func TestMarketplaceListSurfacesSeedWarning(t *testing.T) {
 
 	want := errors.New("offline")
 	previous := ensureOfficialSeed
-	ensureOfficialSeed = func(context.Context) error { return want }
+	ensureOfficialSeed = func(context.Context, source.VerifyOptions) error { return want }
 	t.Cleanup(func() { ensureOfficialSeed = previous })
 
-	views, err := MarketplaceList(context.Background())
+	views, err := MarketplaceList(context.Background(), source.DefaultVerifyOptions(nil, false))
 	if len(views) != 0 {
 		t.Fatalf("expected no sources, got %+v", views)
 	}

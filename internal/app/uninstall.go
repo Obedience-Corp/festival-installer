@@ -8,6 +8,7 @@ import (
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
@@ -22,7 +23,10 @@ var ErrOutsideManagedBin = errpkg.New("E_UNINSTALL_PATH", "receipt file resolves
 func UninstallTarget(ctx context.Context, target string) (UninstallResult, error) {
 	packageID := FestivalPackageID
 	if host, name, ok := PluginHost(target); ok {
-		id, err := ResolvePluginPackageID(ctx, host, name)
+		// Uninstall resolves the package id from local marketplace metadata
+		// only to find the receipt key; it does not install anything, so the
+		// live-path default (no override) is the right, unsurprising choice.
+		id, err := ResolvePluginPackageID(ctx, host, name, source.DefaultVerifyOptions(nil, false))
 		if err != nil {
 			return UninstallResult{}, err
 		}

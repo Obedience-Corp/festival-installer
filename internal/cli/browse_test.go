@@ -44,7 +44,7 @@ func TestBrowse_ProductKindFilterJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	repo := browseFixtureRepo(t)
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "existing-source"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -69,7 +69,7 @@ func TestBrowse_EmptyResultSerializesAsArray(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	repo := browseFixtureRepo(t)
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "existing-source"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -86,7 +86,7 @@ func TestBrowse_AllGroupedJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	repo := browseFixtureRepo(t)
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "existing-source"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -115,11 +115,19 @@ func TestBrowse_AllGroupedJSON(t *testing.T) {
 // When the official source is already registered, ensureOfficialSeed's
 // len(sources) > 0 guard skips the clone entirely, so browse must render the
 // catalog with no seed warning at all (JSON envelope and table stderr alike).
-func TestBrowse_AlreadySeededOfficialSourceNoWarning(t *testing.T) {
+//
+// Since sequence 05, browse also verifies every registered source, and this
+// fixture is an unsigned third-party source, so it now legitimately carries
+// the loud "UNVERIFIED content" warning on stderr under PolicyWarnAllow: that
+// is the intended behavior this festival adds, not a seed warning. This test
+// distinguishes the two: the seed warning (envelope "warnings" field) must
+// stay empty, while stderr carries only the unverified-content warning and
+// never a seed-related message.
+func TestBrowse_AlreadySeededNoSeedWarning(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	repo := browseFixtureRepo(t)
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "existing-source"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -127,8 +135,11 @@ func TestBrowse_AlreadySeededOfficialSourceNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("browse --json: %v\n%s", err, jsonErrOut)
 	}
-	if jsonErrOut != "" {
-		t.Fatalf("expected no stderr for an already-seeded home, got %q", jsonErrOut)
+	if !strings.Contains(jsonErrOut, "UNVERIFIED") {
+		t.Fatalf("expected the unverified-content warning on stderr, got %q", jsonErrOut)
+	}
+	if strings.Contains(jsonErrOut, seedFriendlyWarning) {
+		t.Fatalf("expected no seed warning on stderr, got %q", jsonErrOut)
 	}
 	var env struct {
 		Warnings []string `json:"warnings"`
@@ -137,7 +148,7 @@ func TestBrowse_AlreadySeededOfficialSourceNoWarning(t *testing.T) {
 		t.Fatalf("decode envelope: %v\n%s", jsonErr, jsonOut)
 	}
 	if len(env.Warnings) != 0 {
-		t.Fatalf("expected no warnings in the envelope, got %v", env.Warnings)
+		t.Fatalf("expected no seed warnings in the envelope, got %v", env.Warnings)
 	}
 	var res browseJSON
 	dataOf(t, jsonOut, &res)
@@ -149,8 +160,11 @@ func TestBrowse_AlreadySeededOfficialSourceNoWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("browse: %v\n%s", err, tableErrOut)
 	}
-	if tableErrOut != "" {
-		t.Fatalf("expected no stderr warning in table mode, got %q", tableErrOut)
+	if !strings.Contains(tableErrOut, "UNVERIFIED") {
+		t.Fatalf("expected the unverified-content warning on stderr in table mode, got %q", tableErrOut)
+	}
+	if strings.Contains(tableErrOut, seedFriendlyWarning) {
+		t.Fatalf("expected no seed warning in table mode, got %q", tableErrOut)
 	}
 	if !strings.Contains(tableOut, "obedience-corp/fest") {
 		t.Fatalf("expected table output populated, got: %s", tableOut)

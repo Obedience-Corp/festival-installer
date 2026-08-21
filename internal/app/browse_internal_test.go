@@ -11,7 +11,6 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
-	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 func browseFixture() []source.BrowsePackage {
@@ -141,7 +140,7 @@ func TestBrowseBootstrapsOfficialSourceOnFreshHome(t *testing.T) {
 
 	called := false
 	previous := ensureOfficialSeed
-	ensureOfficialSeed = func(context.Context) error {
+	ensureOfficialSeed = func(context.Context, source.VerifyOptions) error {
 		called = true
 		return nil
 	}
@@ -161,13 +160,13 @@ func TestBrowseSurfacesSeedWarningButStillReturnsCatalog(t *testing.T) {
 	ctx := context.Background()
 
 	fixture := browseSeedFixtureRepo(t)
-	if _, err := source.AddMarketplace(ctx, fixture, "acme"); err != nil {
+	if _, err := source.AddMarketplace(ctx, fixture, "acme", source.DefaultVerifyOptions(nil, false)); err != nil {
 		t.Fatalf("seed local source: %v", err)
 	}
 
 	want := errors.New("git clone -- https://github.com/Obedience-Corp/marketplace.git: fatal: could not read Username")
 	previous := ensureOfficialSeed
-	ensureOfficialSeed = func(context.Context) error { return want }
+	ensureOfficialSeed = func(context.Context, source.VerifyOptions) error { return want }
 	t.Cleanup(func() { ensureOfficialSeed = previous })
 
 	res, err := Browse(ctx, BrowseOptions{})
@@ -193,15 +192,20 @@ func TestBrowseAlreadySeededSkipsReclone(t *testing.T) {
 	ctx := context.Background()
 
 	fixture := browseSeedFixtureRepo(t)
-	if _, err := source.AddMarketplace(ctx, fixture, state.OfficialSeedKey); err != nil {
-		t.Fatalf("pre-register official source: %v", err)
+	// Registered under a non-official name deliberately: policyFor keys the
+	// strict refuse-by-default policy off the exact source name matching
+	// state.OfficialSeedKey, and this fixture is never signed. What this test
+	// actually exercises is seedFromURL's len(sources) > 0 short-circuit,
+	// which fires for any pre-existing source regardless of its name.
+	if _, err := source.AddMarketplace(ctx, fixture, "existing-source", source.DefaultVerifyOptions(nil, false)); err != nil {
+		t.Fatalf("pre-register existing source: %v", err)
 	}
 
 	// ensureOfficialSeed is left as the real source.EnsureOfficialSeed: with a
-	// source already registered under OfficialSeedKey, seedFromURL's
-	// len(sources) > 0 guard must short-circuit before any clone attempt
-	// against the real (currently private) official URL.
-	res, err := Browse(ctx, BrowseOptions{})
+	// source already registered, seedFromURL's len(sources) > 0 guard must
+	// short-circuit before any clone attempt against the real (currently
+	// private) official URL.
+	res, err := Browse(ctx, BrowseOptions{Verify: source.DefaultVerifyOptions(nil, false)})
 	if err != nil {
 		t.Fatalf("Browse: %v", err)
 	}

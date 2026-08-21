@@ -69,22 +69,22 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor >= len(m.markets) {
 			// refresh all
 			return m, tea.Batch(func() tea.Msg {
-				_, err := app.MarketplaceRefresh(ctx, "")
+				_, err := app.MarketplaceRefresh(ctx, "", source.DefaultVerifyOptions(nil, false))
 				if err != nil {
 					return marketMsg{err: err}
 				}
-				views, err := app.MarketplaceList(ctx)
+				views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
 				return marketMsg{views: views, err: err}
 			})
 		}
 		// remove selected marketplace? use 'd' - for enter, refresh single
 		name := m.markets[m.cursor].Name
 		return m, tea.Batch(func() tea.Msg {
-			_, err := app.MarketplaceRefresh(ctx, name)
+			_, err := app.MarketplaceRefresh(ctx, name, source.DefaultVerifyOptions(nil, false))
 			if err != nil {
 				return marketMsg{err: err}
 			}
-			views, err := app.MarketplaceList(ctx)
+			views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
 			return marketMsg{views: views, err: err}
 		})
 	case screenResult:
@@ -425,11 +425,11 @@ func (m model) submitMarketplaceAdd() (tea.Model, tea.Cmd) {
 	m.marketMode = "list"
 	ctx := m.ctx
 	return m, func() tea.Msg {
-		_, err := app.MarketplaceAdd(ctx, url, "")
+		_, err := app.MarketplaceAdd(ctx, url, "", source.DefaultVerifyOptions(nil, false))
 		if err != nil {
 			return marketMsg{err: err}
 		}
-		views, err := app.MarketplaceList(ctx)
+		views, err := app.MarketplaceList(ctx, source.DefaultVerifyOptions(nil, false))
 		return marketMsg{views: views, err: err}
 	}
 }

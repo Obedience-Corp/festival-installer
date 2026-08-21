@@ -141,7 +141,7 @@ func TestMarketplaceE2E_AddListRefreshRemove(t *testing.T) {
 	if _, err := os.Stat(clone); !os.IsNotExist(err) {
 		t.Fatalf("clone still present after remove: %v", err)
 	}
-	sources, err := source.ListMarketplaces(ctx)
+	sources, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		t.Fatalf("ListMarketplaces: %v", err)
 	}
@@ -185,7 +185,14 @@ func TestMarketplaceListRefreshJSONEnvelope(t *testing.T) {
 		{"refresh", []string{"marketplace", "refresh", "--json"}, "marketplace refresh"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name+"/seeded home has empty warnings", func(t *testing.T) {
+		// Sequence 05 verifies every read of a registered source. "official"
+		// here is an ordinary added name (not state.OfficialSeedKey), so it
+		// gets PolicyWarnAllow: unsigned still works, but now legitimately
+		// carries the loud "UNVERIFIED content" warning on stderr. That is
+		// this festival's intended behavior, distinct from the seed warning
+		// this subtest's name refers to (the envelope "warnings" field, which
+		// must still stay empty since there is no seed failure here).
+		t.Run(tc.name+"/seeded home has empty envelope warnings", func(t *testing.T) {
 			t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
 			fixture := fixtureMarketplace(t)
 			if out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", "official"); err != nil {
@@ -196,8 +203,11 @@ func TestMarketplaceListRefreshJSONEnvelope(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v: %v\n%s", tc.args, err, errOut)
 			}
-			if errOut != "" {
-				t.Fatalf("expected no stderr for an already-seeded home, got %q", errOut)
+			if !strings.Contains(errOut, "UNVERIFIED") {
+				t.Fatalf("expected the unverified-content warning on stderr, got %q", errOut)
+			}
+			if strings.Contains(errOut, seedFriendlyWarning) {
+				t.Fatalf("expected no seed warning on stderr, got %q", errOut)
 			}
 			env := decodeMarketplaceEnvelope(t, out)
 			if env.Action != tc.action {
@@ -279,7 +289,7 @@ func TestMarketplaceE2E_AddNonMarketplaceRollsBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, "marketplaces", "bogus")); !os.IsNotExist(err) {
 		t.Fatalf("clone should be rolled back: %v", err)
 	}
-	sources, err := source.ListMarketplaces(ctx)
+	sources, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		t.Fatalf("ListMarketplaces: %v", err)
 	}

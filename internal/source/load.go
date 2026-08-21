@@ -9,6 +9,7 @@ import (
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
@@ -43,6 +44,17 @@ func DefaultVerifyOptions(warnWriter io.Writer, allowUnverified bool) VerifyOpti
 		AllowUnverified: allowUnverified,
 		WarnWriter:      warnWriter,
 	}
+}
+
+// policyFor returns the trust policy for a source by name. The official seed
+// source is signed, so unsigned content there means something is wrong and we
+// refuse. A user-added third-party marketplace has no key infrastructure, so
+// refusing would make third-party marketplaces unusable; warn loudly instead.
+func policyFor(name string) metadata.Policy {
+	if name == state.OfficialSeedKey {
+		return metadata.PolicyRefuseByDefault
+	}
+	return metadata.PolicyWarnAllow
 }
 
 func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {

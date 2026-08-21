@@ -122,7 +122,7 @@ func TestUpdateE2E_SelfReplaceAcrossVersionAndOldProcessFinishesCleanly(t *testi
 	git(t, repo, "add", ".")
 	git(t, repo, "commit", "-m", "release 1.1.0")
 
-	if _, errOut, err := runInstaller(t, "marketplace", "refresh"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "refresh", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace refresh: %v\n%s", err, errOut)
 	}
 
