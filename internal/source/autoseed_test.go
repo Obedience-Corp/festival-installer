@@ -75,9 +75,19 @@ func seedHome(t *testing.T) {
 	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
 }
 
+// unsignedTestVO allows the unsigned fixture repos this file uses to seed
+// successfully, matching this suite's behavior from before LoadMarketplace
+// began verifying the index document itself. Verification and the
+// verified-vs-unverified policy split are covered by the dedicated cases in
+// manifest_test.go and manager_verify_test.go, not here: these tests are
+// about seeding mechanics (first-seed, removal, offline retry).
+func unsignedTestVO() VerifyOptions {
+	return VerifyOptions{AllowUnverified: true, WarnWriter: io.Discard}
+}
+
 func sourceNames(t *testing.T, ctx context.Context) []string {
 	t.Helper()
-	views, err := ListMarketplaces(ctx)
+	views, err := ListMarketplaces(ctx, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("ListMarketplaces: %v", err)
 	}
@@ -138,7 +148,7 @@ func TestEnsureOfficialSeed_FirstSeedIsSilent(t *testing.T) {
 	t.Cleanup(func() { officialMarketplaceURL = prev })
 
 	stderr := captureStderr(t, func() {
-		if err := EnsureOfficialSeed(ctx); err != nil {
+		if err := EnsureOfficialSeed(ctx, unsignedTestVO()); err != nil {
 			t.Fatalf("EnsureOfficialSeed: %v", err)
 		}
 	})
@@ -160,7 +170,7 @@ func TestAutoseed_FreshStateSeedsOnce(t *testing.T) {
 	ctx := seedTestCtx(t)
 	fixture := seedFixtureRepo(t)
 
-	added, err := seedFromURL(ctx, fixture)
+	added, err := seedFromURL(ctx, fixture, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("first seed: %v", err)
 	}
@@ -176,7 +186,7 @@ func TestAutoseed_FreshStateSeedsOnce(t *testing.T) {
 		t.Fatal("seed marker should be recorded after a successful seed")
 	}
 
-	added, err = seedFromURL(ctx, fixture)
+	added, err = seedFromURL(ctx, fixture, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
@@ -193,14 +203,14 @@ func TestAutoseed_RespectsUserRemoval(t *testing.T) {
 	ctx := seedTestCtx(t)
 	fixture := seedFixtureRepo(t)
 
-	if _, err := seedFromURL(ctx, fixture); err != nil {
+	if _, err := seedFromURL(ctx, fixture, unsignedTestVO()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	if err := RemoveMarketplace(ctx, state.OfficialSeedKey); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
-	added, err := seedFromURL(ctx, fixture)
+	added, err := seedFromURL(ctx, fixture, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("reseed: %v", err)
 	}
@@ -218,11 +228,11 @@ func TestAutoseed_ExistingSourcesUntouched(t *testing.T) {
 	userFixture := seedFixtureRepo(t)
 	officialFixture := seedFixtureRepo(t)
 
-	if _, err := AddMarketplace(ctx, userFixture, "acme"); err != nil {
+	if _, err := AddMarketplace(ctx, userFixture, "acme", unsignedTestVO()); err != nil {
 		t.Fatalf("add user source: %v", err)
 	}
 
-	added, err := seedFromURL(ctx, officialFixture)
+	added, err := seedFromURL(ctx, officialFixture, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -238,7 +248,7 @@ func TestAutoseed_ExistingSourcesUntouched(t *testing.T) {
 		t.Fatal("seed marker should be recorded even when seeding is skipped for existing sources")
 	}
 
-	if added, err := seedFromURL(ctx, officialFixture); err != nil || added {
+	if added, err := seedFromURL(ctx, officialFixture, unsignedTestVO()); err != nil || added {
 		t.Fatalf("subsequent seed should be a no-op (added=%v err=%v)", added, err)
 	}
 }
@@ -247,7 +257,7 @@ func TestAutoseed_OfflineFailureDoesNotRecordMarker(t *testing.T) {
 	seedHome(t)
 	ctx := seedTestCtx(t)
 
-	added, err := seedFromURL(ctx, "file:///nonexistent/marketplace.git")
+	added, err := seedFromURL(ctx, "file:///nonexistent/marketplace.git", unsignedTestVO())
 	if err == nil {
 		t.Fatal("expected seed to fail for an unreachable URL")
 	}
@@ -259,7 +269,7 @@ func TestAutoseed_OfflineFailureDoesNotRecordMarker(t *testing.T) {
 	}
 
 	fixture := seedFixtureRepo(t)
-	added, err = seedFromURL(ctx, fixture)
+	added, err = seedFromURL(ctx, fixture, unsignedTestVO())
 	if err != nil {
 		t.Fatalf("retry seed: %v", err)
 	}

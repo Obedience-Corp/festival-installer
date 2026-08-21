@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
@@ -22,8 +23,10 @@ const usage = `festival-metadata manages canonical Ed25519 metadata signatures.
 
 Usage:
   festival-metadata generate-key --private-key PATH
-  festival-metadata sign --private-key PATH --key-id ID [--signature PATH] MANIFEST
-  festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--signature PATH] MANIFEST
+  festival-metadata sign --private-key PATH --key-id ID [--signature PATH] DOCUMENT
+  festival-metadata verify (--pinned | --public-key BASE64 | --public-key-file PATH) [--kind KIND] [--signature PATH] DOCUMENT
+
+Kinds: manifest (default), marketplace, index, source
 `
 
 func main() {
@@ -123,41 +126,115 @@ func runSign(args []string, stdout, stderr io.Writer) error {
 	return err
 }
 
-func runVerify(args []string, stdout, stderr io.Writer) error {
+// verifyFlags holds runVerify's parsed and validated command-line input.
+type verifyFlags struct {
+	publicValue   string
+	pinned        bool
+	signaturePath string
+	kind          string
+	manifestPath  string
+}
+
+// exactlyOneKeySource reports whether exactly one of --public-key,
+// --public-key-file, and --pinned was supplied.
+func exactlyOneKeySource(publicValue, publicPath string, pinned bool) bool {
+	n := 0
+	if publicValue != "" {
+		n++
+	}
+	if publicPath != "" {
+		n++
+	}
+	if pinned {
+		n++
+	}
+	return n == 1
+}
+
+// parseVerifyFlags parses and validates the verify subcommand's flags,
+// including resolving --public-key-file to its contents and defaulting
+// --signature to manifestPath+".sig".
+func parseVerifyFlags(args []string, stderr io.Writer) (verifyFlags, error) {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	publicValue := fs.String("public-key", "", "base64 Ed25519 public key")
 	publicPath := fs.String("public-key-file", "", "file containing a base64 Ed25519 public key")
 	pinned := fs.Bool("pinned", false, "verify with Festival Installer's pinned trust store")
 	signaturePath := fs.String("signature", "", "detached signature path")
+	kind := fs.String("kind", "manifest",
+		"document kind: manifest, marketplace, index, or source")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return verifyFlags{}, err
 	}
-	sources := 0
-	if *publicValue != "" {
-		sources++
+	switch *kind {
+	case "manifest", "marketplace", "index", "source":
+	default:
+		return verifyFlags{}, fmt.Errorf("unknown --kind %q: want manifest, marketplace, index, or source", *kind)
 	}
-	if *publicPath != "" {
-		sources++
-	}
-	if *pinned {
-		sources++
-	}
-	if fs.NArg() != 1 || sources != 1 {
-		return errors.New("verify requires exactly one public key source and one manifest")
+	if fs.NArg() != 1 || !exactlyOneKeySource(*publicValue, *publicPath, *pinned) {
+		return verifyFlags{}, errors.New("verify requires exactly one public key source and one manifest")
 	}
 	if *publicPath != "" {
 		raw, err := os.ReadFile(*publicPath)
 		if err != nil {
-			return fmt.Errorf("read public key: %w", err)
+			return verifyFlags{}, fmt.Errorf("read public key: %w", err)
 		}
 		*publicValue = strings.TrimSpace(string(raw))
 	}
 	manifestPath := fs.Arg(0)
-	if *signaturePath == "" {
-		*signaturePath = manifestPath + ".sig"
+	sigPath := *signaturePath
+	if sigPath == "" {
+		sigPath = manifestPath + ".sig"
 	}
-	raw, err := os.ReadFile(manifestPath)
+	return verifyFlags{
+		publicValue:   *publicValue,
+		pinned:        *pinned,
+		signaturePath: sigPath,
+		kind:          *kind,
+		manifestPath:  manifestPath,
+	}, nil
+}
+
+// resolveVerifyKeyStore builds the key store runVerify checks the signature
+// against: the pinned trust root, or a single-key store built from the
+// caller-supplied public key and the signature's own key id.
+func resolveVerifyKeyStore(vf verifyFlags, sigKeyID string) (verify.KeyStore, error) {
+	if vf.pinned {
+		return verify.PinnedKeyStore(), nil
+	}
+	pub, err := decodePublicKey(vf.publicValue)
+	if err != nil {
+		return nil, err
+	}
+	return verify.NewStaticStore(map[string]ed25519.PublicKey{sigKeyID: pub}), nil
+}
+
+// verifyByKind dispatches to the parser for the requested document kind. Each
+// parser is the one downstream code uses to ingest that kind of document, so
+// this command exercises the same verification path production code does.
+func verifyByKind(ctx context.Context, kind string, ks verify.KeyStore, raw []byte, sig verify.Signature) error {
+	var err error
+	switch kind {
+	case "manifest":
+		_, err = metadata.ParseVerifiedManifest(ctx, ks, raw, sig)
+	case "marketplace":
+		_, err = source.ParseVerifiedMarketplace(ctx, ks, raw, sig)
+	case "index":
+		_, err = metadata.ParseVerifiedIndex(ctx, ks, raw, sig)
+	case "source":
+		// No document of this kind is published anywhere today; wired for
+		// completeness because the underlying parser already exists.
+		_, err = metadata.ParseVerifiedSource(ctx, ks, raw, sig)
+	}
+	return err
+}
+
+func runVerify(args []string, stdout, stderr io.Writer) error {
+	vf, err := parseVerifyFlags(args, stderr)
+	if err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(vf.manifestPath)
 	if err != nil {
 		return fmt.Errorf("read manifest: %w", err)
 	}
@@ -166,9 +243,9 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if !bytes.Equal(raw, canonical) {
-		return errors.New("manifest is not canonical JSON")
+		return fmt.Errorf("%s is not canonical JSON", vf.manifestPath)
 	}
-	sigFile, err := os.ReadFile(*signaturePath)
+	sigFile, err := os.ReadFile(vf.signaturePath)
 	if err != nil {
 		return fmt.Errorf("read detached signature: %w", err)
 	}
@@ -176,20 +253,14 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	var ks verify.KeyStore
-	if *pinned {
-		ks = verify.PinnedKeyStore()
-	} else {
-		pub, err := decodePublicKey(*publicValue)
-		if err != nil {
-			return err
-		}
-		ks = verify.NewStaticStore(map[string]ed25519.PublicKey{sig.KeyID: pub})
-	}
-	if _, err := metadata.ParseVerifiedManifest(context.Background(), ks, raw, sig); err != nil {
+	ks, err := resolveVerifyKeyStore(vf, sig.KeyID)
+	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "verified %s with %s\n", manifestPath, sig.KeyID)
+	if err := verifyByKind(context.Background(), vf.kind, ks, raw, sig); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "verified %s with %s\n", vf.manifestPath, sig.KeyID)
 	return err
 }
 

@@ -60,7 +60,9 @@ func checkManagedBinOnPath(ctx context.Context) DoctorCheck {
 
 func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "sources_reachable"}
-	views, err := source.ListMarketplaces(ctx)
+	// This check is about reachability, not verification; sequence 06 task 01
+	// adds a dedicated marketplace_trust check that reads ListView.Verified.
+	views, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		c.Status = "fail"
 		c.Message = err.Error()

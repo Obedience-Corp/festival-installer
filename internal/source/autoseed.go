@@ -8,12 +8,16 @@ import (
 
 var officialMarketplaceURL = "https://github.com/Obedience-Corp/marketplace.git"
 
-func EnsureOfficialSeed(ctx context.Context) error {
-	_, err := seedFromURL(ctx, officialMarketplaceURL)
+// EnsureOfficialSeed clones and registers the official marketplace the first
+// time festival runs with no sources configured. vo carries the caller's key
+// store, allow-unverified override, and warn writer; the policy itself is
+// always the official seed's (policyFor), not caller-chosen.
+func EnsureOfficialSeed(ctx context.Context, vo VerifyOptions) error {
+	_, err := seedFromURL(ctx, officialMarketplaceURL, vo)
 	return err
 }
 
-func seedFromURL(ctx context.Context, gitURL string) (bool, error) {
+func seedFromURL(ctx context.Context, gitURL string, vo VerifyOptions) (bool, error) {
 	added := false
 	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
 		seeded, err := state.SeedMarkerExists(ctx, db.Raw(), state.OfficialSeedKey)
@@ -41,7 +45,9 @@ func seedFromURL(ctx context.Context, gitURL string) (bool, error) {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}
-		if _, err := LoadMarketplace(ctx, dest); err != nil {
+		vo.Policy = policyFor(state.OfficialSeedKey)
+		vo.SourceLabel = state.OfficialSeedKey
+		if _, err := LoadMarketplace(ctx, dest, vo); err != nil {
 			_ = RemoveClone(ctx, dest)
 			return err
 		}

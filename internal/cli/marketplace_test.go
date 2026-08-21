@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -16,6 +17,8 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/cli"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
+	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
 const validManifest = `{
@@ -141,7 +144,7 @@ func TestMarketplaceE2E_AddListRefreshRemove(t *testing.T) {
 	if _, err := os.Stat(clone); !os.IsNotExist(err) {
 		t.Fatalf("clone still present after remove: %v", err)
 	}
-	sources, err := source.ListMarketplaces(ctx)
+	sources, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		t.Fatalf("ListMarketplaces: %v", err)
 	}
@@ -185,7 +188,14 @@ func TestMarketplaceListRefreshJSONEnvelope(t *testing.T) {
 		{"refresh", []string{"marketplace", "refresh", "--json"}, "marketplace refresh"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name+"/seeded home has empty warnings", func(t *testing.T) {
+		// Sequence 05 verifies every read of a registered source. "official"
+		// here is an ordinary added name (not state.OfficialSeedKey), so it
+		// gets PolicyWarnAllow: unsigned still works, but now legitimately
+		// carries the loud "UNVERIFIED content" warning on stderr. That is
+		// this festival's intended behavior, distinct from the seed warning
+		// this subtest's name refers to (the envelope "warnings" field, which
+		// must still stay empty since there is no seed failure here).
+		t.Run(tc.name+"/seeded home has empty envelope warnings", func(t *testing.T) {
 			t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
 			fixture := fixtureMarketplace(t)
 			if out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", "official"); err != nil {
@@ -196,8 +206,11 @@ func TestMarketplaceListRefreshJSONEnvelope(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%v: %v\n%s", tc.args, err, errOut)
 			}
-			if errOut != "" {
-				t.Fatalf("expected no stderr for an already-seeded home, got %q", errOut)
+			if !strings.Contains(errOut, "UNVERIFIED") {
+				t.Fatalf("expected the unverified-content warning on stderr, got %q", errOut)
+			}
+			if strings.Contains(errOut, seedFriendlyWarning) {
+				t.Fatalf("expected no seed warning on stderr, got %q", errOut)
 			}
 			env := decodeMarketplaceEnvelope(t, out)
 			if env.Action != tc.action {
@@ -279,11 +292,114 @@ func TestMarketplaceE2E_AddNonMarketplaceRollsBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, "marketplaces", "bogus")); !os.IsNotExist(err) {
 		t.Fatalf("clone should be rolled back: %v", err)
 	}
-	sources, err := source.ListMarketplaces(ctx)
+	sources, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		t.Fatalf("ListMarketplaces: %v", err)
 	}
 	if len(sources) != 0 {
 		t.Fatalf("registry should be empty after rollback: %+v", sources)
+	}
+}
+
+// fixtureMarketplaceWithBadSig builds a fixture marketplace repo (via
+// fixtureMarketplace) and adds a second commit carrying a detached signature
+// claiming the real pinned key id but holding garbage signature bytes. Since
+// this test suite has no access to the real pinned private key, this is the
+// only way a CLI-level test can produce a present-but-invalid signature
+// (E_SIG_INVALID) rather than an unknown-key-id error: the key id resolves to
+// the real pinned public key, so ed25519.Verify runs and correctly fails.
+func fixtureMarketplaceWithBadSig(t *testing.T) string {
+	t.Helper()
+	dir := fixtureMarketplace(t)
+	sig := verify.Signature{
+		KeyID:     verify.OfficialMarketplaceKeyID,
+		Algorithm: verify.AlgorithmEd25519,
+		Bytes:     make([]byte, ed25519.SignatureSize),
+	}
+	sigRaw, err := verify.MarshalDetachedSignature(sig)
+	if err != nil {
+		t.Fatalf("MarshalDetachedSignature: %v", err)
+	}
+	writeFile(t, filepath.Join(dir, "obey-marketplace.json.sig"), string(sigRaw))
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "add invalid signature")
+	return dir
+}
+
+// Case 1: marketplace add with no flag, against an unsigned document under
+// the official-seed name, refuses.
+func TestMarketplaceAdd_OfficialUnsignedRefusedWithoutFlag(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+	fixture := fixtureMarketplace(t)
+
+	out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", state.OfficialSeedKey)
+	if err == nil {
+		t.Fatalf("expected add to refuse an unsigned official-policy source, got success: %s%s", out, errOut)
+	}
+	if !hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+		t.Fatalf("expected E_UNVERIFIED_REFUSED, got %v", err)
+	}
+}
+
+// Case 2: --allow-unverified cannot launder a tampered (present but invalid)
+// signature. This is the security assertion of the whole flag: if it ever
+// passes for the wrong reason, the override has become a bypass.
+func TestMarketplaceAdd_TamperedSignatureRefusedEvenWithAllowUnverified(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+	fixture := fixtureMarketplaceWithBadSig(t)
+
+	out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", "acme", "--allow-unverified")
+	if err == nil {
+		t.Fatalf("expected add to refuse an invalid signature even with --allow-unverified, got success: %s%s", out, errOut)
+	}
+	if !hasErrorCode(err, "E_SIG_INVALID") {
+		t.Fatalf("expected E_SIG_INVALID, got %v", err)
+	}
+}
+
+// Case 3: --allow-unverified accepts an unsigned document and warns loudly on
+// stderr.
+func TestMarketplaceAdd_UnsignedSucceedsWithAllowUnverified(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+	fixture := fixtureMarketplace(t)
+
+	out, errOut, err := runInstaller(t, "marketplace", "add", fixture, "--name", "acme", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("marketplace add --allow-unverified: %v\n%s%s", err, out, errOut)
+	}
+	if !strings.Contains(errOut, "WARNING: installing UNVERIFIED content") {
+		t.Fatalf("expected the unverified-content warning on stderr, got %q", errOut)
+	}
+}
+
+// Case 5: marketplace refresh --allow-unverified reaches the options. This
+// asserts the plumbing (the flag parses and the command runs), not any git
+// behavior: an empty home has no sources to refresh, so there is nothing for
+// the flag to change, only its acceptance to prove.
+func TestMarketplaceRefresh_AllowUnverifiedFlagAccepted(t *testing.T) {
+	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+
+	out, errOut, err := runInstaller(t, "marketplace", "refresh", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("marketplace refresh --allow-unverified: %v\n%s%s", err, out, errOut)
+	}
+}
+
+// Case 6 (marketplace add and marketplace refresh half): --help lists
+// --allow-unverified. The browse half of case 6 lives in browse_test.go.
+func TestMarketplaceCommands_HelpListsAllowUnverified(t *testing.T) {
+	for _, args := range [][]string{
+		{"marketplace", "add", "--help"},
+		{"marketplace", "refresh", "--help"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			out, _, err := runInstaller(t, args...)
+			if err != nil {
+				t.Fatalf("%v: %v", args, err)
+			}
+			if !strings.Contains(out, "--allow-unverified") {
+				t.Fatalf("expected --allow-unverified in help output, got:\n%s", out)
+			}
+		})
 	}
 }

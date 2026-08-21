@@ -32,8 +32,8 @@ func (w *MarketplaceSeedWarning) Friendly() string { return marketplaceSeedFrien
 func (w *MarketplaceSeedWarning) Unwrap() error { return w.Err }
 
 // MarketplaceAdd clones and registers a marketplace git URL.
-func MarketplaceAdd(ctx context.Context, url, name string) (source.Source, error) {
-	return source.AddMarketplace(ctx, url, name)
+func MarketplaceAdd(ctx context.Context, url, name string, vo source.VerifyOptions) (source.Source, error) {
+	return source.AddMarketplace(ctx, url, name, vo)
 }
 
 // MarketplaceRemove drops a registered marketplace.
@@ -43,9 +43,9 @@ func MarketplaceRemove(ctx context.Context, name string) error {
 
 // MarketplaceList returns marketplace views (seeding official if needed).
 // Views are never nil so JSON consumers always see an array.
-func MarketplaceList(ctx context.Context) ([]source.ListView, error) {
-	seedErr := ensureOfficialSeed(ctx)
-	views, err := source.ListMarketplaces(ctx)
+func MarketplaceList(ctx context.Context, vo source.VerifyOptions) ([]source.ListView, error) {
+	seedErr := ensureOfficialSeed(ctx, vo)
+	views, err := source.ListMarketplaces(ctx, vo)
 	if err != nil {
 		return nil, err
 	}
@@ -60,9 +60,9 @@ func MarketplaceList(ctx context.Context) ([]source.ListView, error) {
 
 // MarketplaceRefresh refreshes one or all marketplaces.
 // Views are never nil so JSON consumers always see an array.
-func MarketplaceRefresh(ctx context.Context, name string) ([]source.RefreshView, error) {
-	seedErr := ensureOfficialSeed(ctx)
-	views, err := source.RefreshMarketplaces(ctx, name)
+func MarketplaceRefresh(ctx context.Context, name string, vo source.VerifyOptions) ([]source.RefreshView, error) {
+	seedErr := ensureOfficialSeed(ctx, vo)
+	views, err := source.RefreshMarketplaces(ctx, name, vo)
 	if err != nil {
 		return nil, err
 	}

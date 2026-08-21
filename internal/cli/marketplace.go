@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 )
 
@@ -45,12 +46,14 @@ func NewMarketplaceCommand() *cobra.Command {
 
 func newMarketplaceAddCommand() *cobra.Command {
 	var name string
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "add <git-url>",
 		Short: "Add a marketplace from a git repository",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			src, err := app.MarketplaceAdd(cmd.Context(), args[0], name)
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
+			src, err := app.MarketplaceAdd(cmd.Context(), args[0], name, vo)
 			if err != nil {
 				return err
 			}
@@ -59,6 +62,8 @@ func newMarketplaceAddCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "override the derived source name")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false,
+		"allow adding a marketplace with unsigned metadata without prompting")
 	return cmd
 }
 
@@ -84,7 +89,7 @@ func newMarketplaceListCommand() *cobra.Command {
 		Short: "List added marketplaces",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			views, err := app.MarketplaceList(cmd.Context())
+			views, err := app.MarketplaceList(cmd.Context(), source.DefaultVerifyOptions(cmd.ErrOrStderr(), false))
 			var warning *app.MarketplaceSeedWarning
 			if err != nil {
 				if !errors.As(err, &warning) {
@@ -120,6 +125,7 @@ func newMarketplaceListCommand() *cobra.Command {
 
 func newMarketplaceRefreshCommand() *cobra.Command {
 	var asJSON bool
+	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "refresh [name]",
 		Short: "Refresh one or all marketplaces",
@@ -129,7 +135,8 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 			if len(args) == 1 {
 				name = args[0]
 			}
-			views, err := app.MarketplaceRefresh(cmd.Context(), name)
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
+			views, err := app.MarketplaceRefresh(cmd.Context(), name, vo)
 			var warning *app.MarketplaceSeedWarning
 			if err != nil {
 				if !errors.As(err, &warning) {
@@ -158,5 +165,7 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
+	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false,
+		"allow refreshing a marketplace with unsigned metadata without prompting")
 	return cmd
 }

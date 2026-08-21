@@ -14,12 +14,13 @@ const noHostRuntime = "(unspecified)"
 type BrowseOptions struct {
 	Product string
 	Kind    string
+	Verify  source.VerifyOptions
 }
 
 // Browse returns packages grouped by host runtime (seeding official if needed).
 func Browse(ctx context.Context, opts BrowseOptions) (BrowseResult, error) {
-	seedErr := ensureOfficialSeed(ctx)
-	pkgs, err := source.AllPackages(ctx)
+	seedErr := ensureOfficialSeed(ctx, opts.Verify)
+	pkgs, err := source.AllPackages(ctx, opts.Verify)
 	if err != nil {
 		return BrowseResult{}, err
 	}
@@ -74,6 +75,7 @@ func BuildBrowseResult(pkgs []source.BrowsePackage, product, kind string) Browse
 			HostRuntimes: nonNilStrings(p.HostRuntimes),
 			Channels:     nonNilStrings(p.Channels),
 			Source:       bp.Source,
+			Verified:     bp.Verified,
 		}
 		runtimes := p.HostRuntimes
 		if len(runtimes) == 0 {

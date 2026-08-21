@@ -122,7 +122,7 @@ func TestUpdate_TargetContract(t *testing.T) {
 			writeManagedBinary(t, binDir, "fest", "0.2.10")
 
 			repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
-			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+			if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 				t.Fatalf("marketplace add: %v\n%s", err, errOut)
 			}
 			writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
@@ -196,7 +196,7 @@ func TestUpdate_CurrentNoOp(t *testing.T) {
 	campBefore, _ := os.ReadFile(filepath.Join(binDir, "camp"))
 
 	repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
@@ -239,7 +239,7 @@ func TestUpdate_UpgradeReplacesPair(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.9", "official-obey", binDir)
@@ -296,7 +296,7 @@ func TestUpdate_UpgradedSelfReplacedPrintsRestartLine(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.9", "official-obey", binDir)
@@ -321,7 +321,7 @@ func TestUpdate_CurrentActionHasNoRestartLine(t *testing.T) {
 	symlinkSelfAsManagedFestival(t, home)
 
 	repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
@@ -356,7 +356,7 @@ func TestUpdate_ExternalHubUpdatesPairAndWarns(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	repo := fixtureInstallMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(tarball))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.9", "official-obey", binDir)
@@ -432,7 +432,7 @@ func TestUpdate_LiveReceiptDisagreementPrefersLive(t *testing.T) {
 	writeManagedBinary(t, binDir, "fest", "0.3.0")
 
 	repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)

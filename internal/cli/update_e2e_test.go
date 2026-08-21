@@ -85,7 +85,7 @@ func TestUpdateE2E_SelfReplaceAcrossVersionAndOldProcessFinishesCleanly(t *testi
 	mux.HandleFunc("/v1.tar.gz", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(v1tar) })
 
 	repo := fixtureInstallMarketplaceManifest(t, e2eManifest("1.0.0", srv.URL+"/v1.tar.gz", v1sum))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace add: %v\n%s", err, errOut)
 	}
 
@@ -122,7 +122,7 @@ func TestUpdateE2E_SelfReplaceAcrossVersionAndOldProcessFinishesCleanly(t *testi
 	git(t, repo, "add", ".")
 	git(t, repo, "commit", "-m", "release 1.1.0")
 
-	if _, errOut, err := runInstaller(t, "marketplace", "refresh"); err != nil {
+	if _, errOut, err := runInstaller(t, "marketplace", "refresh", "--allow-unverified"); err != nil {
 		t.Fatalf("marketplace refresh: %v\n%s", err, errOut)
 	}
 

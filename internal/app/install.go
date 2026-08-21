@@ -79,7 +79,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		sourceName = cfg.Marketplaces.Default
 	}
 	if sourceName == state.OfficialSeedKey {
-		if err := ensureOfficialSeed(ctx); err != nil {
+		if err := ensureOfficialSeed(ctx, vo); err != nil {
 			return InstallResult{}, errpkg.Wrap("E_MARKETPLACE_SEED", err, "ensure official marketplace")
 		}
 	}
