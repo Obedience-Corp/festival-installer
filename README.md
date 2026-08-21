@@ -76,7 +76,8 @@ published, [build it from source](#build-from-source).
 
 ## Trust model
 
-Package metadata is signed with an Ed25519 key, id
+The marketplace document (`obey-marketplace.json`), the package index
+(`index.json`), and every package manifest are signed with an Ed25519 key, id
 `obedience-marketplace-2026-01`, whose public half is compiled into the
 binary (`internal/verify/trust.go`). By default `festival` refuses to install
 or update anything whose metadata it cannot verify against that pinned key.
@@ -85,6 +86,8 @@ To proceed anyway with unsigned development content, pass
 accept the equivalent explicit consent prompt the TUI shows when it refuses
 unsigned content. Artifact downloads are HTTPS-only, git remotes are
 restricted to HTTPS, SSH, and local paths, and archive extraction is bounded.
+Run `festival doctor` to check the trust state of every registered source in
+one command; see `SECURITY.md` for what signing does and does not cover.
 
 ## Quick start (humans)
 
