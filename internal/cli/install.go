@@ -18,8 +18,12 @@ func NewInstallCommand() *cobra.Command {
 	var allowUnverified bool
 	cmd := &cobra.Command{
 		Use:   "install <festival|camp|fest>",
-		Short: "Install the festival suite (camp + fest)",
-		Args:  cobra.ExactArgs(1),
+		Short: "Install the festival suite (camp, fest, and festival)",
+		Long: "install installs the festival suite (camp, fest, and festival).\n\n" +
+			"The target is required. festival, camp, and fest all install the suite bundle;\n" +
+			"camp and fest are not published independently, so passing either one still installs\n" +
+			"the whole suite and prints a notice saying so.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			if err := app.ValidateChannel(channel); err != nil {
@@ -30,7 +34,7 @@ func NewInstallCommand() *cobra.Command {
 				switch target {
 				case "festival", "camp", "fest":
 					if target == "camp" || target == "fest" {
-						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "installing the festival suite (camp + fest); camp and fest are not published independently")
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "installing the festival suite (camp, fest, and festival); camp and fest are not published independently")
 					}
 				default:
 					// InstallTarget will error with a clear message
