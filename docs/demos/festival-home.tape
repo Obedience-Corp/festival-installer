@@ -18,9 +18,9 @@ Set TypingSpeed 50ms
 Set Theme {"name":"termcast","background":"#0d0d11","foreground":"#f8f8f2","cursor":"#F2721C","selection":"#2a2a33","black":"#16161a","red":"#ff5f57","green":"#50fa7b","yellow":"#febc2e","blue":"#57a6ff","magenta":"#bd93f9","cyan":"#8be9fd","white":"#f8f8f2","brightBlack":"#6b7280","brightRed":"#ff6e67","brightGreen":"#69ff94","brightYellow":"#ffd23f","brightBlue":"#7ab8ff","brightMagenta":"#d0a9ff","brightCyan":"#a4f0ff","brightWhite":"#ffffff"}
 
 Hide
-# Isolate PATH so host camp/fest do not show as "unmanaged".
+# Prefer the just-built hub, but keep coreutils (mkdir/clear) on PATH.
 # Use a real /tmp home (avoid mktemp-in-Type quote pitfalls that produced /festival-home).
-Type "export PATH=$PWD/bin" Enter
+Type "export PATH=$PWD/bin:/usr/bin:/bin:$HOME/local/bin" Enter
 Type "export TERM=xterm-256color COLORTERM=truecolor COLORFGBG=15\;0" Enter
 Type "export FESTIVAL_HOME=/tmp/festival-vhs-home-$$" Enter
 Type "mkdir -p $FESTIVAL_HOME" Enter
