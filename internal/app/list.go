@@ -18,12 +18,12 @@ func ListInstalled(ctx context.Context) (ListResult, error) {
 	if err != nil {
 		return ListResult{}, err
 	}
-	if err := state.EnsureHome(ctx, 0o700); err != nil {
-		return ListResult{}, err
-	}
-	db, err := state.OpenDB(ctx, home)
+	db, ok, err := state.OpenDBIfExists(ctx, home)
 	if err != nil {
 		return ListResult{}, err
+	}
+	if !ok {
+		return ListResult{}, nil
 	}
 	defer func() { _ = db.Close(ctx) }()
 

@@ -21,9 +21,6 @@ var managedBinaries = []string{"camp", "fest", selfBinaryName}
 
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.
 func Doctor(ctx context.Context) []DoctorCheck {
-	// Ensure the manager home exists so source/receipt checks do not fail with
-	// mkdir/db errors on a brand-new FESTIVAL_HOME.
-	_ = state.EnsureHome(ctx, 0o700)
 	return []DoctorCheck{
 		checkManagedBinOnPath(ctx),
 		checkSourcesReachable(ctx),
@@ -65,7 +62,7 @@ func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "sources_reachable"}
 	// This check is about reachability, not verification; checkMarketplaceTrust
 	// below is the dedicated check that reads ListView.Verified.
-	views, err := source.ListMarketplaces(ctx, source.DefaultVerifyOptions(nil, false))
+	views, err := source.ListMarketplacesIfExists(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
 		c.Status = "fail"
 		c.Message = err.Error()
@@ -109,7 +106,7 @@ func checkMarketplaceTrust(ctx context.Context) DoctorCheck {
 		AllowUnverified: true,
 		WarnWriter:      io.Discard,
 	}
-	views, err := source.ListMarketplaces(ctx, vo)
+	views, err := source.ListMarketplacesIfExists(ctx, vo)
 	if err != nil {
 		return DoctorCheck{ID: "marketplace_trust", Status: "fail", Message: err.Error()}
 	}
@@ -190,10 +187,15 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 		c.Message = err.Error()
 		return c
 	}
-	db, err := state.OpenDB(ctx, home)
+	db, ok, err := state.OpenDBIfExists(ctx, home)
 	if err != nil {
 		c.Status = "fail"
 		c.Message = err.Error()
+		return c
+	}
+	if !ok {
+		c.Status = "ok"
+		c.Message = "no receipts"
 		return c
 	}
 	defer func() { _ = db.Close(ctx) }()

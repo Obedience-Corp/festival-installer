@@ -8,7 +8,6 @@ import (
 
 // Status returns a summary for the TUI home screen.
 func Status(ctx context.Context) (StatusSummary, error) {
-	_ = state.EnsureHome(ctx, 0o700)
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		return StatusSummary{Action: "absent"}, err

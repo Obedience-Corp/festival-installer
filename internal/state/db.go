@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -21,6 +22,34 @@ const (
 type DB struct {
 	sql  *sql.DB
 	path string
+}
+
+// DatabasePath is the sqlite file OpenDB uses under home.
+func DatabasePath(home string) string {
+	return filepath.Join(home, dbFilename)
+}
+
+// OpenDBIfExists opens the installer DB only when state.db already exists.
+// Missing file: (nil, false, nil). Does not create the file or locks/.
+func OpenDBIfExists(ctx context.Context, home string) (*DB, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, errpkg.Wrap("E_DB_CTX", err, "context cancelled before open")
+	}
+	path := DatabasePath(home)
+	st, err := os.Stat(path)
+	switch {
+	case os.IsNotExist(err):
+		return nil, false, nil
+	case err != nil:
+		return nil, false, errpkg.Wrap("E_DB_STAT", err, "stat "+path)
+	case st.IsDir():
+		return nil, false, errpkg.New("E_DB_STAT", path+" is a directory")
+	}
+	db, err := OpenDB(ctx, home)
+	if err != nil {
+		return nil, false, err
+	}
+	return db, true, nil
 }
 
 func OpenDB(ctx context.Context, home string) (*DB, error) {

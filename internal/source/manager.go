@@ -20,6 +20,34 @@ func DeriveName(gitURL string) string {
 	return strings.TrimSuffix(trimmed, ".git")
 }
 
+func withManagerIfExists(ctx context.Context, fn func(ctx context.Context, db *state.DB) error) error {
+	home, err := state.Home(ctx)
+	if err != nil {
+		return err
+	}
+	db, ok, err := state.OpenDBIfExists(ctx, home)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errNoDB
+	}
+	defer func() { _ = db.Close(ctx) }()
+
+	fl, err := lock.NewFileLock(home)
+	if err != nil {
+		return err
+	}
+	release, err := fl.Acquire(ctx, lockTimeout)
+	if err != nil {
+		return errpkg.Wrap("E_LOCK_ACQUIRE", err, "acquire installer lock")
+	}
+	defer func() { _ = release() }()
+	return fn(ctx, db)
+}
+
+var errNoDB = errpkg.New("E_DB_MISSING", "installer state.db is not present")
+
 func withManager(ctx context.Context, fn func(ctx context.Context, db *state.DB) error) error {
 	home, err := state.Home(ctx)
 	if err != nil {
@@ -130,9 +158,23 @@ func voFor(name string, vo VerifyOptions) VerifyOptions {
 	return vo
 }
 
+// ListMarketplacesIfExists lists sources when state.db already exists.
+// Missing DB: empty views, nil error (no mkdir).
+func ListMarketplacesIfExists(ctx context.Context, vo VerifyOptions) ([]ListView, error) {
+	views, err := listMarketplaces(ctx, vo, withManagerIfExists)
+	if err != nil && errpkg.Code(err) == "E_DB_MISSING" {
+		return nil, nil
+	}
+	return views, err
+}
+
 func ListMarketplaces(ctx context.Context, vo VerifyOptions) ([]ListView, error) {
+	return listMarketplaces(ctx, vo, withManager)
+}
+
+func listMarketplaces(ctx context.Context, vo VerifyOptions, run func(context.Context, func(context.Context, *state.DB) error) error) ([]ListView, error) {
 	var views []ListView
-	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
+	err := run(ctx, func(ctx context.Context, db *state.DB) error {
 		sources, err := List(ctx, db.Raw())
 		if err != nil {
 			return err

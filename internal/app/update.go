@@ -121,9 +121,12 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 	if err != nil {
 		return receipts.Receipt{}, false, err
 	}
-	db, err := state.OpenDB(ctx, home)
+	db, ok, err := state.OpenDBIfExists(ctx, home)
 	if err != nil {
 		return receipts.Receipt{}, false, err
+	}
+	if !ok {
+		return receipts.Receipt{}, false, nil
 	}
 	defer func() { _ = db.Close(ctx) }()
 	rec, err := receipts.Get(ctx, db.Raw(), FestivalPackageID)
