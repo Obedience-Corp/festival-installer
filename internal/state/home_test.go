@@ -56,6 +56,39 @@ func TestHome_FestivalEnvPreferred(t *testing.T) {
 	}
 }
 
+func TestHomeExists_MissingAndPresent(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	t.Setenv("FESTIVAL_HOME", missing)
+	ok, err := HomeExists(context.Background())
+	if err != nil {
+		t.Fatalf("missing home: %v", err)
+	}
+	if ok {
+		t.Fatal("want HomeExists false for missing dir")
+	}
+
+	present := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", present)
+	ok, err = HomeExists(context.Background())
+	if err != nil {
+		t.Fatalf("present home: %v", err)
+	}
+	if !ok {
+		t.Fatal("want HomeExists true for existing dir")
+	}
+}
+
+func TestHomeExists_NotAbs(t *testing.T) {
+	t.Setenv("FESTIVAL_HOME", "relative/path")
+	ok, err := HomeExists(context.Background())
+	if ok {
+		t.Fatal("want false when Home is not absolute")
+	}
+	if errpkg.Code(err) != "E_HOME_NOT_ABS" {
+		t.Fatalf("want E_HOME_NOT_ABS, got %v", err)
+	}
+}
+
 func TestEnsureHome(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "installer")
