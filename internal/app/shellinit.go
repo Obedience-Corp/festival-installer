@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -44,13 +45,91 @@ fish_add_path --prepend --global %s
 	}
 }
 
-// ShellInit returns the snippet for the detected managed bin.
+// ShellGuidance is origin-aware shell/PATH copy for CLI and TUI.
+type ShellGuidance struct {
+	Bin     string
+	OnPath  bool
+	Snippet string
+}
+
+func helperForShell(helperPath, shell string) string {
+	if helperPath == "" {
+		return ""
+	}
+	dir := filepath.Dir(helperPath)
+	switch shell {
+	case "bash":
+		return filepath.Join(dir, "festival.bash")
+	case "fish":
+		return filepath.Join(dir, "festival.fish")
+	default:
+		return filepath.Join(dir, "festival.zsh")
+	}
+}
+
+// ShellGuidanceFor returns the snippet for the active install origin.
+func ShellGuidanceFor(ctx context.Context, shell string) (ShellGuidance, error) {
+	origin, err := DetectSuite(ctx)
+	if err != nil && origin.Kind == OriginAbsent {
+		return ShellGuidance{}, err
+	}
+	g := ShellGuidance{Bin: origin.Prefix, OnPath: origin.Kind != OriginAbsent && origin.Kind != OriginLeftover}
+	switch origin.Kind {
+	case OriginPackage:
+		h := origin.Helper
+		if strings.HasPrefix(h, "source ") {
+			h = strings.TrimPrefix(h, "source ")
+			h = strings.Trim(h, `"'`)
+		}
+		if h == "" && origin.Prefix != "" {
+			h = helperFile(helperDir(origin.Prefix))
+		}
+		file := helperForShell(h, shell)
+		g.OnPath = true
+		g.Bin = origin.Prefix
+		var b strings.Builder
+		b.WriteString("# this package will not edit your shell rc. add:\n")
+		if file != "" {
+			if shell == "fish" {
+				fmt.Fprintf(&b, "source %s\n", file)
+			} else {
+				fmt.Fprintf(&b, "source %s\n", file)
+			}
+		}
+		if origin.Upgrade != "" {
+			fmt.Fprintf(&b, "\n# upgrade: %s\n", origin.Upgrade)
+		}
+		b.WriteString(`# do not eval "$(festival shell-init zsh)" (that prepends an empty hub bin dir)` + "\n")
+		g.Snippet = b.String()
+		return g, nil
+	case OriginLeftover:
+		g.Bin = origin.Prefix
+		g.OnPath = false
+		g.Snippet = "# leftover camp/fest on PATH at " + origin.Prefix + "\n# see " + docsInstall + "\n"
+		return g, nil
+	default:
+		bin, on, err := ManagedBinOnPath(ctx)
+		if err != nil {
+			return g, err
+		}
+		snip, err := ShellInitSnippet(shell, bin)
+		if err != nil {
+			return g, err
+		}
+		g.Bin = bin
+		g.OnPath = on
+		g.Snippet = snip
+		return g, nil
+	}
+}
+
+// ShellInit returns the snippet for the active origin.
 func ShellInit(ctx context.Context, shell string) (string, error) {
-	binDir, err := state.BinDir(ctx)
+	g, err := ShellGuidanceFor(ctx, shell)
 	if err != nil {
 		return "", err
 	}
-	return ShellInitSnippet(shell, binDir)
+	return g.Snippet, nil
 }
 
 // PathCheck writes whether managed bin is on PATH and any shadow warnings.

@@ -12,6 +12,11 @@ func TestShellInit_ZshBashPrependPath(t *testing.T) {
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	// Single-quoted bin dir is shell-safe; "$PATH" expands when the rc runs.
 	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeBinary(t, binDir, "camp")
+	t.Setenv("PATH", binDir)
 	want := "export PATH='" + binDir + "':\"$PATH\""
 	for _, shell := range []string{"zsh", "bash"} {
 		out, _, err := runInstaller(t, "shell-init", shell)
@@ -28,6 +33,11 @@ func TestShellInit_FishPrependPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fakeBinary(t, binDir, "camp")
+	t.Setenv("PATH", binDir)
 	out, _, err := runInstaller(t, "shell-init", "fish")
 	if err != nil {
 		t.Fatalf("shell-init fish: %v", err)
@@ -46,6 +56,8 @@ func TestShellInit_QuotesHomeWithSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FESTIVAL_HOME", spaced)
+	fakeBinary(t, filepath.Join(spaced, "bin"), "camp")
+	t.Setenv("PATH", filepath.Join(spaced, "bin"))
 	out, _, err := runInstaller(t, "shell-init", "zsh")
 	if err != nil {
 		t.Fatalf("shell-init zsh: %v", err)
@@ -59,6 +71,7 @@ func TestShellInit_QuotesHomeWithSpaces(t *testing.T) {
 func TestShellInit_UnsupportedShell(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("PATH", t.TempDir())
 	if _, _, err := runInstaller(t, "shell-init", "powershell"); err == nil {
 		t.Fatal("expected error for unsupported shell")
 	} else if !strings.Contains(err.Error(), "unsupported shell") {
