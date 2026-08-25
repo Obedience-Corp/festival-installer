@@ -42,20 +42,46 @@ func DoctorFailed(checks []DoctorCheck) bool {
 
 func checkManagedBinOnPath(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "managed_bin_on_path"}
-	binDir, err := state.BinDir(ctx)
-	if err != nil {
+	origin, err := DetectSuite(ctx)
+	if err != nil && origin.Kind == OriginAbsent {
 		c.Status = "fail"
 		c.Message = err.Error()
 		return c
 	}
-	if dirOnPath(binDir) {
+	switch origin.Kind {
+	case OriginPackage:
+		label := origin.Prefix
+		if origin.Flavor == FlavorAUR {
+			label += " (aur festival-bin)"
+		} else if origin.Flavor != "" && origin.Flavor != FlavorUnknown {
+			label += " (" + string(origin.Flavor) + ")"
+		}
+		if origin.Dual {
+			c.Status = "warn"
+			c.Message = "suite on PATH via package: " + label + "; also a hub copy at managed bin"
+			return c
+		}
 		c.Status = "ok"
-		c.Message = "managed bin dir is on PATH: " + binDir
-	} else {
+		c.Message = "suite on PATH via package: " + label
+		return c
+	case OriginManaged:
+		if origin.Dual {
+			c.Status = "warn"
+			c.Message = "managed bin dir is on PATH: " + origin.Prefix + "; also a package copy on PATH"
+			return c
+		}
+		c.Status = "ok"
+		c.Message = "managed bin dir is on PATH: " + origin.Prefix
+		return c
+	case OriginLeftover:
 		c.Status = "fail"
-		c.Message = "managed bin dir is not on PATH: " + binDir + " (run: eval \"$(festival shell-init zsh)\")"
+		c.Message = "leftover camp/fest on PATH at " + origin.Prefix + "; see " + docsInstall
+		return c
+	default:
+		c.Status = "fail"
+		c.Message = "no usable camp/fest/festival on PATH"
+		return c
 	}
-	return c
 }
 
 func checkSourcesReachable(ctx context.Context) DoctorCheck {
@@ -233,6 +259,16 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 
 func checkPathShadowing(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "path_shadowing", Status: "ok", Message: "no managed binary is shadowed"}
+	origin, _ := DetectSuite(ctx)
+	if len(origin.Shadows) > 0 {
+		var names []string
+		for _, s := range origin.Shadows {
+			names = append(names, s.Path)
+		}
+		c.Status = "warn"
+		c.Message = "PATH copies ahead of or beside the active prefix: " + strings.Join(names, ", ")
+		return c
+	}
 	var shadowed []string
 	for _, tool := range managedBinaries {
 		res, err := ResolveWhich(ctx, tool)

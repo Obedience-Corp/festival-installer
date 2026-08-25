@@ -63,7 +63,11 @@ func renderWhichTable(out io.Writer, res app.WhichResult) error {
 		if res.Shadowed {
 			status = "active (shadows managed)"
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", res.Tool, res.Path, "path", status)
+		src := "path"
+		if res.Origin != "" {
+			src = string(res.Origin)
+		}
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", res.Tool, res.Path, src, status)
 	}
 	if res.Managed != "" && res.Managed != res.Path {
 		// Use string compare for display; shadow logic already ran in app.
