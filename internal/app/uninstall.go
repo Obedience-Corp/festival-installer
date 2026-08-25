@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -96,15 +98,35 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 		return UninstallResult{}, err
 	}
 
-	var removed []string
-	for _, f := range rec.OwnedFiles {
-		if err := assertWithinManagedBin(f.Path, binDir); err != nil {
+	var pluginRoot string
+	if packageID != FestivalPackageID {
+		pluginName := packageID
+		if i := strings.LastIndex(pluginName, "/"); i >= 0 {
+			pluginName = pluginName[i+1:]
+		}
+		pluginRoot, err = pluginRuntimeRoot(pluginName)
+		if err != nil {
 			return UninstallResult{}, err
 		}
+	}
+
+	// Validate the complete receipt before removing anything. A corrupt path
+	// must not turn uninstall into a partial destructive operation.
+	for _, f := range rec.OwnedFiles {
+		if err := assertWithinManagedRoots(f.Path, binDir, pluginRoot); err != nil {
+			return UninstallResult{}, err
+		}
+	}
+
+	var removed []string
+	for _, f := range rec.OwnedFiles {
 		if err := shared.RemoveByRecord(ctx, f); err != nil {
 			return UninstallResult{}, err
 		}
 		removed = append(removed, f.Path)
+	}
+	if pluginRoot != "" {
+		pruneEmptyPluginDirs(rec.OwnedFiles, pluginRoot)
 	}
 
 	if err := receipts.Delete(ctx, db.Raw(), packageID); err != nil {
@@ -113,9 +135,35 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 	return UninstallResult{Package: packageID, Removed: removed}, nil
 }
 
-func assertWithinManagedBin(path, binDir string) error {
-	if resolvePath(filepath.Dir(path)) != resolvePath(binDir) {
+func assertWithinManagedRoots(path, binDir, pluginRoot string) error {
+	if resolvePath(filepath.Dir(path)) == resolvePath(binDir) {
+		return nil
+	}
+	if pluginRoot != "" {
+		rel, err := filepath.Rel(resolvePath(pluginRoot), resolvePath(path))
+		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return nil
+		}
+	}
+	if pluginRoot == "" {
 		return errpkg.Wrap("E_UNINSTALL_PATH", ErrOutsideManagedBin, path)
 	}
-	return nil
+	return errpkg.New("E_UNINSTALL_PATH", "receipt file resolves outside the managed bin and plugin asset directories: "+path)
+}
+
+func pruneEmptyPluginDirs(files []receipts.OwnedFile, root string) {
+	for _, f := range files {
+		dir := filepath.Dir(f.Path)
+		for dir != root {
+			rel, err := filepath.Rel(root, dir)
+			if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+				break
+			}
+			if err := os.Remove(dir); err != nil {
+				break
+			}
+			dir = filepath.Dir(dir)
+		}
+	}
+	_ = os.Remove(root)
 }
