@@ -31,7 +31,7 @@ Sleep 400ms
 Type "festival" Sleep 250ms Enter
 Sleep 1800ms
 
-# home channel card (package, FlavorUnknown — no yay)
+# home channel card (package, FlavorUnknown, no yay)
 Sleep 2200ms
 
 # doctor (key 7)
