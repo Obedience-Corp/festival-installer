@@ -32,3 +32,5 @@ all:
     just build
     vhs docs/demos/festival-home.tape
     vhs docs/demos/festival-tour.tape
+    vhs docs/demos/festival-package.tape
+    vhs docs/demos/festival-shadow.tape
