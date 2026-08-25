@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,7 +15,7 @@ func TestHomeNavigation_Quit(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.reduced = true
 	m.screen = screenHome
-	m.cursor = len(homeItems) - 1 // Quit
+	m.cursor = len(m.homeItems()) - 1 // Quit
 	next, cmd := m.handleEnter()
 	nm := next.(model)
 	if cmd == nil {
@@ -129,8 +130,202 @@ func TestBootSkipsOnEnter(t *testing.T) {
 func TestMaxCursorHome(t *testing.T) {
 	m := newModel(Options{})
 	m.screen = screenHome
-	if m.maxCursor() != len(homeItems)-1 {
-		t.Fatalf("max cursor %d want %d", m.maxCursor(), len(homeItems)-1)
+	if m.maxCursor() != len(m.homeItems())-1 {
+		t.Fatalf("max cursor %d want %d", m.maxCursor(), len(m.homeItems())-1)
+	}
+}
+
+func TestHomeItemsLengthAndRelabel(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	if got := len(m.homeItems()); got != 10 {
+		t.Fatalf("len(homeItems)=%d, want 10", got)
+	}
+	if m.homeItems()[0] != "Install Festival suite" {
+		t.Fatalf("absent index 0 = %q", m.homeItems()[0])
+	}
+	if m.homeItems()[9] != "Quit" {
+		t.Fatalf("index 9 = %q, want Quit", m.homeItems()[9])
+	}
+
+	m.status.Action = "package"
+	if m.homeItems()[0] != "How you installed" {
+		t.Fatalf("package index 0 = %q, want How you installed", m.homeItems()[0])
+	}
+	if got := len(m.homeItems()); got != 10 {
+		t.Fatalf("package len=%d, want 10", got)
+	}
+
+	m.status = app.StatusSummary{Action: "unmanaged", Dual: false}
+	if m.homeItems()[0] != "Install Festival suite" {
+		t.Fatalf("leftover index 0 = %q, want Install Festival suite", m.homeItems()[0])
+	}
+
+	m.status = app.StatusSummary{Action: "managed", Dual: true}
+	if m.homeItems()[0] != "How you installed" {
+		t.Fatalf("Dual index 0 = %q, want How you installed", m.homeItems()[0])
+	}
+}
+
+func TestDigitZeroSelectsQuit(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenHome
+	m.cursor = 0
+	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	nm := next.(model)
+	if nm.cursor != 9 {
+		t.Fatalf("digit 0 cursor=%d, want 9 (Quit)", nm.cursor)
+	}
+	if cmd == nil {
+		t.Fatal("digit 0 should quit")
+	}
+}
+
+func TestHomeDefaultCursor(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenHome
+	next, _ := m.Update(statusMsg{sum: app.StatusSummary{Action: "managed"}})
+	if next.(model).cursor != 1 {
+		t.Fatalf("managed cursor=%d, want 1", next.(model).cursor)
+	}
+
+	m = newModel(Options{Version: "test"})
+	m.screen = screenHome
+	next, _ = m.Update(statusMsg{sum: app.StatusSummary{Action: "package"}})
+	if next.(model).cursor != 0 {
+		t.Fatalf("package cursor=%d, want 0", next.(model).cursor)
+	}
+
+	m = newModel(Options{Version: "test"})
+	m.screen = screenHome
+	next, _ = m.Update(statusMsg{sum: app.StatusSummary{Action: "unmanaged"}})
+	if next.(model).cursor != 0 {
+		t.Fatalf("leftover cursor=%d, want 0", next.(model).cursor)
+	}
+}
+
+func TestOpenHomeItemInstallKind(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenHome
+	m.cursor = 0
+	m.status.Action = "package"
+	next, _ := m.openHomeItem()
+	if got := next.(model).installKind; got != "package" {
+		t.Fatalf("package installKind=%q", got)
+	}
+
+	m.status.Action = "unmanaged"
+	m.status.Dual = false
+	next, _ = m.openHomeItem()
+	if got := next.(model).installKind; got != "leftover" {
+		t.Fatalf("leftover installKind=%q", got)
+	}
+
+	m.status.Action = "absent"
+	next, _ = m.openHomeItem()
+	if got := next.(model).installKind; got != "" {
+		t.Fatalf("absent installKind=%q, want empty (channel picker)", got)
+	}
+}
+
+func TestViewHomePackageChannelCard(t *testing.T) {
+	m := newModel(Options{Version: "0.3.1"})
+	m.reduced = true
+	m.screen = screenHome
+	m.width = 80
+	m.height = 24
+	m.status = app.StatusSummary{
+		Action:  "package",
+		Version: "0.3.1",
+		Flavor:  app.FlavorAUR,
+		Package: "festival-bin",
+		Prefix:  "/usr/bin",
+		Helper:  "source /usr/share/festival/shell/festival.zsh",
+		Upgrade: "yay -Syu festival-bin",
+	}
+	out := m.viewHome()
+	if strings.Contains(out, "camp/fest found but not managed") {
+		t.Fatal("package home must not use leftover unmanaged copy")
+	}
+	if strings.Contains(out, "PATH missing") {
+		t.Fatal("package home must not report managed PATH missing")
+	}
+	if strings.Contains(out, "eval \"$(festival shell-init zsh)\"") {
+		t.Fatal("package home must not recommend festival shell-init")
+	}
+	for _, want := range []string{
+		"festival 0.3.1 · AUR (festival-bin)",
+		"suite on PATH · /usr/bin",
+		"helper: source /usr/share/festival/shell/festival.zsh",
+		"upgrade: yay -Syu festival-bin",
+		"do not run festival install",
+		"How you installed",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("package home missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Install Festival suite") {
+		t.Fatal("package home still shows Install Festival suite")
+	}
+}
+
+func TestViewHomeLeftoverDoesNotRelabel(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.reduced = true
+	m.screen = screenHome
+	m.width = 80
+	m.height = 24
+	m.status = app.StatusSummary{
+		Action: "unmanaged",
+		Prefix: "/home/lancer/local/bin",
+		Shadows: []app.ToolLocation{
+			{Tool: "camp", Path: "/home/lancer/local/bin/camp", Version: "v0.5.0"},
+			{Tool: "fest", Path: "/home/lancer/local/bin/fest", Version: "dev"},
+		},
+	}
+	out := m.viewHome()
+	if !strings.Contains(out, "Install Festival suite") {
+		t.Fatal("leftover home must keep Install Festival suite")
+	}
+	if strings.Contains(out, "How you installed") {
+		t.Fatal("leftover home must not relabel index 0")
+	}
+	if strings.Contains(out, "do not run festival install") {
+		t.Fatal("leftover home must not tell the user not to install")
+	}
+	if !strings.Contains(out, "/home/lancer/local/bin/camp  (v0.5.0, no bundle)") {
+		t.Fatalf("leftover home missing leftover path\n%s", out)
+	}
+}
+
+func TestViewHomePackageLeftoverShadows(t *testing.T) {
+	m := newModel(Options{Version: "0.3.1"})
+	m.reduced = true
+	m.screen = screenHome
+	m.width = 80
+	m.height = 24
+	m.status = app.StatusSummary{
+		Action:  "package",
+		Version: "0.3.1",
+		Flavor:  app.FlavorAUR,
+		Package: "festival-bin",
+		Prefix:  "/usr/bin",
+		Helper:  "source /usr/share/festival/shell/festival.zsh",
+		Upgrade: "yay -Syu festival-bin",
+		Shadows: []app.ToolLocation{
+			{Tool: "camp", Path: "/home/lancer/local/bin/camp", Version: "v0.5.0"},
+			{Tool: "fest", Path: "/home/lancer/local/bin/fest", Version: "dev"},
+		},
+	}
+	out := m.viewHome()
+	if !strings.Contains(out, "leftover binaries ahead of /usr/bin") {
+		t.Fatalf("missing leftover PATH warn\n%s", out)
+	}
+	if strings.Contains(out, "eval \"$(festival shell-init zsh)\"") {
+		t.Fatal("shadowed package home must not recommend festival shell-init")
+	}
+	if !strings.Contains(out, "remove those two files; keep /home/lancer/local/bin on PATH") {
+		t.Fatalf("missing leftover cleanup hint\n%s", out)
 	}
 }
 

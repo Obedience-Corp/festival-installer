@@ -101,14 +101,20 @@ type WhichResult struct {
 
 // StatusSummary powers the TUI home status strip.
 type StatusSummary struct {
-	Installed        bool   `json:"installed"`
-	Version          string `json:"version,omitempty"`
-	Channel          string `json:"channel,omitempty"`
-	Source           string `json:"source,omitempty"`
-	ManagedBin       string `json:"managed_bin"`
-	ManagedBinOnPath bool   `json:"managed_bin_on_path"`
-	Action           string `json:"action,omitempty"` // absent | managed | unmanaged | package
-	Prefix           string `json:"prefix,omitempty"`
-	Dual             bool   `json:"dual,omitempty"`
-	ShadowNote       string `json:"shadow_note,omitempty"`
+	Installed        bool           `json:"installed"`
+	Version          string         `json:"version,omitempty"`
+	Channel          string         `json:"channel,omitempty"`
+	Source           string         `json:"source,omitempty"`
+	ManagedBin       string         `json:"managed_bin"`
+	ManagedBinOnPath bool           `json:"managed_bin_on_path"`
+	Action           string         `json:"action,omitempty"` // absent | managed | unmanaged | package
+	Origin           OriginKind     `json:"origin,omitempty"`
+	Flavor           PackageFlavor  `json:"flavor,omitempty"`
+	Package          string         `json:"package,omitempty"`
+	Prefix           string         `json:"prefix,omitempty"`
+	Helper           string         `json:"helper,omitempty"`
+	Upgrade          string         `json:"upgrade,omitempty"`
+	Dual             bool           `json:"dual,omitempty"`
+	ShadowNote       string         `json:"shadow_note,omitempty"`
+	Shadows          []ToolLocation `json:"shadows,omitempty"`
 }
