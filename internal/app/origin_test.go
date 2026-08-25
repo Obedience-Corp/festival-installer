@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -99,21 +100,7 @@ func TestDetectSuite_PackageHelperAdjacentUnknown(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
 
-	root := t.TempDir()
-	bin := filepath.Join(root, "usr", "bin")
-	shell := filepath.Join(root, "usr", "share", "festival", "shell")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(shell, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeStub(t, filepath.Join(bin, "camp"))
-	writeStub(t, filepath.Join(bin, "fest"))
-	writeStub(t, filepath.Join(bin, "festival"))
-	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	bin, _ := writePackagePrefix(t, t.TempDir())
 	t.Setenv("PATH", bin)
 
 	got, err := DetectSuite(context.Background())
@@ -156,6 +143,137 @@ func TestClassifyPath_LinuxUsrLocalWithoutBrew(t *testing.T) {
 	if kind == OriginPackage && flavor == FlavorHomebrew {
 		t.Fatal("linux /usr/local/bin without brew must not be homebrew")
 	}
+}
+
+func TestDetectSuite_PackagePlusBinDirIsDual(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	managed := filepath.Join(home, "bin")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(managed, "camp"))
+
+	root := t.TempDir()
+	bin, _ := writePackagePrefix(t, root)
+	t.Setenv("PATH", bin)
+
+	got, err := DetectSuite(context.Background())
+	if err != nil {
+		t.Fatalf("DetectSuite: %v", err)
+	}
+	if got.Kind != OriginPackage {
+		t.Fatalf("Kind=%q, want package", got.Kind)
+	}
+	if !got.Dual {
+		t.Fatal("want Dual when BinDir has files and active Kind is package")
+	}
+}
+
+func TestDetectSuite_HomebrewPrefix(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	prefix := t.TempDir()
+	t.Setenv("HOMEBREW_PREFIX", prefix)
+	bin := filepath.Join(prefix, "bin")
+	shell := filepath.Join(prefix, "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(bin, "camp"))
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# brew helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	got, err := DetectSuite(context.Background())
+	if err != nil {
+		t.Fatalf("DetectSuite: %v", err)
+	}
+	if got.Kind != OriginPackage || got.Flavor != FlavorHomebrew {
+		t.Fatalf("got Kind=%q Flavor=%q, want package/homebrew", got.Kind, got.Flavor)
+	}
+}
+
+func TestDetectSuite_NpmLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	pkg := filepath.Join(t.TempDir(), "node_modules", "@obedience-corp", "festival")
+	bin := filepath.Join(pkg, "bin")
+	shell := filepath.Join(pkg, "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(bin, "camp"))
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# npm helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	got, err := DetectSuite(context.Background())
+	if err != nil {
+		t.Fatalf("DetectSuite: %v", err)
+	}
+	if got.Kind != OriginPackage || got.Flavor != FlavorNpm {
+		t.Fatalf("got Kind=%q Flavor=%q, want package/npm", got.Kind, got.Flavor)
+	}
+}
+
+func TestDetectSuite_PathEntryIsFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	fileEntry := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(fileEntry, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	writeStub(t, filepath.Join(bin, "camp"))
+	t.Setenv("PATH", fileEntry+string(os.PathListSeparator)+bin)
+
+	got, err := DetectSuite(context.Background())
+	if err != nil {
+		t.Fatalf("file PATH entry should be skipped or classified, err=%v", err)
+	}
+	if got.Kind != OriginLeftover {
+		t.Fatalf("Kind=%q, want leftover from %s", got.Kind, bin)
+	}
+}
+
+func TestOriginSourcesHaveNoOpenDB(t *testing.T) {
+	for _, name := range []string{"origin.go", "origin_classify.go", "origin_probe.go"} {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(b, []byte("OpenDB")) || bytes.Contains(b, []byte("EnsureHome")) || bytes.Contains(b, []byte("ReadFestivalReceipt")) {
+			t.Fatalf("%s must not call OpenDB/EnsureHome/ReadFestivalReceipt", name)
+		}
+	}
+}
+
+func writePackagePrefix(t *testing.T, root string) (bin string, shell string) {
+	t.Helper()
+	bin = filepath.Join(root, "usr", "bin")
+	shell = filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(bin, "camp"))
+	writeStub(t, filepath.Join(bin, "fest"))
+	writeStub(t, filepath.Join(bin, "festival"))
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return bin, shell
 }
 
 func writeStub(t *testing.T, path string) {

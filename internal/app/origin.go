@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
@@ -148,7 +150,7 @@ func enumerateSuiteCopies() ([]ToolLocation, error) {
 			p := filepath.Join(dir, tool)
 			st, err := os.Stat(p)
 			if err != nil {
-				if os.IsNotExist(err) {
+				if os.IsNotExist(err) || isNotDir(err) {
 					continue
 				}
 				if firstErr == nil {
@@ -211,6 +213,14 @@ func dualFromBinDir(ctx context.Context, kind OriginKind, copies []ToolLocation)
 		}
 	}
 	return false, nil
+}
+
+func isNotDir(err error) bool {
+	var pe *os.PathError
+	if errors.As(err, &pe) && pe.Err == syscall.ENOTDIR {
+		return true
+	}
+	return errors.Is(err, syscall.ENOTDIR)
 }
 
 func binDirHasSuite(binDir string) bool {
