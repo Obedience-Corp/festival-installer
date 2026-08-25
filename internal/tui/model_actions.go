@@ -104,6 +104,13 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 	case 0:
 		m.screen = screenInstall
 		m.channelIdx = 0
+		m.installKind = ""
+		switch {
+		case m.status.Action == "package" || m.status.Dual:
+			m.installKind = "package"
+		case m.status.Action == "unmanaged":
+			m.installKind = "leftover"
+		}
 		return m, nil
 	case 1:
 		m.screen = screenUpdate

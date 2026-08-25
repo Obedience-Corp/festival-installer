@@ -121,8 +121,9 @@ type model struct {
 	help      bool
 
 	// install
-	channelIdx int
-	channels   []string
+	channelIdx  int
+	channels    []string
+	installKind string // "", "package", "leftover"
 
 	// list / browse / uninstall
 	list       app.ListResult
@@ -194,17 +195,30 @@ type model struct {
 // captureMaxBytes bounds capture scrollback; the head is trimmed past this.
 const captureMaxBytes = 512 * 1024
 
-var homeItems = []string{
-	"Install Festival suite",
-	"Update Festival",
-	"Installed packages",
-	"Browse catalog",
-	"Uninstall package",
-	"Marketplaces",
-	"Doctor",
-	"Shell / PATH setup",
-	"Launchpad (camp / fest tools)",
-	"Quit",
+func (m model) homeItems() []string {
+	items := []string{
+		"Install Festival suite",
+		"Update Festival",
+		"Installed packages",
+		"Browse catalog",
+		"Uninstall package",
+		"Marketplaces",
+		"Doctor",
+		"Shell / PATH setup",
+		"Launchpad (camp / fest tools)",
+		"Quit",
+	}
+	if m.status.Action == "package" || m.status.Dual {
+		items[0] = "How you installed"
+	}
+	return items
+}
+
+func (m model) defaultHomeCursor() int {
+	if m.status.Action == "managed" && !m.status.Dual {
+		return 1
+	}
+	return 0
 }
 
 func newModel(opts Options) model {
@@ -330,6 +344,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bootLeft--
 			if m.bootLeft <= 0 {
 				m.screen = screenHome
+				m.cursor = m.defaultHomeCursor()
 			}
 		}
 		return m, tickCmd()
@@ -337,6 +352,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusMsg:
 		m.status = msg.sum
 		m.statusErr = msg.err
+		if m.screen == screenBoot || m.screen == screenHome {
+			m.cursor = m.defaultHomeCursor()
+		}
 		return m, nil
 
 	case listMsg:
@@ -440,6 +458,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.screen == screenBoot {
 			m.screen = screenHome
+			m.cursor = m.defaultHomeCursor()
 			return m, nil
 		}
 		if m.screen == screenChildOutput {
@@ -455,6 +474,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", " ":
 		if m.screen == screenBoot {
 			m.screen = screenHome
+			m.cursor = m.defaultHomeCursor()
 			return m, nil
 		}
 		return m.handleEnter()
@@ -504,13 +524,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "0":
 		// Digit 0 is Quit (home has 10 items; 1–9 cover the first nine).
 		if m.screen == screenHome {
-			m.cursor = len(homeItems) - 1
+			m.cursor = len(m.homeItems()) - 1
 			return m.handleEnter()
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		if m.screen == screenHome {
 			idx := int(msg.String()[0] - '1')
-			if idx >= 0 && idx < len(homeItems) {
+			if idx >= 0 && idx < len(m.homeItems()) {
 				m.cursor = idx
 				return m.handleEnter()
 			}
@@ -586,7 +606,7 @@ func nextIn(opts []string, cur string) string {
 func (m model) maxCursor() int {
 	switch m.screen {
 	case screenHome:
-		return len(homeItems) - 1
+		return len(m.homeItems()) - 1
 	case screenList, screenUninstall:
 		n := len(m.list.Packages)
 		if n == 0 {

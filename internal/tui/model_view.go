@@ -2,10 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/anim"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/components"
@@ -104,37 +106,7 @@ func (m model) View() string {
 
 func (m model) viewHome() string {
 	s := m.styles
-	var status string
-	switch m.status.Action {
-	case "managed":
-		status = components.StatusLine(fmt.Sprintf("festival %s (%s) · managed", m.status.Version, m.status.Channel), "ok", s)
-	case "unmanaged":
-		status = components.StatusLine("camp/fest found but not managed by festival", "warn", s)
-	case "absent":
-		status = components.StatusLine("festival suite not installed", "fail", s)
-	case "package":
-		status = components.StatusLine(fmt.Sprintf("festival %s · package", m.status.Version), "ok", s)
-	default:
-		status = components.StatusLine("checking status…", "", s)
-	}
-	pathKind := "fail"
-	pathText := "managed bin not on PATH"
-	binShort := m.status.ManagedBin
-	if m.status.Action == "package" && m.status.Prefix != "" {
-		binShort = m.status.Prefix
-	}
-	if len(binShort) > 48 {
-		binShort = "…" + binShort[len(binShort)-47:]
-	}
-	if m.status.Action == "package" {
-		pathKind = "ok"
-		pathText = "suite on PATH · " + binShort
-	} else if m.status.ManagedBinOnPath {
-		pathKind = "ok"
-		pathText = "PATH ok · " + binShort
-	} else if m.status.ManagedBin != "" {
-		pathText = "PATH missing · " + binShort
-	}
+	status, pathLine, extras := m.homeChannelCard()
 
 	var flame string
 	if m.reduced {
@@ -144,11 +116,204 @@ func (m model) viewHome() string {
 	}
 	booths := anim.RenderBooths(anim.DefaultHomeBooths(homeBoothIndex(m.cursor)), m.animationFrame(), s)
 	center := lipgloss.JoinVertical(lipgloss.Center, flame, "", booths)
-	menu := components.Menu(homeItems, m.cursor, s)
+	menu := components.Menu(m.homeItems(), m.cursor, s)
 	tag := s.Tagline.Render(anim.Tagline)
 
-	return status + "\n" + components.StatusLine(pathText, pathKind, s) + "\n\n" +
-		center + "\n\n" + menu + "\n" + tag
+	var b strings.Builder
+	b.WriteString(status)
+	b.WriteByte('\n')
+	b.WriteString(pathLine)
+	if extras != "" {
+		b.WriteByte('\n')
+		b.WriteString(extras)
+	}
+	b.WriteString("\n\n")
+	b.WriteString(center)
+	b.WriteString("\n\n")
+	b.WriteString(menu)
+	b.WriteByte('\n')
+	b.WriteString(tag)
+	return b.String()
+}
+
+func (m model) homeChannelCard() (status, pathLine, extras string) {
+	s := m.styles
+	switch m.status.Action {
+	case "managed":
+		ch := m.status.Channel
+		if ch == "" {
+			ch = "stable"
+		}
+		status = components.StatusLine(fmt.Sprintf("festival %s (%s) · managed", m.status.Version, ch), "ok", s)
+		bin := shortenPath(m.status.ManagedBin)
+		if m.status.ManagedBinOnPath {
+			pathLine = components.StatusLine("PATH ok · "+bin, "ok", s)
+		} else if m.status.ManagedBin != "" {
+			pathLine = components.StatusLine("PATH missing · "+bin, "fail", s)
+		} else {
+			pathLine = components.StatusLine("managed bin not on PATH", "fail", s)
+		}
+		return status, pathLine, ""
+	case "package":
+		return m.packageChannelCard()
+	case "unmanaged":
+		return m.leftoverChannelCard()
+	case "absent":
+		status = components.StatusLine("festival suite not installed", "fail", s)
+		pathLine = components.StatusLine("install first", "", s)
+		return status, pathLine, ""
+	default:
+		status = components.StatusLine("checking status…", "", s)
+		pathLine = components.StatusLine("managed bin not on PATH", "", s)
+		return status, pathLine, ""
+	}
+}
+
+func (m model) packageChannelCard() (status, pathLine, extras string) {
+	s := m.styles
+	ver := m.status.Version
+	if ver == "" {
+		ver = m.opts.Version
+	}
+	status = components.StatusLine(fmt.Sprintf("festival %s · %s", ver, packageChannelLabel(m.status)), "ok", s)
+	prefix := shortenPath(m.status.Prefix)
+	if prefix == "" {
+		prefix = shortenPath(m.status.ManagedBin)
+	}
+
+	var extra []string
+	if len(m.status.Shadows) > 0 {
+		pathLine = components.StatusLine("leftover binaries ahead of "+prefix, "warn", s)
+		for _, loc := range m.status.Shadows {
+			extra = append(extra, s.Muted.Render("   "+leftoverToolLine(loc)))
+		}
+		extra = append(extra, s.Muted.Render("   "+leftoverCleanupHint(m.status.Shadows)))
+	} else {
+		pathLine = components.StatusLine("suite on PATH · "+prefix, "ok", s)
+		if h := helperCardLine(m.status.Helper); h != "" {
+			extra = append(extra, s.Muted.Render("   "+h))
+		}
+		if m.status.Upgrade != "" {
+			extra = append(extra, s.Muted.Render("   upgrade: "+m.status.Upgrade))
+		}
+		extra = append(extra, s.FireTip.Render("   do not run festival install (that plants a second copy under ~/.obey/installer)"))
+	}
+	return status, pathLine, strings.Join(extra, "\n")
+}
+
+func (m model) leftoverChannelCard() (status, pathLine, extras string) {
+	s := m.styles
+	status = components.StatusLine("camp/fest found but not managed by festival", "warn", s)
+	prefix := shortenPath(m.status.Prefix)
+	if prefix == "" {
+		prefix = "PATH"
+	}
+	pathLine = components.StatusLine("leftover binaries on PATH · "+prefix, "warn", s)
+	var extra []string
+	for _, loc := range m.status.Shadows {
+		extra = append(extra, s.Muted.Render("   "+leftoverToolLine(loc)))
+	}
+	if len(m.status.Shadows) > 0 {
+		extra = append(extra, s.Muted.Render("   festival uninstall cannot remove these files"))
+	}
+	return status, pathLine, strings.Join(extra, "\n")
+}
+
+func packageChannelLabel(sum app.StatusSummary) string {
+	title := flavorTitle(sum.Flavor)
+	pkg := sum.Package
+	if pkg == "" {
+		if _, rest, ok := strings.Cut(sum.Source, ":"); ok {
+			pkg = rest
+		}
+	}
+	if pkg != "" {
+		return title + " (" + pkg + ")"
+	}
+	return title
+}
+
+func flavorTitle(f app.PackageFlavor) string {
+	switch f {
+	case app.FlavorAUR:
+		return "AUR"
+	case app.FlavorHomebrew:
+		return "Homebrew"
+	case app.FlavorNpm:
+		return "npm"
+	case app.FlavorDeb:
+		return "deb"
+	case app.FlavorRpm:
+		return "rpm"
+	case app.FlavorApk:
+		return "apk"
+	case app.FlavorInstallSh:
+		return "install.sh"
+	case app.FlavorUnknown:
+		return "package"
+	default:
+		if f != "" {
+			return string(f)
+		}
+		return "package"
+	}
+}
+
+func helperCardLine(helper string) string {
+	helper = strings.TrimSpace(helper)
+	if helper == "" {
+		return ""
+	}
+	if strings.HasPrefix(helper, "source ") {
+		return "helper: " + helper
+	}
+	return "helper: source " + helper
+}
+
+func leftoverToolLine(loc app.ToolLocation) string {
+	ver := strings.TrimSpace(loc.Version)
+	if ver == "" {
+		ver = "unknown"
+	}
+	bundle := "no bundle"
+	if loc.Bundle != "" {
+		bundle = loc.Bundle
+	}
+	path := loc.Path
+	if path == "" {
+		path = loc.Tool
+	}
+	return path + "  (" + ver + ", " + bundle + ")"
+}
+
+func leftoverCleanupHint(shadows []app.ToolLocation) string {
+	dirs := map[string]struct{}{}
+	for _, loc := range shadows {
+		if loc.Path != "" {
+			dirs[filepath.Dir(loc.Path)] = struct{}{}
+		}
+	}
+	n := len(shadows)
+	files := "those files"
+	switch n {
+	case 1:
+		files = "that file"
+	case 2:
+		files = "those two files"
+	}
+	if len(dirs) == 1 {
+		for d := range dirs {
+			return "remove " + files + "; keep " + shortenPath(d) + " on PATH"
+		}
+	}
+	return "remove " + files + "; keep their directory on PATH"
+}
+
+func shortenPath(p string) string {
+	if len(p) > 48 {
+		return "…" + p[len(p)-47:]
+	}
+	return p
 }
 
 func (m model) animationFrame() int {
