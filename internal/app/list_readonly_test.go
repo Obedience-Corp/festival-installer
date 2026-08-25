@@ -24,6 +24,32 @@ func TestList_EmptyExistingHomeDoesNotCreateDB(t *testing.T) {
 	assertNoInstallerState(t, home)
 }
 
+func TestList_PackageSyntheticRow(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	bin, _ := writePackagePrefix(t, t.TempDir())
+	t.Setenv("PATH", bin)
+
+	got, err := ListInstalled(context.Background())
+	if err != nil {
+		t.Fatalf("ListInstalled: %v", err)
+	}
+	if len(got.Packages) != 1 {
+		t.Fatalf("want synthetic suite row, got %+v", got.Packages)
+	}
+	row := got.Packages[0]
+	if row.Origin != "package" {
+		t.Fatalf("Origin=%q, want package", row.Origin)
+	}
+	if row.PackageID != FestivalPackageID {
+		t.Fatalf("PackageID=%q", row.PackageID)
+	}
+	if row.Source == "" {
+		t.Fatal("synthetic row needs Source")
+	}
+	assertNoInstallerState(t, home)
+}
+
 func TestListMarketplacesIfExists_EmptyHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
