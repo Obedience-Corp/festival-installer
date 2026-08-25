@@ -46,6 +46,25 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 	if err := ctx.Err(); err != nil {
 		return UninstallResult{}, errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
 	}
+	origin, _ := DetectSuite(ctx)
+	if packageID == FestivalPackageID && origin.Kind == OriginPackage {
+		home, herr := state.Home(ctx)
+		if herr == nil {
+			if _, ok, _ := state.OpenDBIfExists(ctx, home); !ok && !origin.Dual {
+				note := origin.Remove
+				if note == "" {
+					note = "use your package manager to remove the suite"
+				}
+				note += "; festival uninstall cannot remove package-owned files"
+				return UninstallResult{Package: packageID, Note: note}, nil
+			}
+		}
+	}
+	if packageID == FestivalPackageID && origin.Kind == OriginLeftover {
+		note := "leftover binaries at " + origin.Prefix + "; festival uninstall cannot remove them; see " + docsInstall
+		return UninstallResult{Package: packageID, Note: note}, nil
+	}
+
 	if packageID == FestivalPackageID {
 		placement, selfPath, err := ResolveSelf(ctx)
 		if err != nil {
