@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -108,8 +109,87 @@ func locateArchiveBinary(extractDir, name string) (string, error) {
 	return p, nil
 }
 
+// pluginRuntimeRoot returns the first-class Obedience plugin asset location.
+// Archive publishers place runtime support files below assets/, and Festival
+// installs the contents of that directory below ~/.obey/plugins/<plugin>/.
+func pluginRuntimeRoot(name string) (string, error) {
+	if err := shared.ValidateSegment(name); err != nil {
+		return "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", errpkg.Wrap("E_PLUGIN_HOME", err, "resolve user home for plugin assets")
+	}
+	if !filepath.IsAbs(home) {
+		return "", errpkg.New("E_PLUGIN_HOME", "user home must be an absolute path")
+	}
+	return filepath.Join(home, ".obey", "plugins", name), nil
+}
+
+func stagePluginAssets(ctx context.Context, tx *installer.Transaction, extractDir, pluginName string) ([]string, error) {
+	srcRoot := filepath.Join(extractDir, "assets")
+	info, err := os.Stat(srcRoot)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errpkg.Wrap("E_PLUGIN_ASSETS", err, "inspect plugin assets")
+	}
+	if !info.IsDir() {
+		return nil, errpkg.New("E_PLUGIN_ASSETS", "assets in the plugin archive must be a directory")
+	}
+
+	dstRoot, err := pluginRuntimeRoot(pluginName)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	err = filepath.WalkDir(srcRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return errpkg.Wrap("E_PLUGIN_ASSETS", walkErr, "walk plugin assets")
+		}
+		if err := ctx.Err(); err != nil {
+			return errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled while staging plugin assets")
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return errpkg.New("E_PLUGIN_ASSETS", "plugin assets must contain only regular files: "+path)
+		}
+		rel, err := filepath.Rel(srcRoot, path)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return errpkg.New("E_PLUGIN_ASSETS", "plugin asset path escapes assets directory: "+path)
+		}
+		fileInfo, err := entry.Info()
+		if err != nil {
+			return errpkg.Wrap("E_PLUGIN_ASSETS", err, "inspect plugin asset "+path)
+		}
+		hash, err := artifacts.SHA256(ctx, path)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(dstRoot, rel)
+		if err := tx.Stage(ctx, installer.StagedFile{
+			StagedPath: path,
+			DestPath:   dst,
+			Sha256:     hash,
+			Mode:       fileInfo.Mode().Perm(),
+		}); err != nil {
+			return err
+		}
+		files = append(files, dst)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
 type pluginSpec struct {
 	packageID       string
+	pluginName      string
 	source          string
 	version         string
 	artifactURL     string
@@ -145,6 +225,7 @@ func SpecFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 	}
 	return pluginSpec{
 		packageID:       bp.Package.ID,
+		pluginName:      host + "-" + name,
 		source:          bp.Source,
 		version:         rel.Version,
 		artifactURL:     art.URL,
@@ -201,6 +282,7 @@ func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, chann
 	}
 	return pluginSpec{
 		packageID:       bp.Package.ID,
+		pluginName:      host + "-" + name,
 		source:          bp.Source,
 		version:         resolved.Version,
 		artifactURL:     resolved.URL,
@@ -315,8 +397,9 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 	}
 
 	binaryPath := staged
+	var extractDir string
 	if spec.isArchive {
-		extractDir := filepath.Join(tx.StagingDir(), "extracted")
+		extractDir = filepath.Join(tx.StagingDir(), "extracted")
 		report(progress, ProgressEvent{Stage: "extract", Package: spec.packageID, Percent: 0.7, Message: "extracting plugin"})
 		if err := artifacts.ExtractTarGz(ctx, staged, extractDir); err != nil {
 			return InstallResult{}, err
@@ -337,6 +420,14 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: binaryPath, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 		return InstallResult{}, err
 	}
+	files := []string{dst}
+	if extractDir != "" {
+		assetFiles, err := stagePluginAssets(ctx, tx, extractDir, spec.pluginName)
+		if err != nil {
+			return InstallResult{}, err
+		}
+		files = append(files, assetFiles...)
+	}
 	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
 		PackageID:   spec.packageID,
 		Version:     spec.version,
@@ -353,7 +444,7 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 		Version: spec.version,
 		Channel: channel,
 		Source:  spec.source,
-		Files:   []string{dst},
+		Files:   files,
 	}, nil
 }
 

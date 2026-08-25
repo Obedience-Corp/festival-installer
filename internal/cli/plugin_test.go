@@ -109,11 +109,17 @@ func gitReleaseRepo(t *testing.T, tag string) string {
 func TestInstallPlugin_GitReleaseSource(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	userHome := t.TempDir()
+	t.Setenv("HOME", userHome)
 
 	pluginRepo := gitReleaseRepo(t, "v0.1.0")
 
 	binBody := "#!/bin/sh\necho fest-demo\n"
-	tarball := buildSuiteTarGz(t, map[string]string{"fest-demo": binBody, "README.md": "r"})
+	tarball := buildSuiteTarGz(t, map[string]string{
+		"fest-demo":                        binBody,
+		"README.md":                        "r",
+		"assets/templates/fest-hooks.yaml": "hooks",
+	})
 	osMap := map[string]string{"darwin": "macOS", "linux": "linux"}
 	archMap := map[string]string{"amd64": "x86_64", "arm64": "arm64"}
 	assetName := fmt.Sprintf("fest-demo-0.1.0-%s-%s.tar.gz", osMap[runtime.GOOS], archMap[runtime.GOARCH])
@@ -190,17 +196,25 @@ func TestInstallPlugin_GitReleaseSource(t *testing.T) {
 	if string(got) != binBody {
 		t.Fatalf("managed bin should be the extracted binary: %q", got)
 	}
+	asset := filepath.Join(userHome, ".obey", "plugins", "fest-demo", "templates", "fest-hooks.yaml")
+	if got, err := os.ReadFile(asset); err != nil || string(got) != "hooks" {
+		t.Fatalf("git release_source runtime asset: got=%q err=%v", got, err)
+	}
 }
 
 func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
+	userHome := t.TempDir()
+	t.Setenv("HOME", userHome)
 
 	binBody := "#!/bin/sh\necho fest-demo\n"
 	tarball := buildSuiteTarGz(t, map[string]string{
-		"fest-demo":                  binBody,
-		"README.md":                  "readme",
-		"completions/fest-demo.bash": "comp",
+		"fest-demo":                         binBody,
+		"README.md":                         "readme",
+		"completions/fest-demo.bash":        "comp",
+		"assets/templates/fest-hooks.yaml":  "hooks",
+		"assets/templates/status-footer.md": "footer",
 	})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(tarball)
@@ -219,9 +233,14 @@ func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {
 	managedBin := filepath.Join(home, "bin")
 	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
 
-	if _, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err != nil {
+	out, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified", "--json")
+	if err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
 	}
+	var res struct {
+		Files []string `json:"files"`
+	}
+	dataOf(t, out, &res)
 
 	landed := filepath.Join(managedBin, "fest-demo")
 	got, err := os.ReadFile(landed)
@@ -234,6 +253,49 @@ func TestInstallPlugin_TarGzArchiveExtractsBinary(t *testing.T) {
 	fi, _ := os.Stat(landed)
 	if fi.Mode()&0o111 == 0 {
 		t.Fatalf("extracted binary should be executable, mode=%v", fi.Mode())
+	}
+
+	pluginRoot := filepath.Join(userHome, ".obey", "plugins", "fest-demo")
+	wantAssets := map[string]string{
+		filepath.Join(pluginRoot, "templates", "fest-hooks.yaml"):  "hooks",
+		filepath.Join(pluginRoot, "templates", "status-footer.md"): "footer",
+	}
+	for path, want := range wantAssets {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("expected runtime asset %s: %v", path, err)
+		}
+		if string(got) != want {
+			t.Fatalf("runtime asset %s = %q, want %q", path, got, want)
+		}
+	}
+	if len(res.Files) != 1+len(wantAssets) {
+		t.Fatalf("install result should report binary and runtime assets, got %v", res.Files)
+	}
+	if _, err := os.Stat(filepath.Join(pluginRoot, "README.md")); !os.IsNotExist(err) {
+		t.Fatalf("archive files outside assets/ must not be installed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(pluginRoot, "completions", "fest-demo.bash")); !os.IsNotExist(err) {
+		t.Fatalf("archive completions outside assets/ must not be installed as runtime assets, err=%v", err)
+	}
+
+	unrelated := filepath.Join(pluginRoot, "user-owned.txt")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write unrelated plugin-root file: %v", err)
+	}
+	if _, errOut, err := runInstaller(t, "uninstall", "fest-demo"); err != nil {
+		t.Fatalf("uninstall fest-demo: %v\n%s", err, errOut)
+	}
+	if _, err := os.Stat(landed); !os.IsNotExist(err) {
+		t.Fatalf("plugin binary should be removed, err=%v", err)
+	}
+	for path := range wantAssets {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("owned runtime asset should be removed: %s, err=%v", path, err)
+		}
+	}
+	if got, err := os.ReadFile(unrelated); err != nil || string(got) != "keep" {
+		t.Fatalf("uninstall must preserve unrelated plugin-root content: got=%q err=%v", got, err)
 	}
 }
 

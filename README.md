@@ -142,6 +142,11 @@ JSON envelopes use schema version `festival/v1alpha1`.
 | `festival`, `camp`, `fest`   | Install the suite bundle `obedience-corp/festival` (camp + fest) |
 | `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces                    |
 
+Plugin release archives may include a top-level `assets/` directory. Festival
+installs its contents into `~/.obey/plugins/<plugin-name>/`, records every file
+in the package receipt, and removes only those receipt-owned files on
+uninstall. Other archive content is not copied into the plugin runtime tree.
+
 ## Home directory
 
 | Env             | Role                                       |
