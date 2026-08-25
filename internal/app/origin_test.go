@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +92,69 @@ func TestDetectSuite_Cancelled(t *testing.T) {
 	}
 	if got.Kind != OriginAbsent {
 		t.Fatalf("Kind=%q, want absent on cancel", got.Kind)
+	}
+}
+
+func TestDetectSuite_PackageHelperAdjacentUnknown(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+
+	root := t.TempDir()
+	bin := filepath.Join(root, "usr", "bin")
+	shell := filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(bin, "camp"))
+	writeStub(t, filepath.Join(bin, "fest"))
+	writeStub(t, filepath.Join(bin, "festival"))
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	got, err := DetectSuite(context.Background())
+	if err != nil {
+		t.Fatalf("DetectSuite: %v", err)
+	}
+	if got.Kind != OriginPackage {
+		t.Fatalf("Kind=%q, want package", got.Kind)
+	}
+	if got.Flavor != FlavorUnknown {
+		t.Fatalf("Flavor=%q, want unknown (host pacman must not leak)", got.Flavor)
+	}
+	if strings.Contains(got.Upgrade, "yay") {
+		t.Fatalf("unknown flavor must not print yay, got %q", got.Upgrade)
+	}
+}
+
+func TestClassifyPath_LeftoverHomeLocalBin(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("FESTIVAL_HOME", t.TempDir())
+	bin := filepath.Join(user, "local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	camp := filepath.Join(bin, "camp")
+	writeStub(t, camp)
+	kind, flavor, _ := classifyPath(context.Background(), camp)
+	if kind != OriginLeftover {
+		t.Fatalf("Kind=%q flavor=%q, want leftover", kind, flavor)
+	}
+}
+
+func TestClassifyPath_LinuxUsrLocalWithoutBrew(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("darwin treats /usr/local as Homebrew when brew exists")
+	}
+	t.Setenv("HOMEBREW_PREFIX", "")
+	kind, flavor, _ := classifyPath(context.Background(), "/usr/local/bin/camp")
+	if kind == OriginPackage && flavor == FlavorHomebrew {
+		t.Fatal("linux /usr/local/bin without brew must not be homebrew")
 	}
 }
 

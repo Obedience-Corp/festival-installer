@@ -46,6 +46,7 @@ type ToolLocation struct {
 	Bundle  string        `json:"bundle,omitempty"`
 	Origin  OriginKind    `json:"origin"`
 	Flavor  PackageFlavor `json:"flavor,omitempty"`
+	Profile string        `json:"profile,omitempty"`
 }
 
 type SuiteOrigin struct {
@@ -75,14 +76,25 @@ func DetectSuite(ctx context.Context) (SuiteOrigin, error) {
 	}
 
 	copies, walkErr := enumerateSuiteCopies()
+	copies = probeCopies(ctx, copies)
 	active := activeSuitePath()
 	if active != "" {
-		kind, flavor := classifyPath(ctx, active)
+		kind, flavor, pkg := classifyPath(ctx, active)
 		origin.Kind = kind
 		origin.Flavor = flavor
+		origin.Package = pkg
 		origin.Prefix = filepath.Dir(active)
+		if h := helperFile(helperDir(origin.Prefix)); h != "" {
+			origin.Helper = h
+		}
+		for i := range copies {
+			k, f, _ := classifyPath(ctx, copies[i].Path)
+			copies[i].Origin = k
+			copies[i].Flavor = f
+		}
 		origin.Tools = activeTools(copies, origin.Prefix, kind, flavor)
 		origin.Shadows = shadowTools(copies, origin.Prefix)
+		fillVersionFields(&origin)
 	}
 
 	dual, dualErr := dualFromBinDir(ctx, origin.Kind, copies)
@@ -90,6 +102,7 @@ func DetectSuite(ctx context.Context) (SuiteOrigin, error) {
 		dualErr = nil
 	}
 	origin.Dual = dual
+	applyGuidance(&origin)
 
 	if walkErr != nil {
 		return origin, walkErr
@@ -97,25 +110,21 @@ func DetectSuite(ctx context.Context) (SuiteOrigin, error) {
 	return origin, dualErr
 }
 
-// classifyPath is a stub: managed if the file sits in BinDir and home exists,
-// otherwise leftover. Full helper-adjacent / Homebrew / npm rules are the next
-// task.
-func classifyPath(ctx context.Context, path string) (OriginKind, PackageFlavor) {
-	if path == "" {
-		return OriginLeftover, ""
+func fillVersionFields(origin *SuiteOrigin) {
+	for _, c := range origin.Tools {
+		if c.Tool == selfBinaryName && c.Version != "" {
+			origin.Version = c.Version
+		}
+		if (c.Tool == "camp" || c.Tool == "fest") && c.Bundle != "" && origin.Version == "" {
+			origin.Version = c.Bundle
+		}
+		if origin.RelChannel == "" && c.Profile != "" {
+			origin.RelChannel = c.Profile
+		}
 	}
-	exists, err := state.HomeExists(ctx)
-	if err != nil || !exists {
-		return OriginLeftover, ""
+	if origin.RelChannel == "" && origin.Kind != OriginAbsent && origin.Kind != OriginLeftover {
+		origin.RelChannel = "stable"
 	}
-	binDir, err := state.BinDir(ctx)
-	if err != nil {
-		return OriginLeftover, ""
-	}
-	if samePath(filepath.Dir(path), binDir) {
-		return OriginManaged, ""
-	}
-	return OriginLeftover, ""
 }
 
 func activeSuitePath() string {
