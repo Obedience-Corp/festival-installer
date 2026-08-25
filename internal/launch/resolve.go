@@ -25,6 +25,10 @@ func Resolve(ctx context.Context, tool string) (string, error) {
 		return "", errpkg.New("E_LAUNCH_TOOL", "tool must be a bare binary name")
 	}
 
+	if path, err := exec.LookPath(tool); err == nil {
+		return path, nil
+	}
+
 	if binDir, err := state.BinDir(ctx); err == nil {
 		managed := filepath.Join(binDir, tool)
 		if fi, statErr := os.Stat(managed); statErr == nil && !fi.IsDir() {
@@ -32,10 +36,6 @@ func Resolve(ctx context.Context, tool string) (string, error) {
 		}
 	}
 
-	path, err := exec.LookPath(tool)
-	if err != nil {
-		return "", errpkg.Wrap("E_LAUNCH_NOT_FOUND", err,
-			tool+" not found in managed bin or PATH (install the suite or fix PATH from the hub)")
-	}
-	return path, nil
+	return "", errpkg.New("E_LAUNCH_NOT_FOUND",
+		tool+" not found in managed bin or PATH (install the suite or fix PATH from the hub)")
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestResolve_ManagedBinPreferred(t *testing.T) {
+func TestResolve_LookPathWinsOverManagedWhenBothExist(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
 	t.Setenv("OBEY_INSTALLER_HOME", "")
@@ -19,7 +19,6 @@ func TestResolve_ManagedBinPreferred(t *testing.T) {
 	if err := os.WriteFile(tool, []byte("#!/bin/sh\necho managed\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Also put a decoy earlier on PATH. Managed must win.
 	decoyDir := t.TempDir()
 	decoy := filepath.Join(decoyDir, "camp")
 	if err := os.WriteFile(decoy, []byte("#!/bin/sh\necho path\n"), 0o755); err != nil {
@@ -31,8 +30,8 @@ func TestResolve_ManagedBinPreferred(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got != tool {
-		t.Fatalf("want managed %q, got %q", tool, got)
+	if got != decoy {
+		t.Fatalf("want PATH copy %q, got %q (managed was %q)", decoy, got, tool)
 	}
 }
 

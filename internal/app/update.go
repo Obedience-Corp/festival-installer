@@ -19,6 +19,7 @@ type UpdateOptions struct {
 	ChannelOverride string
 	Verify          source.VerifyOptions
 	Progress        ProgressFunc
+	Force           bool
 }
 
 // UpdateFestival upgrades the festival suite to channel-latest when needed.
@@ -33,6 +34,10 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	selfPlacement, selfPath, err := ResolveSelf(ctx)
 	if err != nil {
 		return UpdateResult{}, "", err
+	}
+
+	if err := refusePackageChannel(ctx, opts.Force); err != nil {
+		return UpdateResult{Package: FestivalPackageID, Action: "package"}, err.Error(), err
 	}
 
 	rec, found, err := ReadFestivalReceipt(ctx)

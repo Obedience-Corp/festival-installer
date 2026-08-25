@@ -11,6 +11,7 @@ import (
 func TestInstallFestivalBootstrapsOfficialSourceOnFreshHome(t *testing.T) {
 	t.Setenv("FESTIVAL_HOME", t.TempDir())
 	t.Setenv("OBEY_INSTALLER_HOME", "")
+	t.Setenv("PATH", t.TempDir())
 
 	want := errors.New("seed unavailable")
 	called := false
