@@ -121,9 +121,10 @@ type model struct {
 	help      bool
 
 	// install
-	channelIdx  int
-	channels    []string
-	installKind string // "", "package", "leftover"
+	channelIdx   int
+	channels     []string
+	installKind  string // "", "package", "leftover"
+	installForce bool
 
 	// list / browse / uninstall
 	list       app.ListResult
@@ -296,10 +297,27 @@ func (m model) loadDoctor() tea.Cmd {
 	}
 }
 
+var (
+	marketplaceListFn = app.MarketplaceListExisting
+	marketplaceSeedFn = app.MarketplaceSeedOfficial
+)
+
 func (m model) loadMarkets() tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
-		views, err := app.MarketplaceList(ctx, tuiVerifyOptions(nil, false))
+		views, err := marketplaceListFn(ctx, tuiVerifyOptions(nil, false))
+		return marketMsg{views: views, err: err}
+	}
+}
+
+func (m model) seedOfficialMarketplace() tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		err := marketplaceSeedFn(ctx, tuiVerifyOptions(nil, false))
+		views, listErr := marketplaceListFn(ctx, tuiVerifyOptions(nil, false))
+		if err == nil {
+			err = listErr
+		}
 		return marketMsg{views: views, err: err}
 	}
 }
@@ -558,7 +576,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.addInput.Focus()
 			return m, nil
 		}
+	case "s":
+		if m.screen == screenMarketplace && m.marketMode != "add" {
+			return m, m.seedOfficialMarketplace()
+		}
 	case "f":
+		if m.screen == screenInstall && m.installKind == "package" {
+			m.installKind = ""
+			m.installForce = true
+			return m, nil
+		}
 		// cycle browse product filter
 		if m.screen == screenBrowse {
 			cycle := []string{"", "fest", "camp", "obey"}

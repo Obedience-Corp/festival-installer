@@ -26,6 +26,7 @@ func Status(ctx context.Context) (StatusSummary, error) {
 	sum.Prefix = origin.Prefix
 	sum.Helper = origin.Helper
 	sum.Upgrade = origin.Upgrade
+	sum.Remove = origin.Remove
 	sum.Dual = origin.Dual
 	sum.Version = origin.Version
 	sum.Channel = origin.RelChannel

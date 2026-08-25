@@ -20,8 +20,18 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	case screenHome:
 		return m.openHomeItem()
 	case screenInstall:
-		// Try strict first; prompt only when VER-01 refuses unsigned content.
-		return m.startInstall(false)
+		switch m.installKind {
+		case "package":
+			m.screen = screenHome
+			m.installKind = ""
+			return m, nil
+		case "leftover":
+			m.installKind = ""
+			return m, nil
+		default:
+			// Try strict first; prompt only when VER-01 refuses unsigned content.
+			return m.startInstall(false)
+		}
 	case screenUpdate:
 		return m.startUpdate(false)
 	case screenList:
@@ -36,11 +46,29 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		pkg := m.list.Packages[m.cursor]
-		m.confirmMsg = "Uninstall " + pkg.PackageID + "?"
 		m.confirmYes = false
-		m.confirmAct = "uninstall"
 		m.confirmArg = pkg.PackageID
 		m.screen = screenConfirm
+		switch pkg.Origin {
+		case "package":
+			remove := m.status.Remove
+			if remove == "" {
+				remove = pkg.Source
+			}
+			m.confirmMsg = "Suite is owned by the package manager. Uninstall with: " + remove + "\n\nfestival uninstall does not delete package-manager files."
+			if m.status.Dual {
+				m.confirmAct = "uninstall"
+				m.confirmMsg += "\n\nRemove the hub-managed copy (receipts) only?"
+			} else {
+				m.confirmAct = "uninstall-note"
+			}
+		case "leftover":
+			m.confirmMsg = "leftover binaries at " + m.status.Prefix + "; festival uninstall cannot remove them."
+			m.confirmAct = "uninstall-note"
+		default:
+			m.confirmMsg = "Uninstall " + pkg.PackageID + "?"
+			m.confirmAct = "uninstall"
+		}
 		return m, nil
 	case screenConfirm:
 		if !m.confirmYes {
@@ -49,6 +77,13 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch m.confirmAct {
+		case "uninstall-note":
+			m.screen = screenResult
+			m.resultOK = true
+			m.resultTitle = "Uninstall"
+			m.resultBody = m.confirmMsg
+			m.confirmAct = ""
+			return m, nil
 		case "uninstall":
 			return m.startUninstall(m.confirmArg)
 		case "install-unverified":
@@ -105,6 +140,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		m.screen = screenInstall
 		m.channelIdx = 0
 		m.installKind = ""
+		m.installForce = false
 		switch {
 		case m.status.Action == "package" || m.status.Dual:
 			m.installKind = "package"
@@ -271,16 +307,17 @@ func (m model) startInstall(allowUnverified bool) (tea.Model, tea.Cmd) {
 	m, ps := m.beginProgress(app.ProgressEvent{Stage: "resolve", Percent: 0, Message: "starting install"})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
-	return m, tea.Batch(runInstall(ctx, ch, allowUnverified, ps), waitProgress(ps))
+	return m, tea.Batch(runInstall(ctx, ch, allowUnverified, m.installForce, ps), waitProgress(ps))
 }
 
-func runInstall(ctx context.Context, channel string, allowUnverified bool, ps *progressStream) tea.Cmd {
+func runInstall(ctx context.Context, channel string, allowUnverified, force bool, ps *progressStream) tea.Cmd {
 	return func() tea.Msg {
 		defer ps.close()
 		res, err := app.InstallFestival(ctx, app.InstallOptions{
 			Channel:  channel,
 			Verify:   tuiVerifyOptions(ps, allowUnverified),
 			Progress: ps.report,
+			Force:    force,
 		})
 		if err != nil {
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {

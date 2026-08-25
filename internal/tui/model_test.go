@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
 func TestHomeNavigation_Quit(t *testing.T) {
@@ -32,6 +35,7 @@ func TestHomeNavigation_Quit(t *testing.T) {
 func TestInstallStartsStrictBeforeConsent(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenInstall
+	m.status.Action = "absent"
 
 	next, cmd := m.handleEnter()
 	nm := next.(model)
@@ -40,6 +44,166 @@ func TestInstallStartsStrictBeforeConsent(t *testing.T) {
 	}
 	if nm.confirmAct != "" {
 		t.Fatalf("should not open consent before attempt, act=%q", nm.confirmAct)
+	}
+}
+
+func TestInstallPackageOriginEnterDoesNotInstall(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenInstall
+	m.status.Action = "package"
+	m.installKind = "package"
+
+	next, cmd := m.handleEnter()
+	nm := next.(model)
+	if cmd != nil {
+		t.Fatal("package-origin enter must not start InstallFestival")
+	}
+	if nm.screen != screenHome {
+		t.Fatalf("screen=%v, want home (enter = back)", nm.screen)
+	}
+}
+
+func TestInstallLeftoverOriginEnterReachesPicker(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenInstall
+	m.status.Action = "unmanaged"
+	m.installKind = "leftover"
+	m.status.Shadows = []app.ToolLocation{
+		{Tool: "camp", Path: "/home/lancer/local/bin/camp", Version: "v0.5.0"},
+	}
+
+	out := m.viewInstall()
+	if !strings.Contains(out, "festival uninstall cannot remove these files") {
+		t.Fatalf("leftover install screen missing copy\n%s", out)
+	}
+	if strings.Contains(out, "do not run festival install") {
+		t.Fatal("leftover install must not use the AUR refuse screen")
+	}
+
+	next, cmd := m.handleEnter()
+	nm := next.(model)
+	if cmd != nil {
+		t.Fatal("first leftover enter should not start InstallFestival")
+	}
+	if nm.screen != screenInstall || nm.installKind != "" {
+		t.Fatalf("screen=%v installKind=%q, want picker", nm.screen, nm.installKind)
+	}
+	if !strings.Contains(nm.viewInstall(), "to install") {
+		t.Fatalf("want channel picker after leftover enter\n%s", nm.viewInstall())
+	}
+}
+
+func TestViewListPackageOriginUsesSource(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenList
+	m.list = app.ListResult{Packages: []app.ListEntry{{
+		PackageID: app.FestivalPackageID,
+		Version:   "0.3.1",
+		Channel:   "stable",
+		Source:    "aur:festival-bin",
+		Origin:    "package",
+	}}}
+	out := m.viewList()
+	if !strings.Contains(out, "aur:festival-bin") {
+		t.Fatalf("package list should show Source in parens, got:\n%s", out)
+	}
+	if strings.Contains(out, "(stable)") {
+		t.Fatalf("package list must not show Channel in parens:\n%s", out)
+	}
+}
+
+func TestLoadMarketsEmptyHomeDoesNotCreateDB(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	m := newModel(Options{Version: "test"})
+	msg := m.loadMarkets()()
+	mm, ok := msg.(marketMsg)
+	if !ok {
+		t.Fatalf("got %T", msg)
+	}
+	if mm.err != nil {
+		t.Fatalf("list: %v", mm.err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "state.db")); !os.IsNotExist(err) {
+		t.Fatalf("state.db must not exist after marketplace list, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "locks")); !os.IsNotExist(err) {
+		t.Fatalf("locks/ must not exist after marketplace list, err=%v", err)
+	}
+}
+
+func TestMarketplaceSKeyCreatesDB(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	origList, origSeed := marketplaceListFn, marketplaceSeedFn
+	t.Cleanup(func() {
+		marketplaceListFn, marketplaceSeedFn = origList, origSeed
+	})
+	marketplaceSeedFn = func(ctx context.Context, vo source.VerifyOptions) error {
+		if err := os.MkdirAll(home, 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(home, "state.db"), []byte("stub"), 0o600)
+	}
+	marketplaceListFn = func(ctx context.Context, vo source.VerifyOptions) ([]source.ListView, error) {
+		return []source.ListView{}, nil
+	}
+	m := newModel(Options{Version: "test"})
+	m.screen = screenMarketplace
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if cmd == nil {
+		t.Fatal("s should seed the official marketplace")
+	}
+	_ = cmd()
+	if _, err := os.Stat(filepath.Join(home, "state.db")); os.IsNotExist(err) {
+		t.Fatal("s should create state.db")
+	}
+}
+
+func TestInstallPackageForceKeyShowsPicker(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenInstall
+	m.installKind = "package"
+	m.status.Action = "package"
+	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	nm := next.(model)
+	if cmd != nil {
+		t.Fatal("f should not start install immediately")
+	}
+	if nm.installKind != "" || !nm.installForce {
+		t.Fatalf("installKind=%q force=%v, want picker with force", nm.installKind, nm.installForce)
+	}
+	if !strings.Contains(nm.viewInstall(), "to install") {
+		t.Fatalf("want channel picker after f\n%s", nm.viewInstall())
+	}
+}
+
+func TestUninstallPackageOriginSkipsUninstallPackage(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenUninstall
+	m.status.Action = "package"
+	m.status.Remove = "yay -Rns festival-bin"
+	m.list = app.ListResult{Packages: []app.ListEntry{{
+		PackageID: app.FestivalPackageID,
+		Origin:    "package",
+		Source:    "aur:festival-bin",
+	}}}
+	next, cmd := m.handleEnter()
+	nm := next.(model)
+	if cmd != nil || nm.screen != screenConfirm || nm.confirmAct != "uninstall-note" {
+		t.Fatalf("screen=%v act=%q cmd=%v", nm.screen, nm.confirmAct, cmd)
+	}
+	if !strings.Contains(nm.confirmMsg, "yay -Rns festival-bin") {
+		t.Fatalf("confirm missing remove command: %q", nm.confirmMsg)
+	}
+	nm.confirmYes = true
+	next, cmd = nm.handleEnter()
+	nm = next.(model)
+	if cmd != nil {
+		t.Fatal("package uninstall confirm must not call UninstallPackage")
+	}
+	if nm.screen != screenResult {
+		t.Fatalf("screen=%v, want result", nm.screen)
 	}
 }
 

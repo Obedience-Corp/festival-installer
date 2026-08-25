@@ -66,6 +66,7 @@ type ListEntry struct {
 	Version     string   `json:"version"`
 	Channel     string   `json:"channel"`
 	Source      string   `json:"source"`
+	Origin      string   `json:"origin,omitempty"` // package | leftover | empty for receipts
 	InstalledAt string   `json:"installed_at"`
 	Files       []string `json:"files"`
 }
@@ -114,6 +115,7 @@ type StatusSummary struct {
 	Prefix           string         `json:"prefix,omitempty"`
 	Helper           string         `json:"helper,omitempty"`
 	Upgrade          string         `json:"upgrade,omitempty"`
+	Remove           string         `json:"remove,omitempty"`
 	Dual             bool           `json:"dual,omitempty"`
 	ShadowNote       string         `json:"shadow_note,omitempty"`
 	Shadows          []ToolLocation `json:"shadows,omitempty"`
