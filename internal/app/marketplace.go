@@ -41,6 +41,26 @@ func MarketplaceRemove(ctx context.Context, name string) error {
 	return source.RemoveMarketplace(ctx, name)
 }
 
+// MarketplaceListExisting lists registered marketplaces without seeding or
+// creating installer home. Missing state.db yields an empty list.
+func MarketplaceListExisting(ctx context.Context, vo source.VerifyOptions) ([]source.ListView, error) {
+	views, err := source.ListMarketplacesIfExists(ctx, vo)
+	if err != nil {
+		return nil, err
+	}
+	if views == nil {
+		views = []source.ListView{}
+	}
+	return views, nil
+}
+
+// MarketplaceSeedOfficial clones and registers the official marketplace.
+// This mkdir's installer home; it is the explicit TUI `s` / CLI first-run path.
+// Browse auto-seed (Browse -> ensureOfficialSeed) remains the other mkdir exception.
+func MarketplaceSeedOfficial(ctx context.Context, vo source.VerifyOptions) error {
+	return ensureOfficialSeed(ctx, vo)
+}
+
 // MarketplaceList returns marketplace views (seeding official if needed).
 // Views are never nil so JSON consumers always see an array.
 func MarketplaceList(ctx context.Context, vo source.VerifyOptions) ([]source.ListView, error) {

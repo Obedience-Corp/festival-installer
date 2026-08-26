@@ -204,6 +204,9 @@ func dualFromBinDir(ctx context.Context, kind OriginKind, copies []ToolLocation)
 	if !hasManaged {
 		return false, nil
 	}
+	if kind == OriginAbsent {
+		return false, nil
+	}
 	if kind != OriginManaged {
 		return true, nil
 	}

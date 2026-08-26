@@ -20,7 +20,13 @@ func Status(ctx context.Context) (StatusSummary, error) {
 		sum.ShadowNote = err.Error()
 		err = nil
 	}
+	sum.Origin = origin.Kind
+	sum.Flavor = origin.Flavor
+	sum.Package = origin.Package
 	sum.Prefix = origin.Prefix
+	sum.Helper = origin.Helper
+	sum.Upgrade = origin.Upgrade
+	sum.Remove = origin.Remove
 	sum.Dual = origin.Dual
 	sum.Version = origin.Version
 	sum.Channel = origin.RelChannel
@@ -45,7 +51,12 @@ func Status(ctx context.Context) (StatusSummary, error) {
 	default:
 		sum.Action = "absent"
 	}
-	if len(origin.Shadows) > 0 {
+	if origin.Kind == OriginLeftover {
+		sum.Shadows = origin.Tools
+	} else {
+		sum.Shadows = origin.Shadows
+	}
+	if len(sum.Shadows) > 0 {
 		sum.ShadowNote = "leftover binaries on PATH"
 	}
 	return sum, err

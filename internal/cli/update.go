@@ -17,6 +17,7 @@ func NewUpdateCommand() *cobra.Command {
 	var channel string
 	var asJSON bool
 	var allowUnverified bool
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "update [festival|camp|fest]",
 		Short: "Update the installed festival suite to the channel-latest release",
@@ -47,6 +48,7 @@ func NewUpdateCommand() *cobra.Command {
 			res, warning, err := app.UpdateFestival(cmd.Context(), app.UpdateOptions{
 				ChannelOverride: channel,
 				Verify:          vo,
+				Force:           force,
 			})
 			if err != nil {
 				return err
@@ -65,6 +67,7 @@ func NewUpdateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&channel, "channel", "", "override the release channel (default: the installed channel)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow updating from unsigned content without prompting")
+	cmd.Flags().BoolVar(&force, "force", false, "update/install a hub copy even when a package-manager suite is already on PATH")
 	return cmd
 }
 

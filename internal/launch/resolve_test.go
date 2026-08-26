@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestResolve_ManagedBinPreferred(t *testing.T) {
+func TestResolve_ManagedNotOnPATHPrefersManagedOverLeftover(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
 	t.Setenv("OBEY_INSTALLER_HOME", "")
@@ -15,24 +15,69 @@ func TestResolve_ManagedBinPreferred(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	tool := filepath.Join(bin, "camp")
-	if err := os.WriteFile(tool, []byte("#!/bin/sh\necho managed\n"), 0o755); err != nil {
+	managed := filepath.Join(bin, "camp")
+	if err := os.WriteFile(managed, []byte("#!/bin/sh\necho managed\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Also put a decoy earlier on PATH. Managed must win.
-	decoyDir := t.TempDir()
-	decoy := filepath.Join(decoyDir, "camp")
-	if err := os.WriteFile(decoy, []byte("#!/bin/sh\necho path\n"), 0o755); err != nil {
+	leftoverDir := t.TempDir()
+	leftover := filepath.Join(leftoverDir, "camp")
+	if err := os.WriteFile(leftover, []byte("#!/bin/sh\necho leftover\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", decoyDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// Leftover is on PATH; managed BinDir is not.
+	t.Setenv("PATH", leftoverDir)
 
 	got, err := Resolve(context.Background(), "camp")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if got != tool {
-		t.Fatalf("want managed %q, got %q", tool, got)
+	if got != managed {
+		t.Fatalf("want managed %q, got %q (leftover was %q)", managed, got, leftover)
+	}
+}
+
+func TestResolve_PackageOriginPrefersPATH(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("OBEY_INSTALLER_HOME", "")
+	managedBin := filepath.Join(home, "bin")
+	if err := os.MkdirAll(managedBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(managedBin, "camp"), []byte("#!/bin/sh\necho managed\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	pkgBin := filepath.Join(root, "usr", "bin")
+	pkgShell := filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(pkgBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(pkgShell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pkgCamp := filepath.Join(pkgBin, "camp")
+	if err := os.WriteFile(pkgCamp, []byte("#!/bin/sh\necho package\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgBin, "fest"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgBin, "festival"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgShell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", pkgBin)
+
+	got, err := Resolve(context.Background(), "camp")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != pkgCamp {
+		t.Fatalf("want package PATH %q, got %q", pkgCamp, got)
 	}
 }
 

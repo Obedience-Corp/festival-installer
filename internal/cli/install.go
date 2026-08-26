@@ -16,6 +16,7 @@ func NewInstallCommand() *cobra.Command {
 	var channel string
 	var asJSON bool
 	var allowUnverified bool
+	var force bool
 	cmd := &cobra.Command{
 		Use:   "install <festival|camp|fest>",
 		Short: "Install the festival suite (camp, fest, and festival)",
@@ -44,6 +45,7 @@ func NewInstallCommand() *cobra.Command {
 			res, err := app.InstallTarget(cmd.Context(), target, app.InstallOptions{
 				Channel: channel,
 				Verify:  vo,
+				Force:   force,
 			})
 			if err != nil {
 				return err
@@ -63,6 +65,7 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().StringVar(&channel, "channel", "stable", "release channel (stable|rc|dev)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow installing unsigned content without prompting")
+	cmd.Flags().BoolVar(&force, "force", false, "install a hub copy even when a package-manager suite is already on PATH")
 	return cmd
 }
 

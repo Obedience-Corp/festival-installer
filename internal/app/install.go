@@ -42,12 +42,28 @@ type InstallOptions struct {
 	Source   string
 	Verify   source.VerifyOptions
 	Progress ProgressFunc
+	Force    bool
 }
 
 // Keep the bootstrap behind the app boundary so every install entry point
 // gets the same first-run behavior. The variable also lets app tests exercise
 // the empty-home path without cloning the production marketplace.
 var ensureOfficialSeed = source.EnsureOfficialSeed
+
+func refusePackageChannel(ctx context.Context, force bool) error {
+	if force {
+		return nil
+	}
+	origin, _ := DetectSuite(ctx)
+	if origin.Kind != OriginPackage && !origin.Dual {
+		return nil
+	}
+	msg := "refusing to plant ~/.obey/installer over a package install"
+	if origin.Upgrade != "" {
+		msg += "; upgrade with: " + origin.Upgrade
+	}
+	return errpkg.New("E_INSTALL_PACKAGE_CHANNEL", msg)
+}
 
 // InstallFestival installs the camp+fest suite bundle.
 func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, error) {
@@ -59,6 +75,9 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		channel = "stable"
 	}
 	if err := ValidateChannel(channel); err != nil {
+		return InstallResult{}, err
+	}
+	if err := refusePackageChannel(ctx, opts.Force); err != nil {
 		return InstallResult{}, err
 	}
 	vo := opts.Verify

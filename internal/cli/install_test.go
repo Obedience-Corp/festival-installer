@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,6 +28,35 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
+
+func dropHostFestivalPATH(t *testing.T) {
+	t.Helper()
+	orig := os.Getenv("PATH")
+	tools := t.TempDir()
+	for _, name := range []string{"git", "bash", "sh", "tar", "gzip", "curl"} {
+		if p, err := exec.LookPath(name); err == nil {
+			_ = os.Symlink(p, filepath.Join(tools, name))
+		}
+	}
+	var keep []string
+	keep = append(keep, tools)
+	for _, dir := range filepath.SplitList(orig) {
+		d := filepath.Clean(dir)
+		system := d == "/usr/bin" || d == "/usr/local/bin" || d == "/bin"
+		hasSuite := false
+		for _, tool := range []string{"camp", "fest", "festival"} {
+			if st, err := os.Stat(filepath.Join(dir, tool)); err == nil && !st.IsDir() {
+				hasSuite = true
+				break
+			}
+		}
+		if system && hasSuite {
+			continue
+		}
+		keep = append(keep, dir)
+	}
+	t.Setenv("PATH", strings.Join(keep, string(os.PathListSeparator)))
+}
 
 func hasErrorCode(err error, code string) bool {
 	for err != nil {
@@ -170,6 +200,7 @@ func fixtureInstallMarketplaceManifest(t *testing.T, manifest string) string {
 
 func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
+	dropHostFestivalPATH(t)
 	root := &cobra.Command{Use: "festival", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewInstallCommand())
