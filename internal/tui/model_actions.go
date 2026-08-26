@@ -127,14 +127,13 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m, m.loadDoctor()
 	case 7:
 		m.screen = screenShell
-		bin, on, err := app.ManagedBinOnPath(m.ctx)
-		m.shellBin = bin
-		m.shellOnPath = on
+		g, err := app.ShellGuidanceFor(m.ctx, "zsh")
+		m.shellBin = g.Bin
+		m.shellOnPath = g.OnPath
+		m.shellSnippet = g.Snippet
 		if err != nil {
 			m.err = err
 		}
-		snip, _ := app.ShellInit(m.ctx, "zsh")
-		m.shellSnippet = snip
 		return m, nil
 	case 8:
 		m.screen = screenLaunchpad

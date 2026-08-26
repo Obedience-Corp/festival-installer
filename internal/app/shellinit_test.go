@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,6 +53,35 @@ func TestShellInitSnippet_QuotesBinDir(t *testing.T) {
 	}
 	if !strings.Contains(fish, "fish_add_path --prepend --global "+shellSingleQuote(binDir)) {
 		t.Fatalf("fish snippet missing quoted path:\n%s", fish)
+	}
+}
+
+func TestShellInit_PackageOriginSourcesHelper(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	root := t.TempDir()
+	bin := filepath.Join(root, "usr", "bin")
+	shell := filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(bin, "camp"))
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	out, err := ShellInit(context.Background(), "zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "source ") || !strings.Contains(out, "festival.zsh") {
+		t.Fatalf("want source helper, got:\n%s", out)
+	}
+	if strings.Contains(out, "export PATH=") {
+		t.Fatalf("package origin must not prepend managed PATH:\n%s", out)
 	}
 }
 

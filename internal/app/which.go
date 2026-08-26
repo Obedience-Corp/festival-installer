@@ -13,18 +13,29 @@ import (
 // ResolveWhich finds the active and managed locations for a tool binary.
 func ResolveWhich(ctx context.Context, tool string) (WhichResult, error) {
 	r := WhichResult{Tool: tool}
+	origin, _ := DetectSuite(ctx)
+	r.Origin = origin.Kind
+	r.Flavor = origin.Flavor
+	r.All = origin.Tools
+	for _, s := range origin.Shadows {
+		if s.Tool == tool {
+			r.All = append(r.All, s)
+		}
+	}
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		return r, err
 	}
-	managed := filepath.Join(binDir, tool)
-	switch fi, statErr := os.Stat(managed); {
-	case statErr == nil:
-		if !fi.IsDir() {
-			r.Managed = managed
+	{
+		managed := filepath.Join(binDir, tool)
+		switch fi, statErr := os.Stat(managed); {
+		case statErr == nil:
+			if !fi.IsDir() {
+				r.Managed = managed
+			}
+		case !os.IsNotExist(statErr):
+			return r, errpkg.Wrap("E_MANAGED_STAT", statErr, "stat managed binary "+managed)
 		}
-	case !os.IsNotExist(statErr):
-		return r, errpkg.Wrap("E_MANAGED_STAT", statErr, "stat managed binary "+managed)
 	}
 	if active, err := exec.LookPath(tool); err == nil {
 		r.Path = active
@@ -36,6 +47,14 @@ func ResolveWhich(ctx context.Context, tool string) (WhichResult, error) {
 	}
 	if r.Path != "" && r.Managed != "" {
 		r.Shadowed = !samePath(r.Path, r.Managed)
+	}
+	if !r.Shadowed {
+		for _, s := range origin.Shadows {
+			if s.Tool == tool {
+				r.Shadowed = true
+				break
+			}
+		}
 	}
 	return r, nil
 }

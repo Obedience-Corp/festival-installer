@@ -89,11 +89,14 @@ type DoctorData struct {
 
 // WhichResult resolves where a tool binary lives.
 type WhichResult struct {
-	Tool     string `json:"tool"`
-	Path     string `json:"path,omitempty"`
-	Managed  string `json:"managed,omitempty"`
-	OnPath   bool   `json:"on_path"`
-	Shadowed bool   `json:"shadowed"`
+	Tool     string         `json:"tool"`
+	Path     string         `json:"path,omitempty"`
+	Managed  string         `json:"managed,omitempty"`
+	OnPath   bool           `json:"on_path"`
+	Shadowed bool           `json:"shadowed"`
+	Origin   OriginKind     `json:"origin,omitempty"`
+	Flavor   PackageFlavor  `json:"flavor,omitempty"`
+	All      []ToolLocation `json:"all,omitempty"`
 }
 
 // StatusSummary powers the TUI home status strip.
@@ -104,5 +107,8 @@ type StatusSummary struct {
 	Source           string `json:"source,omitempty"`
 	ManagedBin       string `json:"managed_bin"`
 	ManagedBinOnPath bool   `json:"managed_bin_on_path"`
-	Action           string `json:"action,omitempty"` // absent | managed | unmanaged
+	Action           string `json:"action,omitempty"` // absent | managed | unmanaged | package
+	Prefix           string `json:"prefix,omitempty"`
+	Dual             bool   `json:"dual,omitempty"`
+	ShadowNote       string `json:"shadow_note,omitempty"`
 }

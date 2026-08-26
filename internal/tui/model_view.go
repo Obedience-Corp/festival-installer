@@ -112,16 +112,24 @@ func (m model) viewHome() string {
 		status = components.StatusLine("camp/fest found but not managed by festival", "warn", s)
 	case "absent":
 		status = components.StatusLine("festival suite not installed", "fail", s)
+	case "package":
+		status = components.StatusLine(fmt.Sprintf("festival %s · package", m.status.Version), "ok", s)
 	default:
 		status = components.StatusLine("checking status…", "", s)
 	}
 	pathKind := "fail"
 	pathText := "managed bin not on PATH"
 	binShort := m.status.ManagedBin
+	if m.status.Action == "package" && m.status.Prefix != "" {
+		binShort = m.status.Prefix
+	}
 	if len(binShort) > 48 {
 		binShort = "…" + binShort[len(binShort)-47:]
 	}
-	if m.status.ManagedBinOnPath {
+	if m.status.Action == "package" {
+		pathKind = "ok"
+		pathText = "suite on PATH · " + binShort
+	} else if m.status.ManagedBinOnPath {
 		pathKind = "ok"
 		pathText = "PATH ok · " + binShort
 	} else if m.status.ManagedBin != "" {

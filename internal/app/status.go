@@ -8,35 +8,45 @@ import (
 
 // Status returns a summary for the TUI home screen.
 func Status(ctx context.Context) (StatusSummary, error) {
-	_ = state.EnsureHome(ctx, 0o700)
-	binDir, err := state.BinDir(ctx)
-	if err != nil {
-		return StatusSummary{Action: "absent"}, err
-	}
+	binDir, _ := state.BinDir(ctx)
 	sum := StatusSummary{
 		ManagedBin:       binDir,
-		ManagedBinOnPath: dirOnPath(binDir),
+		ManagedBinOnPath: binDir != "" && dirOnPath(binDir),
 		Action:           "absent",
 	}
-
-	rec, found, err := ReadFestivalReceipt(ctx)
+	origin, err := DetectSuite(ctx)
 	if err != nil {
-		// Still return a usable summary so the TUI never sticks on "checking…".
-		return sum, err
+		// Keep a paintable summary; surface the error only as a note.
+		sum.ShadowNote = err.Error()
+		err = nil
 	}
-	if found {
-		sum.Installed = true
-		sum.Version = rec.Version
-		sum.Channel = rec.Channel
-		sum.Source = rec.Source
+	sum.Prefix = origin.Prefix
+	sum.Dual = origin.Dual
+	sum.Version = origin.Version
+	sum.Channel = origin.RelChannel
+	switch origin.Kind {
+	case OriginManaged:
 		sum.Action = "managed"
-		return sum, nil
-	}
-
-	if _, werr := ResolveWhich(ctx, "camp"); werr == nil {
+		sum.Installed = true
+		if rec, found, rerr := ReadFestivalReceipt(ctx); rerr == nil && found {
+			sum.Version = rec.Version
+			sum.Channel = rec.Channel
+			sum.Source = rec.Source
+		}
+	case OriginPackage:
+		sum.Action = "package"
+		sum.Installed = true
+		sum.Source = string(origin.Flavor)
+		if origin.Package != "" {
+			sum.Source = string(origin.Flavor) + ":" + origin.Package
+		}
+	case OriginLeftover:
 		sum.Action = "unmanaged"
-		return sum, nil
+	default:
+		sum.Action = "absent"
 	}
-	sum.Action = "absent"
-	return sum, nil
+	if len(origin.Shadows) > 0 {
+		sum.ShadowNote = "leftover binaries on PATH"
+	}
+	return sum, err
 }

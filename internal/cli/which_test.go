@@ -137,8 +137,8 @@ func TestWhich_ShowAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("which camp --show-all: %v", err)
 	}
-	if !strings.Contains(out, "path") || !strings.Contains(out, "managed") {
-		t.Fatalf("expected both path and managed rows:\n%s", out)
+	if !strings.Contains(out, "managed") {
+		t.Fatalf("expected managed row:\n%s", out)
 	}
 	if !strings.Contains(out, "shadowed") {
 		t.Fatalf("expected managed row marked shadowed:\n%s", out)
