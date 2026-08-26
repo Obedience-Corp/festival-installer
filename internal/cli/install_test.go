@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +30,8 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
+var hostPATHAtTestStart = os.Getenv("PATH")
+
 func dropHostFestivalPATH(t *testing.T) {
 	t.Helper()
 	orig := os.Getenv("PATH")
@@ -38,24 +41,50 @@ func dropHostFestivalPATH(t *testing.T) {
 			_ = os.Symlink(p, filepath.Join(tools, name))
 		}
 	}
-	var keep []string
-	keep = append(keep, tools)
-	for _, dir := range filepath.SplitList(orig) {
-		d := filepath.Clean(dir)
-		system := d == "/usr/bin" || d == "/usr/local/bin" || d == "/bin"
-		hasSuite := false
+	hostSuiteDirs := suiteDirectories(hostPATHAtTestStart)
+	keep := append([]string{tools}, pathWithoutDirectories(orig, hostSuiteDirs)...)
+	t.Setenv("PATH", strings.Join(keep, string(os.PathListSeparator)))
+}
+
+func suiteDirectories(path string) map[string]struct{} {
+	dirs := make(map[string]struct{})
+	for _, dir := range filepath.SplitList(path) {
 		for _, tool := range []string{"camp", "fest", "festival"} {
 			if st, err := os.Stat(filepath.Join(dir, tool)); err == nil && !st.IsDir() {
-				hasSuite = true
+				dirs[filepath.Clean(dir)] = struct{}{}
 				break
 			}
 		}
-		if system && hasSuite {
-			continue
-		}
-		keep = append(keep, dir)
 	}
-	t.Setenv("PATH", strings.Join(keep, string(os.PathListSeparator)))
+	return dirs
+}
+
+func pathWithoutDirectories(path string, drop map[string]struct{}) []string {
+	var keep []string
+	for _, dir := range filepath.SplitList(path) {
+		if _, found := drop[filepath.Clean(dir)]; !found {
+			keep = append(keep, dir)
+		}
+	}
+	return keep
+}
+
+func TestDropHostFestivalPATH_RemovesNonSystemSuiteDirectory(t *testing.T) {
+	packageBin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(packageBin, "festival"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write package festival: %v", err)
+	}
+	original := strings.Join([]string{packageBin, "/usr/bin", "/bin"}, string(os.PathListSeparator))
+	got := pathWithoutDirectories(original, suiteDirectories(original))
+
+	for _, dir := range got {
+		if filepath.Clean(dir) == filepath.Clean(packageBin) {
+			t.Fatalf("package suite directory remained on PATH: %v", got)
+		}
+	}
+	if !slices.Contains(got, "/bin") {
+		t.Fatalf("ordinary tool directory was removed from PATH: %v", got)
+	}
 }
 
 func hasErrorCode(err error, code string) bool {
