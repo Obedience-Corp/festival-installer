@@ -43,6 +43,25 @@ func BinDir(ctx context.Context) (string, error) {
 	return filepath.Join(home, "bin"), nil
 }
 
+// HomeExists reports whether the installer home directory already exists.
+// Missing home is not an error: (false, nil). Home() failures other than a
+// missing directory are returned so callers can distinguish E_HOME_NOT_ABS.
+func HomeExists(ctx context.Context) (bool, error) {
+	path, err := Home(ctx)
+	if err != nil {
+		return false, err
+	}
+	st, err := os.Stat(path)
+	switch {
+	case err == nil:
+		return st.IsDir(), nil
+	case os.IsNotExist(err):
+		return false, nil
+	default:
+		return false, errpkg.Wrap("E_HOME_STAT", err, "stat installer home")
+	}
+}
+
 func EnsureHome(ctx context.Context, mode os.FileMode) error {
 	path, err := Home(ctx)
 	if err != nil {
