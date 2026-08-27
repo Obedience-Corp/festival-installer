@@ -95,6 +95,16 @@ func childEnv() []string {
 	return env
 }
 
+// captureEnv is childEnv plus CLICOLOR_FORCE so piped oneshot tools (fest list)
+// still emit ANSI. NO_COLOR, when already set, stays in force.
+func captureEnv() []string {
+	env := childEnv()
+	if _, no := os.LookupEnv("NO_COLOR"); no {
+		return env
+	}
+	return setEnv(env, "CLICOLOR_FORCE", "1")
+}
+
 func prependPath(env []string, dir string) []string {
 	const prefix = "PATH="
 	for i, e := range env {

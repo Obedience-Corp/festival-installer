@@ -13,6 +13,37 @@ import (
 // execCommand is a seam for tests (defaults to exec.Command).
 var execCommand = exec.Command
 
+func TestCaptureEnvForcesColorUnlessNoColor(t *testing.T) {
+	orig, had := os.LookupEnv("NO_COLOR")
+	os.Unsetenv("NO_COLOR")
+	t.Cleanup(func() {
+		if had {
+			os.Setenv("NO_COLOR", orig)
+		} else {
+			os.Unsetenv("NO_COLOR")
+		}
+	})
+
+	env := captureEnv()
+	got := ""
+	for _, e := range env {
+		if strings.HasPrefix(e, "CLICOLOR_FORCE=") {
+			got = e
+		}
+	}
+	if got != "CLICOLOR_FORCE=1" {
+		t.Fatalf("capture env CLICOLOR_FORCE = %q, want CLICOLOR_FORCE=1", got)
+	}
+
+	t.Setenv("NO_COLOR", "1")
+	env = captureEnv()
+	for _, e := range env {
+		if e == "CLICOLOR_FORCE=1" {
+			t.Fatal("NO_COLOR must not force CLICOLOR_FORCE")
+		}
+	}
+}
+
 func TestRun_Success(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script fixture")

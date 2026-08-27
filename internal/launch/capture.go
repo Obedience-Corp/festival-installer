@@ -60,7 +60,7 @@ func StartCapture(ctx context.Context, spec Spec) (*Capture, error) {
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	cmd.Env = childEnv()
+	cmd.Env = captureEnv()
 	setCaptureSysProcAttr(cmd)
 
 	if err := cmd.Start(); err != nil {
