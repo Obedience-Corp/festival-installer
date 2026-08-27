@@ -3,13 +3,17 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 )
@@ -26,9 +30,10 @@ func NewUpdateCommand() *cobra.Command {
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
 			"suite. camp and fest are accepted as aliases: they are not published independently, so\n" +
 			"passing either one still updates the whole suite and prints a notice saying so.\n\n" +
-			"A package-manager install (AUR, Homebrew, npm, distro packages) is never replaced with\n" +
-			"~/.obey/installer. update reports whether a newer suite exists and prints the package\n" +
-			"manager upgrade command instead.",
+			"A package-manager install (AUR, Homebrew, npm) is never replaced with ~/.obey/installer.\n" +
+			"When a newer suite exists and stdout is a TTY, update runs the package-manager command\n" +
+			"(for example `yay -Syu festival-bin`) so camp, fest, and this hub upgrade together.\n" +
+			"--json and non-TTY invocations print the command instead of running it.",
 		ValidArgs: []string{"festival", "camp", "fest"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,7 +70,10 @@ func NewUpdateCommand() *cobra.Command {
 			if asJSON {
 				return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
 			}
-			return renderUpdateResult(cmd.OutOrStdout(), res)
+			if err := renderUpdateResult(cmd.OutOrStdout(), res); err != nil {
+				return err
+			}
+			return maybeRunPackageUpgrade(cmd, res)
 		},
 	}
 	cmd.Flags().StringVar(&channel, "channel", "", "override the release channel (default: the installed channel)")
@@ -106,4 +114,39 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", pkg)
 		return err
 	}
+}
+
+func maybeRunPackageUpgrade(cmd *cobra.Command, res app.UpdateResult) error {
+	if !app.PackageUpgradeAvailable(res) {
+		return nil
+	}
+	tool, args, ok := app.ParseUpgradeArgv(res.Upgrade)
+	if !ok {
+		return nil
+	}
+	if _, err := exec.LookPath(tool); err != nil {
+		return nil
+	}
+	if !cmdStdioIsTTY(cmd) {
+		return nil
+	}
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "running %s\n", res.Upgrade)
+	run := launch.Run(cmd.Context(), launch.Spec{Tool: tool, Args: args, Title: res.Upgrade})
+	if run.Err != nil {
+		return run.Err
+	}
+	if run.ExitCode != 0 {
+		return errpkg.New("E_UPDATE_PACKAGE", fmt.Sprintf("%s exited %d", res.Upgrade, run.ExitCode))
+	}
+	_, err := fmt.Fprintln(cmd.OutOrStdout(), "package upgraded; restart festival to use the new hub")
+	return err
+}
+
+func cmdStdioIsTTY(cmd *cobra.Command) bool {
+	in, inOK := cmd.InOrStdin().(*os.File)
+	out, outOK := cmd.OutOrStdout().(*os.File)
+	if !inOK || !outOK {
+		return false
+	}
+	return term.IsTerminal(int(in.Fd())) && term.IsTerminal(int(out.Fd()))
 }
