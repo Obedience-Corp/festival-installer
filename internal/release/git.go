@@ -84,6 +84,15 @@ func (r *Resolver) Resolve(ctx context.Context, src Source, channel, goos, goarc
 	}, nil
 }
 
+// LatestVersion is the highest channel-matching tag in repo, without fetching artifacts.
+func (r *Resolver) LatestVersion(ctx context.Context, repo, channel string) (string, error) {
+	if r == nil {
+		r = NewResolver()
+	}
+	_, ver, err := r.latestTag(ctx, repo, channel)
+	return ver, err
+}
+
 func (r *Resolver) latestTag(ctx context.Context, repo, channel string) (string, string, error) {
 	if err := gitsafe.ValidateRemote(repo); err != nil {
 		return "", "", err

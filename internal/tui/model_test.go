@@ -433,6 +433,60 @@ func TestViewHomePackageChannelCard(t *testing.T) {
 	}
 }
 
+func TestViewHomePackageShowsUpdateAvailable(t *testing.T) {
+	m := newModel(Options{Version: "0.3.1"})
+	m.reduced = true
+	m.screen = screenHome
+	m.width = 80
+	m.height = 24
+	m.status = app.StatusSummary{
+		Action:  "package",
+		Version: "0.3.1",
+		Flavor:  app.FlavorAUR,
+		Package: "festival-bin",
+		Prefix:  "/usr/bin",
+		Upgrade: "yay -Syu festival-bin",
+		Latest:  "0.3.3",
+	}
+	out := m.viewHome()
+	for _, want := range []string{
+		"update available: 0.3.1 → 0.3.3",
+		"Update Festival · 0.3.3 available",
+		"upgrade: yay -Syu festival-bin",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("package home missing %q\n%s", want, out)
+		}
+	}
+}
+
+func TestLatestMsgSelectsUpdateWhenAvailable(t *testing.T) {
+	m := newModel(Options{Version: "0.3.1"})
+	m.screen = screenHome
+	m.cursor = 0
+	m.status = app.StatusSummary{Action: "package", Version: "0.3.1"}
+	next, _ := m.Update(latestMsg{latest: "0.3.3"})
+	nm := next.(model)
+	if nm.status.Latest != "0.3.3" {
+		t.Fatalf("Latest=%q", nm.status.Latest)
+	}
+	if nm.cursor != 1 {
+		t.Fatalf("cursor=%d, want 1 (Update Festival)", nm.cursor)
+	}
+	if nm.homeItems()[1] != "Update Festival · 0.3.3 available" {
+		t.Fatalf("item 1 = %q", nm.homeItems()[1])
+	}
+}
+
+func TestStatusMsgPackageChecksLatest(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenHome
+	_, cmd := m.Update(statusMsg{sum: app.StatusSummary{Action: "package", Version: "0.3.1"}})
+	if cmd == nil {
+		t.Fatal("package status must kick off a latest-version check")
+	}
+}
+
 func TestViewHomeLeftoverDoesNotRelabel(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.reduced = true

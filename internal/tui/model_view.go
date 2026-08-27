@@ -160,6 +160,9 @@ func (m model) homeChannelCard() (status, pathLine, extras string) {
 		} else {
 			pathLine = components.StatusLine("managed bin not on PATH", "fail", s)
 		}
+		if m.updateAvailable() {
+			return status, pathLine, s.FireTip.Render("   update available: " + m.status.Version + " → " + m.status.Latest)
+		}
 		return status, pathLine, ""
 	case "package":
 		return m.packageChannelCard()
@@ -199,6 +202,9 @@ func (m model) packageChannelCard() (status, pathLine, extras string) {
 		pathLine = components.StatusLine("suite on PATH · "+prefix, "ok", s)
 		if h := helperCardLine(m.status.Helper); h != "" {
 			extra = append(extra, s.Muted.Render("   "+h))
+		}
+		if m.updateAvailable() {
+			extra = append(extra, s.FireTip.Render("   update available: "+m.status.Version+" → "+m.status.Latest))
 		}
 		if m.status.Upgrade != "" {
 			extra = append(extra, s.Muted.Render("   upgrade: "+m.status.Upgrade))

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
@@ -347,10 +348,22 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			Verify:   tuiVerifyOptions(ps, allowUnverified),
 			Progress: ps.report,
 		})
-		if err != nil {
-			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
-				return consentNeededMsg{action: "update-unverified", cause: err}
+		if err != nil && !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+			return consentNeededMsg{action: "update-unverified", cause: err}
+		}
+		// Package origin may still arrive as Action=package plus
+		// E_INSTALL_PACKAGE_CHANNEL from older hubs. That is guidance,
+		// not an update failure.
+		if res.Action == "package" || hasErrorCode(err, "E_INSTALL_PACKAGE_CHANNEL") {
+			if res.Action == "" {
+				res.Action = "package"
 			}
+			if warning == "" && err != nil {
+				warning = err.Error()
+			}
+			return updateOpDoneMsg(ps, res, warning)
+		}
+		if err != nil {
 			return opDoneMsg{stream: ps, title: "Update failed", body: err.Error(), err: err, success: false}
 		}
 		return updateOpDoneMsg(ps, res, warning)
@@ -370,13 +383,16 @@ func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) o
 	if res.SelfReplaced {
 		body += "\nfestival was updated to " + res.Version + "; restart to use the new version\n"
 	}
-	ok := res.Action == "upgraded" || res.Action == "current"
+	ok := res.Action == "upgraded" || res.Action == "current" || res.Action == "package"
 	title := "Update"
 	switch res.Action {
 	case "upgraded":
 		title = "Updated"
 	case "current":
 		title = "Already current"
+	case "package":
+		title, body = packageUpdateResultView(res, warning)
+		ok = true
 	case "unmanaged":
 		title = "Unmanaged install"
 		ok = false
@@ -385,6 +401,45 @@ func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) o
 		ok = false
 	}
 	return opDoneMsg{stream: ps, title: title, body: body, success: ok, restart: res.SelfReplaced}
+}
+
+func packageUpdateResultView(res app.UpdateResult, warning string) (title, body string) {
+	title = "Package install"
+	upgrade := res.Upgrade
+	if upgrade == "" {
+		upgrade = upgradeFromText(warning)
+	}
+	var b strings.Builder
+	switch {
+	case res.Latest != "" && res.Version != "" && installer.VersionLess(res.Version, res.Latest):
+		title = "Update available"
+		fmt.Fprintf(&b, "Festival %s is installed via the package manager.\n%s is available.\n", res.Version, res.Latest)
+	case res.Latest != "" && res.Version != "":
+		title = "Already current"
+		fmt.Fprintf(&b, "Festival %s is already current.\nIt is installed via the package manager.\n", res.Version)
+	case res.Version != "":
+		fmt.Fprintf(&b, "Festival %s is installed via the package manager.\n", res.Version)
+	default:
+		b.WriteString("Festival is installed via the package manager.\n")
+	}
+	if upgrade != "" {
+		label := "Upgrade with:"
+		if title == "Already current" {
+			label = "Future upgrades:"
+		}
+		fmt.Fprintf(&b, "\n%s\n  %s\n", label, upgrade)
+	}
+	b.WriteString("\nfestival update will not plant ~/.obey/installer.")
+	return title, b.String()
+}
+
+func upgradeFromText(s string) string {
+	_, rest, ok := strings.Cut(s, "upgrade with: ")
+	if !ok {
+		return ""
+	}
+	line, _, _ := strings.Cut(rest, "\n")
+	return strings.TrimSpace(line)
 }
 
 func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {

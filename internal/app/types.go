@@ -20,8 +20,10 @@ type InstallResult struct {
 // UpdateResult is returned by update operations.
 type UpdateResult struct {
 	Package       string        `json:"package"`
-	Action        string        `json:"action"` // upgraded | current | unmanaged | absent
+	Action        string        `json:"action"` // upgraded | current | unmanaged | absent | package
 	Version       string        `json:"version,omitempty"`
+	Latest        string        `json:"latest,omitempty"`
+	Upgrade       string        `json:"upgrade,omitempty"`
 	From          string        `json:"from,omitempty"`
 	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
 	SelfPath      string        `json:"self_path,omitempty"`
@@ -119,4 +121,6 @@ type StatusSummary struct {
 	Dual             bool           `json:"dual,omitempty"`
 	ShadowNote       string         `json:"shadow_note,omitempty"`
 	Shadows          []ToolLocation `json:"shadows,omitempty"`
+	// Latest is channel-latest from a TUI/update probe; Status() never sets it.
+	Latest string `json:"latest,omitempty"`
 }
