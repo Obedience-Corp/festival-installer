@@ -82,7 +82,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 
 	report(opts.Progress, ProgressEvent{Stage: "resolve", Package: FestivalPackageID, Percent: 0.1, Message: "checking for updates"})
 
-	manifest, err := source.LoadPackageManifest(ctx, rec.Source, FestivalPackageID, opts.Verify)
+	manifest, err := loadFreshPackageManifest(ctx, rec.Source, FestivalPackageID, opts.Verify)
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
@@ -96,10 +96,11 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 
 	res, err := InstallFestival(ctx, InstallOptions{
-		Channel:  channel,
-		Source:   rec.Source,
-		Verify:   opts.Verify,
-		Progress: opts.Progress,
+		Channel:            channel,
+		Source:             rec.Source,
+		Verify:             opts.Verify,
+		Progress:           opts.Progress,
+		sourceAlreadyFresh: true,
 	})
 	if err != nil {
 		return UpdateResult{}, warning, err
