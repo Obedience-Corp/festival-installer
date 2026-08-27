@@ -38,6 +38,33 @@ func TestUpdateOpDoneMsg_CurrentActionNeverRestarts(t *testing.T) {
 	}
 }
 
+func TestUpdateOpDoneMsg_PackageNewerIsUpdateAvailable(t *testing.T) {
+	msg := updateOpDoneMsg(nil, app.UpdateResult{
+		Action:  "package",
+		Version: "0.3.1",
+		Latest:  "0.3.3",
+	}, "update available: 0.3.1 -> 0.3.3\nupgrade with: yay -Syu festival-bin")
+	if msg.title != "Update available" {
+		t.Fatalf("title=%q, want Update available", msg.title)
+	}
+	if !msg.success {
+		t.Fatal("package update guidance must not be treated as Update failed")
+	}
+	if !strings.Contains(msg.body, "upgrade with: yay -Syu festival-bin") {
+		t.Fatalf("body=%s", msg.body)
+	}
+}
+
+func TestUpdateOpDoneMsg_PackageCurrentTitle(t *testing.T) {
+	msg := updateOpDoneMsg(nil, app.UpdateResult{Action: "package", Version: "0.3.3", Latest: "0.3.3"}, "already current at 0.3.3")
+	if msg.title != "Already current" {
+		t.Fatalf("title=%q, want Already current", msg.title)
+	}
+	if !msg.success {
+		t.Fatal("package current must not be Update failed")
+	}
+}
+
 func TestResult_SelfReplacedShowsRestartLine(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	next, _ := m.Update(opDoneMsg{

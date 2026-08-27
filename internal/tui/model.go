@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -9,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
@@ -40,6 +42,10 @@ type tickMsg time.Time
 type statusMsg struct {
 	sum app.StatusSummary
 	err error
+}
+
+type latestMsg struct {
+	latest string
 }
 
 type listMsg struct {
@@ -212,10 +218,22 @@ func (m model) homeItems() []string {
 	if m.status.Action == "package" || m.status.Dual {
 		items[0] = "How you installed"
 	}
+	if m.updateAvailable() {
+		items[1] = "Update Festival · " + m.status.Latest + " available"
+	}
 	return items
 }
 
+func (m model) updateAvailable() bool {
+	ver := strings.TrimPrefix(m.status.Version, "v")
+	latest := strings.TrimPrefix(m.status.Latest, "v")
+	return latest != "" && ver != "" && installer.VersionLess(ver, latest)
+}
+
 func (m model) defaultHomeCursor() int {
+	if m.updateAvailable() {
+		return 1
+	}
 	if m.status.Action == "managed" && !m.status.Dual {
 		return 1
 	}
@@ -267,6 +285,25 @@ func (m model) loadStatus() tea.Cmd {
 	return func() tea.Msg {
 		sum, err := app.Status(ctx)
 		return statusMsg{sum: sum, err: err}
+	}
+}
+
+func (m model) shouldCheckLatest() bool {
+	return m.status.Action == "package" || m.status.Action == "managed" || m.status.Dual
+}
+
+func (m model) loadLatest() tea.Cmd {
+	ctx := m.ctx
+	channel := m.status.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	return func() tea.Msg {
+		latest, err := app.LookupLatestSuite(ctx, channel)
+		if err != nil {
+			return latestMsg{}
+		}
+		return latestMsg{latest: latest}
 	}
 }
 
@@ -372,6 +409,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusErr = msg.err
 		if m.screen == screenBoot || m.screen == screenHome {
 			m.cursor = m.defaultHomeCursor()
+		}
+		if m.shouldCheckLatest() {
+			return m, m.loadLatest()
+		}
+		return m, nil
+
+	case latestMsg:
+		m.status.Latest = strings.TrimPrefix(msg.latest, "v")
+		if (m.screen == screenHome || m.screen == screenBoot) && m.cursor == 0 && m.updateAvailable() {
+			m.cursor = 1
 		}
 		return m, nil
 

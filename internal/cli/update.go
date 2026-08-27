@@ -8,6 +8,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
@@ -24,7 +25,10 @@ func NewUpdateCommand() *cobra.Command {
 		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
 			"suite. camp and fest are accepted as aliases: they are not published independently, so\n" +
-			"passing either one still updates the whole suite and prints a notice saying so.",
+			"passing either one still updates the whole suite and prints a notice saying so.\n\n" +
+			"A package-manager install (AUR, Homebrew, npm, distro packages) is never replaced with\n" +
+			"~/.obey/installer. update reports whether a newer suite exists and prints the package\n" +
+			"manager upgrade command instead.",
 		ValidArgs: []string{"festival", "camp", "fest"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -88,6 +92,15 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 		return err
 	case "unmanaged":
 		_, err := fmt.Fprintf(w, "%s is installed outside festival; left untouched\n", pkg)
+		return err
+	case "package":
+		ver := textsafe.Line(res.Version)
+		latest := textsafe.Line(res.Latest)
+		if latest != "" && ver != "" && installer.VersionLess(ver, latest) {
+			_, err := fmt.Fprintf(w, "update available: %s -> %s\nupgrade with the package manager; festival will not plant ~/.obey/installer\n", ver, latest)
+			return err
+		}
+		_, err := fmt.Fprintf(w, "%s is a package-manager install; festival update will not replace it\n", pkg)
 		return err
 	default:
 		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", pkg)

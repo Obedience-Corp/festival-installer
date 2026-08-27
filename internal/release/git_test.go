@@ -55,6 +55,17 @@ func defaultToken(goos, goarch string) (string, string) {
 	return osMap[goos], archMap[goarch]
 }
 
+func TestLatestVersion_HighestStableTag(t *testing.T) {
+	repo := gitRepoWithTags(t, "v0.3.1", "v0.3.3", "v0.3.2-rc.1")
+	got, err := release.NewResolver().LatestVersion(context.Background(), repo, "stable")
+	if err != nil {
+		t.Fatalf("LatestVersion: %v", err)
+	}
+	if got != "0.3.3" {
+		t.Fatalf("got %q, want 0.3.3", got)
+	}
+}
+
 func TestResolve_GitLatestStable(t *testing.T) {
 	repo := gitRepoWithTags(t, "v0.1.1", "v0.1.2", "v0.1.3")
 	osTok, archTok := defaultToken(runtime.GOOS, runtime.GOARCH)

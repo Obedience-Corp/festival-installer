@@ -12,6 +12,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
@@ -370,13 +371,22 @@ func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) o
 	if res.SelfReplaced {
 		body += "\nfestival was updated to " + res.Version + "; restart to use the new version\n"
 	}
-	ok := res.Action == "upgraded" || res.Action == "current"
+	ok := res.Action == "upgraded" || res.Action == "current" || res.Action == "package"
 	title := "Update"
 	switch res.Action {
 	case "upgraded":
 		title = "Updated"
 	case "current":
 		title = "Already current"
+	case "package":
+		title = "Package install"
+		if res.Latest != "" && res.Version != "" {
+			if installer.VersionLess(res.Version, res.Latest) {
+				title = "Update available"
+			} else {
+				title = "Already current"
+			}
+		}
 	case "unmanaged":
 		title = "Unmanaged install"
 		ok = false

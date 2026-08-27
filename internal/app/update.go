@@ -6,13 +6,21 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/release"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
+
+const officialSuiteRepo = "https://github.com/Obedience-Corp/festival.git"
+
+// LookupLatestSuite is the channel-latest suite version from the official
+// git repo. Tests replace it. Must not create installer home.
+var LookupLatestSuite = lookupLatestSuiteGit
 
 // UpdateOptions configure a suite update.
 type UpdateOptions struct {
@@ -36,8 +44,11 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		return UpdateResult{}, "", err
 	}
 
-	if err := refusePackageChannel(ctx, opts.Force); err != nil {
-		return UpdateResult{Package: FestivalPackageID, Action: "package"}, err.Error(), err
+	// Dual and package origin never plant ~/.obey/installer from update
+	// (including --force: tell the user to `festival install --force`).
+	origin, _ := DetectSuite(ctx)
+	if origin.Kind == OriginPackage || origin.Dual {
+		return packageUpdateResult(ctx, opts, origin, selfPlacement, selfPath)
 	}
 
 	rec, found, err := ReadFestivalReceipt(ctx)
@@ -142,6 +153,66 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 		return receipts.Receipt{}, false, err
 	}
 	return rec, true, nil
+}
+
+func packageUpdateResult(ctx context.Context, opts UpdateOptions, origin SuiteOrigin, selfPlacement SelfPlacement, selfPath string) (UpdateResult, string, error) {
+	report(opts.Progress, ProgressEvent{Stage: "resolve", Package: FestivalPackageID, Percent: 0.1, Message: "checking for updates"})
+	res := UpdateResult{
+		Package:       FestivalPackageID,
+		Action:        "package",
+		Version:       stripVersionPrefix(origin.Version),
+		SelfPlacement: selfPlacement,
+		SelfPath:      selfPath,
+	}
+	channel := origin.RelChannel
+	if opts.ChannelOverride != "" {
+		channel = opts.ChannelOverride
+	}
+	if channel == "" {
+		channel = "stable"
+	}
+	if latest, err := LookupLatestSuite(ctx, channel); err == nil {
+		res.Latest = stripVersionPrefix(latest)
+	}
+	warning := packageUpdateWarning(res.Version, res.Latest, origin.Upgrade)
+	return res, warning, nil
+}
+
+func packageUpdateWarning(installed, latest, upgrade string) string {
+	var b strings.Builder
+	if latest != "" && installed != "" && installer.VersionLess(installed, latest) {
+		b.WriteString("update available: ")
+		b.WriteString(installed)
+		b.WriteString(" -> ")
+		b.WriteString(latest)
+	} else if latest != "" && installed != "" && !installer.VersionLess(latest, installed) {
+		b.WriteString("already current at ")
+		b.WriteString(installed)
+	}
+	if upgrade != "" {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString("upgrade with: ")
+		b.WriteString(upgrade)
+	}
+	return b.String()
+}
+
+func stripVersionPrefix(v string) string {
+	return strings.TrimPrefix(strings.TrimSpace(v), "v")
+}
+
+func lookupLatestSuiteGit(ctx context.Context, channel string) (string, error) {
+	if channel == "" {
+		channel = "stable"
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	return release.NewResolver().LatestVersion(ctx, officialSuiteRepo, channel)
 }
 
 func handleUnmanaged(ctx context.Context) (UpdateResult, string, error) {

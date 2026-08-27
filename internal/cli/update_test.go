@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
@@ -451,5 +452,99 @@ func TestUpdate_LiveReceiptDisagreementPrefersLive(t *testing.T) {
 	dataOf(t, out, &res)
 	if res.Action != "current" || res.Version != "0.3.0" {
 		t.Fatalf("expected current at live 0.3.0, got %+v", res)
+	}
+}
+
+func TestUpdate_PackageOriginJSONActionPackage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	root := t.TempDir()
+	bin := filepath.Join(root, "usr", "bin")
+	shell := filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho 0.3.1\n"
+	for _, name := range []string{"camp", "fest", "festival"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	orig := app.LookupLatestSuite
+	app.LookupLatestSuite = func(context.Context, string) (string, error) {
+		return "0.3.3", nil
+	}
+	t.Cleanup(func() { app.LookupLatestSuite = orig })
+
+	out, errOut, err := runInstaller(t, "update", "--json")
+	if err != nil {
+		t.Fatalf("package update must not fail: %v\n%s", err, errOut)
+	}
+	var res struct {
+		Action  string `json:"action"`
+		Version string `json:"version"`
+		Latest  string `json:"latest"`
+	}
+	dataOf(t, out, &res)
+	if res.Action != "package" {
+		t.Fatalf("action=%q, want package", res.Action)
+	}
+	if res.Version != "0.3.1" || res.Latest != "0.3.3" {
+		t.Fatalf("got %+v", res)
+	}
+	if !strings.Contains(errOut, "update available: 0.3.1 -> 0.3.3") {
+		t.Fatalf("stderr missing update available, got %q", errOut)
+	}
+	if _, err := os.Stat(filepath.Join(home, "state.db")); !os.IsNotExist(err) {
+		t.Fatal("package update must not create state.db")
+	}
+}
+
+func TestUpdate_PackageOriginPlaintext(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	root := t.TempDir()
+	bin := filepath.Join(root, "usr", "bin")
+	shell := filepath.Join(root, "usr", "share", "festival", "shell")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(shell, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho 0.3.1\n"
+	for _, name := range []string{"camp", "fest", "festival"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(shell, "festival.zsh"), []byte("# helper\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+
+	orig := app.LookupLatestSuite
+	app.LookupLatestSuite = func(context.Context, string) (string, error) {
+		return "0.3.3", nil
+	}
+	t.Cleanup(func() { app.LookupLatestSuite = orig })
+
+	out, errOut, err := runInstaller(t, "update")
+	if err != nil {
+		t.Fatalf("package update must not fail: %v\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "update available: 0.3.1 -> 0.3.3") {
+		t.Fatalf("stdout=%q", out)
+	}
+	if strings.Contains(out, "not installed") {
+		t.Fatalf("must not tell package users to festival install, got %q", out)
 	}
 }
