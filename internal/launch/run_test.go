@@ -15,33 +15,40 @@ var execCommand = exec.Command
 
 func TestCaptureEnvForcesColorUnlessNoColor(t *testing.T) {
 	orig, had := os.LookupEnv("NO_COLOR")
-	os.Unsetenv("NO_COLOR")
 	t.Cleanup(func() {
 		if had {
-			os.Setenv("NO_COLOR", orig)
-		} else {
-			os.Unsetenv("NO_COLOR")
+			if err := os.Setenv("NO_COLOR", orig); err != nil {
+				t.Errorf("restore NO_COLOR: %v", err)
+			}
+			return
+		}
+		if err := os.Unsetenv("NO_COLOR"); err != nil {
+			t.Errorf("restore NO_COLOR: %v", err)
 		}
 	})
-
-	env := captureEnv()
-	got := ""
-	for _, e := range env {
-		if strings.HasPrefix(e, "CLICOLOR_FORCE=") {
-			got = e
+	t.Run("force when NO_COLOR unset", func(t *testing.T) {
+		if err := os.Unsetenv("NO_COLOR"); err != nil {
+			t.Fatal(err)
 		}
-	}
-	if got != "CLICOLOR_FORCE=1" {
-		t.Fatalf("capture env CLICOLOR_FORCE = %q, want CLICOLOR_FORCE=1", got)
-	}
-
-	t.Setenv("NO_COLOR", "1")
-	env = captureEnv()
-	for _, e := range env {
-		if e == "CLICOLOR_FORCE=1" {
-			t.Fatal("NO_COLOR must not force CLICOLOR_FORCE")
+		env := captureEnv()
+		got := ""
+		for _, e := range env {
+			if strings.HasPrefix(e, "CLICOLOR_FORCE=") {
+				got = e
+			}
 		}
-	}
+		if got != "CLICOLOR_FORCE=1" {
+			t.Fatalf("capture env CLICOLOR_FORCE = %q, want CLICOLOR_FORCE=1", got)
+		}
+	})
+	t.Run("skip when NO_COLOR set", func(t *testing.T) {
+		t.Setenv("NO_COLOR", "1")
+		for _, e := range captureEnv() {
+			if e == "CLICOLOR_FORCE=1" {
+				t.Fatal("NO_COLOR must not force CLICOLOR_FORCE")
+			}
+		}
+	})
 }
 
 func TestRun_Success(t *testing.T) {
