@@ -56,6 +56,9 @@ func TestUpdateFestival_PackageOriginReportsAvailable(t *testing.T) {
 	if !strings.Contains(warning, "upgrade with:") {
 		t.Fatalf("warning missing upgrade command, got %q", warning)
 	}
+	if res.Upgrade == "" {
+		t.Fatal("Upgrade command must be set for package origin")
+	}
 	if _, err := os.Stat(filepath.Join(home, "state.db")); !os.IsNotExist(err) {
 		t.Fatal("package update must not create state.db")
 	}

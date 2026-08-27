@@ -161,6 +161,7 @@ func packageUpdateResult(ctx context.Context, opts UpdateOptions, origin SuiteOr
 		Package:       FestivalPackageID,
 		Action:        "package",
 		Version:       stripVersionPrefix(origin.Version),
+		Upgrade:       origin.Upgrade,
 		SelfPlacement: selfPlacement,
 		SelfPath:      selfPath,
 	}

@@ -23,6 +23,7 @@ type UpdateResult struct {
 	Action        string        `json:"action"` // upgraded | current | unmanaged | absent | package
 	Version       string        `json:"version,omitempty"`
 	Latest        string        `json:"latest,omitempty"`
+	Upgrade       string        `json:"upgrade,omitempty"`
 	From          string        `json:"from,omitempty"`
 	SelfPlacement SelfPlacement `json:"self_placement,omitempty"`
 	SelfPath      string        `json:"self_path,omitempty"`

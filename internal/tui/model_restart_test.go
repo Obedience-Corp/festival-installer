@@ -43,6 +43,7 @@ func TestUpdateOpDoneMsg_PackageNewerIsUpdateAvailable(t *testing.T) {
 		Action:  "package",
 		Version: "0.3.1",
 		Latest:  "0.3.3",
+		Upgrade: "yay -Syu festival-bin",
 	}, "update available: 0.3.1 -> 0.3.3\nupgrade with: yay -Syu festival-bin")
 	if msg.title != "Update available" {
 		t.Fatalf("title=%q, want Update available", msg.title)
@@ -50,18 +51,38 @@ func TestUpdateOpDoneMsg_PackageNewerIsUpdateAvailable(t *testing.T) {
 	if !msg.success {
 		t.Fatal("package update guidance must not be treated as Update failed")
 	}
-	if !strings.Contains(msg.body, "upgrade with: yay -Syu festival-bin") {
+	if !strings.Contains(msg.body, "yay -Syu festival-bin") {
 		t.Fatalf("body=%s", msg.body)
+	}
+	if strings.Contains(msg.body, "E_INSTALL_PACKAGE_CHANNEL") || strings.Contains(msg.body, "Update failed") {
+		t.Fatalf("package update must not look like a failure: %s", msg.body)
 	}
 }
 
 func TestUpdateOpDoneMsg_PackageCurrentTitle(t *testing.T) {
-	msg := updateOpDoneMsg(nil, app.UpdateResult{Action: "package", Version: "0.3.3", Latest: "0.3.3"}, "already current at 0.3.3")
+	msg := updateOpDoneMsg(nil, app.UpdateResult{Action: "package", Version: "0.3.3", Latest: "0.3.3", Upgrade: "yay -Syu festival-bin"}, "already current at 0.3.3")
 	if msg.title != "Already current" {
 		t.Fatalf("title=%q, want Already current", msg.title)
 	}
 	if !msg.success {
 		t.Fatal("package current must not be Update failed")
+	}
+	if !strings.Contains(msg.body, "Future upgrades:") {
+		t.Fatalf("body=%s", msg.body)
+	}
+}
+
+func TestUpdateOpDoneMsg_PackageChannelErrorIsNotUpdateFailed(t *testing.T) {
+	msg := updateOpDoneMsg(nil, app.UpdateResult{Action: "package", Version: "0.3.3"},
+		"E_INSTALL_PACKAGE_CHANNEL: refusing to plant ~/.obey/installer over a package install; upgrade with: yay -Syu festival-bin")
+	if msg.title == "Update failed" || !msg.success {
+		t.Fatalf("title=%q success=%v, want package guidance", msg.title, msg.success)
+	}
+	if strings.Contains(msg.body, "E_INSTALL_PACKAGE_CHANNEL") {
+		t.Fatalf("TUI must not show the error code\n%s", msg.body)
+	}
+	if !strings.Contains(msg.body, "yay -Syu festival-bin") {
+		t.Fatalf("body missing upgrade command:\n%s", msg.body)
 	}
 }
 
