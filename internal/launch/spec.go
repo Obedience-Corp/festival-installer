@@ -28,6 +28,9 @@ type Spec struct {
 	Dir string
 	// Title is a short human label for status banners (optional).
 	Title string
+	// ReplaceHub means a successful exit should re-exec this festival process
+	// so a package-manager upgrade of the hub binary takes effect.
+	ReplaceHub bool
 }
 
 // Result is the outcome of a child process run.

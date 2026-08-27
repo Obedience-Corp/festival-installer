@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
 
 func TestUpdateOpDoneMsg_SelfReplacedSetsRestart(t *testing.T) {
@@ -69,6 +70,48 @@ func TestUpdateOpDoneMsg_PackageCurrentTitle(t *testing.T) {
 	}
 	if !strings.Contains(msg.body, "Future upgrades:") {
 		t.Fatalf("body=%s", msg.body)
+	}
+}
+
+func TestPackageUpgradeSpecRunsWhenNewerAndOnPATH(t *testing.T) {
+	spec, ok := packageUpgradeSpec(app.UpdateResult{
+		Action:  "package",
+		Version: "0.3.3",
+		Latest:  "0.3.4",
+		Upgrade: "echo -Syu festival-bin",
+	})
+	if !ok {
+		t.Fatal("echo upgrade must be runnable")
+	}
+	if spec.Tool != "echo" || !spec.ReplaceHub {
+		t.Fatalf("spec=%+v", spec)
+	}
+	if got := strings.Join(spec.Args, " "); got != "-Syu festival-bin" {
+		t.Fatalf("args=%q", got)
+	}
+}
+
+func TestPackageUpgradeSpecSkipsWhenCurrent(t *testing.T) {
+	_, ok := packageUpgradeSpec(app.UpdateResult{
+		Action:  "package",
+		Version: "0.3.4",
+		Latest:  "0.3.4",
+		Upgrade: "echo -Syu festival-bin",
+	})
+	if ok {
+		t.Fatal("current package install must not spawn the package manager")
+	}
+}
+
+func TestPackageUpgradeMsgQuitsToRunUpgrade(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	next, cmd := m.Update(packageUpgradeMsg{spec: launch.Spec{Tool: "yay", Args: []string{"-Syu", "festival-bin"}, ReplaceHub: true}})
+	nm := next.(model)
+	if nm.pendingLaunch == nil || nm.pendingLaunch.Tool != "yay" || !nm.pendingLaunch.ReplaceHub {
+		t.Fatalf("pendingLaunch=%+v", nm.pendingLaunch)
+	}
+	if cmd == nil {
+		t.Fatal("expected tea.Quit")
 	}
 }
 

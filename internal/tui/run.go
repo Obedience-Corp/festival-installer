@@ -53,20 +53,31 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 			return sess, sess.Err
 		}
 
-		// Remember launchpad cursor for post-child resume.
-		resume = resumeState{
-			active: true,
-			screen: screenLaunchpad,
-			cursor: sess.ResumeCursor,
+		spec := *sess.Launch
+		if spec.ReplaceHub {
+			resume = resumeState{}
+		} else {
+			// Remember launchpad cursor for post-child resume.
+			resume = resumeState{
+				active: true,
+				screen: screenLaunchpad,
+				cursor: sess.ResumeCursor,
+			}
 		}
 
 		// Child owns the terminal; hub alt-screen is already gone.
-		if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(*sess.Launch)); err != nil {
+		if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(spec)); err != nil {
 			return SessionResult{Quit: true}, errpkg.Wrap("E_TUI_LAUNCH_BANNER", err, "write launch banner")
 		}
-		res := launch.Run(ctx, *sess.Launch)
+		res := launch.Run(ctx, spec)
 		resetTerminalAfterChild()
-		banner = formatChildBanner(*sess.Launch, res)
+		if spec.ReplaceHub && res.Started && res.ExitCode == 0 {
+			if err := launch.ReplaceSelf(ctx); err != nil {
+				banner = "package upgraded, but festival could not restart: " + err.Error()
+				continue
+			}
+		}
+		banner = formatChildBanner(spec, res)
 		// Loop: re-enter hub TUI on launchpad with status refresh via Init.
 	}
 }

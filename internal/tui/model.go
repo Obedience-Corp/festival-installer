@@ -48,6 +48,12 @@ type latestMsg struct {
 	latest string
 }
 
+// packageUpgradeMsg means Update found a newer package-manager suite and the
+// hub should drop the alt-screen and run origin.Upgrade on the real TTY.
+type packageUpgradeMsg struct {
+	spec launch.Spec
+}
+
 type listMsg struct {
 	res app.ListResult
 	err error
@@ -421,6 +427,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 1
 		}
 		return m, nil
+
+	case packageUpgradeMsg:
+		m.pendingLaunch = &msg.spec
+		return m, tea.Quit
 
 	case listMsg:
 		m.list = msg.res

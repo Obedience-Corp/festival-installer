@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -361,6 +362,9 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			if warning == "" && err != nil {
 				warning = err.Error()
 			}
+			if spec, ok := packageUpgradeSpec(res); ok {
+				return packageUpgradeMsg{spec: spec}
+			}
 			return updateOpDoneMsg(ps, res, warning)
 		}
 		if err != nil {
@@ -403,6 +407,20 @@ func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) o
 	return opDoneMsg{stream: ps, title: title, body: body, success: ok, restart: res.SelfReplaced}
 }
 
+func packageUpgradeSpec(res app.UpdateResult) (launch.Spec, bool) {
+	if !app.PackageUpgradeAvailable(res) {
+		return launch.Spec{}, false
+	}
+	tool, args, ok := app.ParseUpgradeArgv(res.Upgrade)
+	if !ok {
+		return launch.Spec{}, false
+	}
+	if _, err := exec.LookPath(tool); err != nil {
+		return launch.Spec{}, false
+	}
+	return launch.Spec{Tool: tool, Args: args, Title: res.Upgrade, ReplaceHub: true}, true
+}
+
 func packageUpdateResultView(res app.UpdateResult, warning string) (title, body string) {
 	title = "Package install"
 	upgrade := res.Upgrade
@@ -413,7 +431,7 @@ func packageUpdateResultView(res app.UpdateResult, warning string) (title, body 
 	switch {
 	case res.Latest != "" && res.Version != "" && installer.VersionLess(res.Version, res.Latest):
 		title = "Update available"
-		fmt.Fprintf(&b, "Festival %s is installed via the package manager.\n%s is available.\n", res.Version, res.Latest)
+		fmt.Fprintf(&b, "Festival %s is installed via the package manager.\n%s is available.\nThis upgrades camp, fest, and this hub.\n", res.Version, res.Latest)
 	case res.Latest != "" && res.Version != "":
 		title = "Already current"
 		fmt.Fprintf(&b, "Festival %s is already current.\nIt is installed via the package manager.\n", res.Version)
