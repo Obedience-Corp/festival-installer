@@ -43,6 +43,9 @@ type InstallOptions struct {
 	Verify   source.VerifyOptions
 	Progress ProgressFunc
 	Force    bool
+	// sourceAlreadyFresh is set by UpdateFestival after it refreshes and
+	// resolves the same source, avoiding a second network pull during install.
+	sourceAlreadyFresh bool
 }
 
 // Keep the bootstrap behind the app boundary so every install entry point
@@ -103,7 +106,12 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		}
 	}
 
-	manifest, err := source.LoadPackageManifest(ctx, sourceName, FestivalPackageID, vo)
+	var manifest metadata.PackageManifest
+	if opts.sourceAlreadyFresh {
+		manifest, err = loadPackageManifest(ctx, sourceName, FestivalPackageID, vo)
+	} else {
+		manifest, err = loadFreshPackageManifest(ctx, sourceName, FestivalPackageID, vo)
+	}
 	if err != nil {
 		return InstallResult{}, err
 	}
