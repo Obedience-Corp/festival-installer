@@ -42,7 +42,6 @@ func Catalog() []Entry {
 			Label:  "Watch festival progress",
 			Detail: "fest watch: live progress (q to return here)",
 			Spec:   Spec{Tool: "fest", Args: []string{"watch"}, Title: "fest watch"},
-			Mode:   ModeStream,
 		},
 		{
 			Label:  "Camp version",

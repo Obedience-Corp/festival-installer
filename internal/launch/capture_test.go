@@ -96,7 +96,7 @@ func TestCatalog_Modes(t *testing.T) {
 		"camp wi":             ModeTUI,
 		"camp intent explore": ModeTUI,
 		"fest list":           ModeOneShot,
-		"fest watch":          ModeStream,
+		"fest watch":          ModeTUI,
 		"camp version":        ModeOneShot,
 		"fest version":        ModeOneShot,
 	}

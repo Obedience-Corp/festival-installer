@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 )
@@ -107,19 +108,22 @@ func TestCaptureEntryDispatchesInsideHub(t *testing.T) {
 }
 
 func TestCaptureRenderSanitizes(t *testing.T) {
-	raw := []byte("\x1b[2J\x1b[1;31mred\x1b[0m line\nprogress 10%\rprogress 99%\n" + strings.Repeat("w", 200) + "\n")
+	raw := []byte("\x1b[2J\x1b[H\x1b[1;31mred\x1b[0m line\nprogress 10%\rprogress 99%\n" + strings.Repeat("w", 200) + "\n")
 	out := captureRender(raw, 40)
-	if strings.Contains(out, "\x1b") {
-		t.Fatalf("ANSI escapes survived: %q", out)
+	if strings.Contains(out, "\x1b[2J") || strings.Contains(out, "\x1b[H") {
+		t.Fatalf("cursor/clear survived: %q", out)
+	}
+	if !strings.Contains(out, "\x1b[1;31mred\x1b[0m") {
+		t.Fatalf("SGR color stripped: %q", out)
 	}
 	lines := strings.Split(out, "\n")
-	if lines[0] != "red line" {
+	if ansi.Strip(lines[0]) != "red line" {
 		t.Fatalf("styled line mangled: %q", lines[0])
 	}
 	if lines[1] != "progress 99%" {
 		t.Fatalf("CR overwrite not collapsed: %q", lines[1])
 	}
-	if len(lines[2]) > 40 {
-		t.Fatalf("wide line not truncated: %d chars", len(lines[2]))
+	if ansi.StringWidth(lines[2]) > 40 {
+		t.Fatalf("wide line not truncated: width %d", ansi.StringWidth(lines[2]))
 	}
 }
