@@ -16,7 +16,7 @@ func TestHubStateValue_Errors(t *testing.T) {
 	t.Run("cancelled context is reported as a coded error", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, _, err := HubStateValue(ctx, db.Raw(), HubStateTourStep); err == nil {
+		if _, _, err := HubStateValue(ctx, db.Raw(), HubStateTourStepKey("install-suite")); err == nil {
 			t.Fatal("expected an error reading with a cancelled context")
 		} else if code := errpkg.Code(err); code != "E_HUB_STATE_GET" {
 			t.Fatalf("code = %q, want E_HUB_STATE_GET", code)
@@ -26,7 +26,7 @@ func TestHubStateValue_Errors(t *testing.T) {
 	t.Run("cancelled context is reported when writing", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := SetHubState(ctx, db.Raw(), HubStateTourStep, "1"); err == nil {
+		if err := SetHubState(ctx, db.Raw(), HubStateTourStepKey("install-suite"), "1"); err == nil {
 			t.Fatal("expected an error writing with a cancelled context")
 		} else if code := errpkg.Code(err); code != "E_HUB_STATE_SET" {
 			t.Fatalf("code = %q, want E_HUB_STATE_SET", code)
@@ -36,7 +36,7 @@ func TestHubStateValue_Errors(t *testing.T) {
 	t.Run("cancelled context is reported when deleting", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := DeleteHubState(ctx, db.Raw(), HubStateTourStep); err == nil {
+		if err := DeleteHubState(ctx, db.Raw(), HubStateTourStepKey("install-suite")); err == nil {
 			t.Fatal("expected an error deleting with a cancelled context")
 		} else if code := errpkg.Code(err); code != "E_HUB_STATE_DELETE" {
 			t.Fatalf("code = %q, want E_HUB_STATE_DELETE", code)
@@ -53,7 +53,7 @@ func TestHubState_RoundTrip(t *testing.T) {
 		key   string
 		value string
 	}{
-		{name: "tour step", key: HubStateTourStep, value: "2"},
+		{name: "tour step", key: HubStateTourStepKey("install-suite"), value: "2"},
 		{name: "tour dismissed", key: HubStateTourDismissed, value: "true"},
 		{name: "empty value survives", key: "hub.empty", value: ""},
 		{name: "multiline value survives", key: "hub.note", value: "one\ntwo"},
@@ -98,19 +98,19 @@ func TestSetHubState_OverwritesInPlace(t *testing.T) {
 	ctx := context.Background()
 	db, _ := openTestDB(t)
 
-	if err := SetHubState(ctx, db.Raw(), HubStateTourStep, "1"); err != nil {
+	if err := SetHubState(ctx, db.Raw(), HubStateTourStepKey("install-suite"), "1"); err != nil {
 		t.Fatalf("first SetHubState: %v", err)
 	}
-	first := hubStateUpdatedAt(t, db.Raw(), HubStateTourStep)
+	first := hubStateUpdatedAt(t, db.Raw(), HubStateTourStepKey("install-suite"))
 
 	time.Sleep(2 * time.Millisecond)
-	if err := SetHubState(ctx, db.Raw(), HubStateTourStep, "3"); err != nil {
+	if err := SetHubState(ctx, db.Raw(), HubStateTourStepKey("install-suite"), "3"); err != nil {
 		t.Fatalf("second SetHubState: %v", err)
 	}
 
 	var rows int
 	if err := db.Raw().QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM hub_state WHERE key = ?", HubStateTourStep,
+		"SELECT COUNT(*) FROM hub_state WHERE key = ?", HubStateTourStepKey("install-suite"),
 	).Scan(&rows); err != nil {
 		t.Fatalf("count rows: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestSetHubState_OverwritesInPlace(t *testing.T) {
 		t.Fatalf("rows = %d, want 1: the second write duplicated instead of replacing", rows)
 	}
 
-	got, _, err := HubStateValue(ctx, db.Raw(), HubStateTourStep)
+	got, _, err := HubStateValue(ctx, db.Raw(), HubStateTourStepKey("install-suite"))
 	if err != nil {
 		t.Fatalf("HubStateValue: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestSetHubState_OverwritesInPlace(t *testing.T) {
 		t.Fatalf("value = %q, want 3", got)
 	}
 
-	second := hubStateUpdatedAt(t, db.Raw(), HubStateTourStep)
+	second := hubStateUpdatedAt(t, db.Raw(), HubStateTourStepKey("install-suite"))
 	if !second.After(first) {
 		t.Fatalf("updated_at did not move: first %s, second %s", first, second)
 	}
@@ -211,10 +211,10 @@ func TestHubStateMigration_UpgradeFromPreviousVersion(t *testing.T) {
 		t.Fatalf("sources = %d, want 1: the upgrade lost registered marketplaces", sources)
 	}
 
-	if err := SetHubState(ctx, db.Raw(), HubStateTourStep, "4"); err != nil {
+	if err := SetHubState(ctx, db.Raw(), HubStateTourStepKey("install-suite"), "4"); err != nil {
 		t.Fatalf("SetHubState on the upgraded database: %v", err)
 	}
-	got, ok, err := HubStateValue(ctx, db.Raw(), HubStateTourStep)
+	got, ok, err := HubStateValue(ctx, db.Raw(), HubStateTourStepKey("install-suite"))
 	if err != nil || !ok || got != "4" {
 		t.Fatalf("round trip on upgraded database = (%q, %v, %v), want (4, true, nil)", got, ok, err)
 	}

@@ -189,8 +189,11 @@ type model struct {
 	// confirm
 	confirmMsg string
 	confirmYes bool
-	confirmAct string // uninstall | install-unverified | update-unverified | browse-install-unverified
+	confirmAct string // uninstall | install-unverified | update-unverified | browse-install-unverified | tour-path | tour-camp-init
 	confirmArg string
+	// confirmReturn is the screen a declined confirmation goes back to. Zero
+	// value screenBoot means home, which is where every pre-tour confirm went.
+	confirmReturn screen
 
 	// op in flight cancel
 	opCancel context.CancelFunc
@@ -203,6 +206,10 @@ type model struct {
 
 	// getting started tour
 	tour app.Tour
+	// recordTourStep names the tour step whose completion should be recorded
+	// when the pending launch's child exits cleanly. Empty when the pending
+	// launch is not a tour step.
+	recordTourStep app.TourStepKey
 
 	// launchpad
 	launchEntries []launch.Entry
@@ -366,7 +373,14 @@ func newModel(opts Options) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(), m.loadStatus())
+	cmds := []tea.Cmd{tickCmd(), m.loadStatus()}
+	if m.screen == screenTour {
+		// The hub resumed onto the tour after handing the terminal to a child,
+		// and that child is exactly what may have finished a step. Without this
+		// the tour comes back with no state at all.
+		cmds = append(cmds, m.loadTour())
+	}
+	return tea.Batch(cmds...)
 }
 
 func tickCmd() tea.Cmd {
@@ -549,8 +563,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tourMsg:
-		m.tour = msg.tour
 		m.err = msg.err
+		// A failed load carries no steps. Keeping the ones already on screen
+		// beats replacing a working tour with an empty one, which is what the
+		// user would otherwise see the moment anything goes wrong.
+		if len(msg.tour.Steps) == 0 {
+			return m, nil
+		}
+		m.tour = msg.tour
 		if m.screen == screenTour {
 			m.cursor = m.tourCursor()
 		}
@@ -746,6 +766,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		if m.screen == screenMarketplace && m.marketMode != "add" {
 			return m, m.seedOfficialMarketplace()
+		}
+		if m.screen == screenTour {
+			return m.skipTourStep()
 		}
 	case "f":
 		if m.screen == screenInstall && m.installKind == "package" {

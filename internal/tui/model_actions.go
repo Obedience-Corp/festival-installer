@@ -74,7 +74,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		return m, nil
 	case screenConfirm:
 		if !m.confirmYes {
-			m.screen = screenHome
+			m.screen = m.confirmDeclineScreen()
+			m.confirmReturn = screenBoot
 			m.err = nil
 			return m, nil
 		}
@@ -94,6 +95,17 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m.startUpdate(true)
 		case "browse-install-unverified":
 			return m.installBrowseSelection(true)
+		case "tour-path":
+			return m.applyTourPathAppend()
+		case "tour-camp-init":
+			// No record key: whether a camp exists is asked of camp on the
+			// next load, which beats trusting camp init's exit status.
+			return m.launchTourStep("", launch.Spec{
+				Tool:  "camp",
+				Args:  []string{"init"},
+				Dir:   m.confirmArg,
+				Title: "camp init",
+			})
 		}
 		m.screen = screenHome
 		return m, nil
@@ -132,6 +144,34 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		return m, nil
 	case screenLaunchpad:
 		return m.launchSelected()
+	case screenTour:
+		return m.runTourStep()
+	}
+	return m, nil
+}
+
+// confirmDeclineScreen is where a declined confirmation returns to. Confirms
+// raised from the tour go back to the tour, so answering no does not throw the
+// user out of the thing they were working through.
+func (m model) confirmDeclineScreen() screen {
+	if m.confirmReturn != screenBoot {
+		return m.confirmReturn
+	}
+	return screenHome
+}
+
+// openInstallScreen opens the channel picker, applying the same package and
+// leftover guards wherever the install is reached from.
+func (m model) openInstallScreen() (tea.Model, tea.Cmd) {
+	m.screen = screenInstall
+	m.channelIdx = 0
+	m.installKind = ""
+	m.installForce = false
+	switch {
+	case m.status.Action == "package" || m.status.Dual:
+		m.installKind = "package"
+	case m.status.Action == "unmanaged":
+		m.installKind = "leftover"
 	}
 	return m, nil
 }
@@ -148,17 +188,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		m.err = nil
 		return m, m.loadTour()
 	case homeInstall:
-		m.screen = screenInstall
-		m.channelIdx = 0
-		m.installKind = ""
-		m.installForce = false
-		switch {
-		case m.status.Action == "package" || m.status.Dual:
-			m.installKind = "package"
-		case m.status.Action == "unmanaged":
-			m.installKind = "leftover"
-		}
-		return m, nil
+		return m.openInstallScreen()
 	case homeUpdate:
 		m.screen = screenUpdate
 		return m.startUpdate(false)

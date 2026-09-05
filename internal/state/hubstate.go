@@ -11,12 +11,19 @@ import (
 // Hub state keys. They live here so the TUI and the app layer address the same
 // rows without repeating string literals.
 const (
-	// HubStateTourStep holds the getting-started tour's furthest completed
-	// step, as a decimal string.
-	HubStateTourStep = "tour.step"
+	// HubStateTourStepPrefix begins the key for one getting-started tour step.
+	// Steps are addressed by a stable key rather than by position, so
+	// reordering or inserting a step cannot silently mark a different one done.
+	HubStateTourStepPrefix = "tour.step."
 	// HubStateTourDismissed records that the user closed the tour deliberately.
 	HubStateTourDismissed = "tour.dismissed"
 )
+
+// HubStateTourStepKey is the hub_state key holding one tour step's recorded
+// outcome.
+func HubStateTourStepKey(step string) string {
+	return HubStateTourStepPrefix + step
+}
 
 // HubStateValue reads a hub-owned state value. A missing key is not an error:
 // callers get the zero value and ok false.

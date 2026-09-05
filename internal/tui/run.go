@@ -57,10 +57,10 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 		if spec.ReplaceHub {
 			resume = resumeState{}
 		} else {
-			// Remember launchpad cursor for post-child resume.
+			// Come back on the screen the launch started from, with its cursor.
 			resume = resumeState{
 				active: true,
-				screen: screenLaunchpad,
+				screen: sess.ResumeScreen,
 				cursor: sess.ResumeCursor,
 			}
 		}
@@ -76,6 +76,10 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 				banner = "package upgraded, but festival could not restart: " + err.Error()
 				continue
 			}
+		}
+		if err := recordTourStepAfterChild(ctx, sess.RecordTourStep, res); err != nil {
+			banner = "could not record tour progress: " + err.Error()
+			continue
 		}
 		banner = formatChildBanner(spec, res)
 		// Loop: re-enter hub TUI on launchpad with status refresh via Init.
@@ -110,8 +114,10 @@ func runOnce(ctx context.Context, opts Options, banner string, resume resumeStat
 	if fm.pendingLaunch != nil {
 		spec := *fm.pendingLaunch
 		return SessionResult{
-			Launch:       &spec,
-			ResumeCursor: fm.cursor,
+			Launch:         &spec,
+			ResumeCursor:   fm.cursor,
+			ResumeScreen:   fm.screen,
+			RecordTourStep: fm.recordTourStep,
 		}, nil
 	}
 	return SessionResult{Quit: true}, nil

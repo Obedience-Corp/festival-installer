@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -171,4 +172,17 @@ func ManagedBinOnPath(ctx context.Context) (binDir string, onPath bool, err erro
 		return "", false, err
 	}
 	return binDir, dirOnPath(binDir), nil
+}
+
+// ShellFromEnv resolves the user's shell from $SHELL, which is the pragmatic
+// source for this. Anything unset or unrecognized falls back to zsh, matching
+// what shell-init defaults to. Supported shells are zsh, bash and fish.
+func ShellFromEnv() string {
+	name := filepath.Base(strings.TrimSpace(os.Getenv("SHELL")))
+	switch name {
+	case "zsh", "bash", "fish":
+		return name
+	default:
+		return "zsh"
+	}
 }

@@ -80,7 +80,7 @@ func (m model) View() string {
 	case screenTour:
 		title = "getting started"
 		body = m.viewTour()
-		footer = "↑↓ steps  esc back"
+		footer = "↑↓ steps  enter do this step  s skip  esc back"
 	case screenConfirm:
 		title = "confirm"
 		body = components.ConfirmBox(m.confirmMsg, m.confirmYes, s)
@@ -105,7 +105,7 @@ func (m model) View() string {
 	header := components.Header(title, m.opts.Version, w, s)
 	foot := components.Footer(footer, w, s)
 	parts := []string{header}
-	if m.banner != "" && (m.screen == screenHome || m.screen == screenLaunchpad) {
+	if m.banner != "" && (m.screen == screenHome || m.screen == screenLaunchpad || m.screen == screenTour) {
 		parts = append(parts, s.FireTip.Render("◆ "+m.banner))
 	}
 	parts = append(parts, body)
@@ -381,7 +381,7 @@ func (m model) viewTour() string {
 	s := m.styles
 	steps := m.tour.Steps
 	if len(steps) == 0 {
-		return s.Muted.Render("  the tour has no steps")
+		return s.Muted.Render("  reading where you got to ...")
 	}
 
 	var b strings.Builder
@@ -391,11 +391,31 @@ func (m model) viewTour() string {
 	next := m.tour.NextStep()
 	for i, st := range steps {
 		b.WriteString(tourStepRow(st, i, i == m.cursor, i == next, s) + "\n")
-		b.WriteString("        " + s.Muted.Render(textsafe.Line(st.Detail)) + "\n")
+		b.WriteString(tourStepNote(st.Detail, m.width, s.Muted))
+		if st.Note != "" {
+			b.WriteString(tourStepNote(st.Note, m.width, s.StatusWarn))
+		}
 	}
 
 	if m.tour.Complete() {
 		b.WriteString("\n  " + s.StatusOK.Render("all four steps are done, the suite is ready to use"))
+	}
+	return b.String()
+}
+
+// tourStepNote renders one indented line under a step, wrapped to the terminal
+// so a long detail or a long rc path is readable instead of clipped at the
+// right edge. The step list is the only text on this screen, so losing the end
+// of a line loses the instruction.
+func tourStepNote(text string, width int, style lipgloss.Style) string {
+	const indent = "        "
+	inner := width - len(indent)
+	if inner < 20 {
+		inner = 20
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(style.Width(inner).Render(textsafe.Line(text)), "\n") {
+		b.WriteString(indent + strings.TrimRight(line, " ") + "\n")
 	}
 	return b.String()
 }
@@ -405,17 +425,30 @@ func tourStepRow(st app.TourStep, i int, selected, isNext bool, s theme.Styles) 
 	if selected {
 		cursor = "  " + s.Fire.Render("\u25b8") + " "
 	}
-	mark := s.Muted.Render("[ ]")
-	label := s.Title.Render(textsafe.Line(st.Title))
-	if st.Done {
-		mark = s.StatusOK.Render("[x]")
-		label = s.Muted.Render(textsafe.Line(st.Title))
-	}
+	mark, label := tourStepMark(st, s)
 	row := cursor + mark + fmt.Sprintf(" %d. ", i+1) + label
 	if isNext {
 		row += s.FireTip.Render("   <- next")
 	}
 	return row
+}
+
+// tourStepMark renders a step's state. Pending and skipped get their own marks
+// rather than collapsing into done or not-done: a PATH line written but not yet
+// active, and a step the user chose to pass over, are different facts and a
+// user acts differently on each.
+func tourStepMark(st app.TourStep, s theme.Styles) (mark, label string) {
+	title := textsafe.Line(st.Title)
+	switch st.State {
+	case app.TourStepDone:
+		return s.StatusOK.Render("[x]"), s.Muted.Render(title)
+	case app.TourStepPending:
+		return s.StatusWarn.Render("[~]"), s.Title.Render(title)
+	case app.TourStepSkipped:
+		return s.Muted.Render("[-]"), s.Muted.Render(title)
+	default:
+		return s.Muted.Render("[ ]"), s.Title.Render(title)
+	}
 }
 
 func (m model) viewLaunchpad() string {

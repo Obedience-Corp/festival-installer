@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
@@ -61,15 +59,6 @@ func shellInitLineFor(shell string) string {
 	return `eval "$(festival shell-init ` + shell + `)"`
 }
 
-// ShellFromEnv resolves the user's shell from $SHELL, which is the pragmatic
-// source for this. Anything unset or unrecognized falls back to zsh, matching
-// what shell-init defaults to. Supported shells are zsh, bash and fish.
-func ShellFromEnv() string {
-	name := filepath.Base(strings.TrimSpace(os.Getenv("SHELL")))
-	switch name {
-	case "zsh", "bash", "fish":
-		return name
-	default:
-		return "zsh"
-	}
-}
+// ShellFromEnv resolves the user's shell from $SHELL. It lives in the app
+// package now, because the hub TUI needs the same answer and cannot import cli.
+func ShellFromEnv() string { return app.ShellFromEnv() }
