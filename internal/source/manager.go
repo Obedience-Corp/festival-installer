@@ -10,7 +10,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
 )
 
-const lockTimeout = 30 * time.Second
+const lockTimeout = state.HomeLockTimeout
 
 func DeriveName(gitURL string) string {
 	trimmed := strings.TrimRight(gitURL, "/")
@@ -49,30 +49,7 @@ func withManagerIfExists(ctx context.Context, fn func(ctx context.Context, db *s
 var errNoDB = errpkg.New("E_DB_MISSING", "installer state.db is not present")
 
 func withManager(ctx context.Context, fn func(ctx context.Context, db *state.DB) error) error {
-	home, err := state.Home(ctx)
-	if err != nil {
-		return err
-	}
-	if err := state.EnsureHome(ctx, 0o700); err != nil {
-		return err
-	}
-	fl, err := lock.NewFileLock(home)
-	if err != nil {
-		return err
-	}
-	release, err := fl.Acquire(ctx, lockTimeout)
-	if err != nil {
-		return errpkg.Wrap("E_LOCK_ACQUIRE", err, "acquire installer lock")
-	}
-	defer func() { _ = release() }()
-
-	db, err := state.OpenDB(ctx, home)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = db.Close(ctx) }()
-
-	return fn(ctx, db)
+	return state.WithHomeLock(ctx, fn)
 }
 
 // AddMarketplace clones and registers gitURL as name. The trust policy is
