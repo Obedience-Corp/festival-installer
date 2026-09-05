@@ -95,3 +95,102 @@ func TestViewHome_SetupCardFitsEightyColumns(t *testing.T) {
 		}
 	}
 }
+
+// TestHome_UnknownSignalsShowADiagnosticNotTheChecklist is the regression test
+// for a home screen that offered "install the suite" to a user whose installed
+// home had simply become unreadable, turning an incident into onboarding.
+func TestHome_UnknownSignalsShowADiagnosticNotTheChecklist(t *testing.T) {
+	tests := []struct {
+		name         string
+		setup        app.SetupState
+		action       string
+		wantCard     bool
+		wantNotice   bool
+		wantMenuRows int
+	}{
+		{
+			name:         "an empty home gets the checklist",
+			setup:        app.SetupState{},
+			action:       "absent",
+			wantCard:     true,
+			wantMenuRows: 11,
+		},
+		{
+			name:         "unreadable signals get one diagnostic line",
+			setup:        app.SetupState{SignalsIncomplete: true},
+			action:       "absent",
+			wantNotice:   true,
+			wantMenuRows: 11,
+		},
+		{
+			name:         "unreadable signals on a home that did read as installed",
+			setup:        app.SetupState{SignalsIncomplete: true, HasReceipts: true},
+			action:       "managed",
+			wantNotice:   true,
+			wantMenuRows: 11,
+		},
+		{
+			name:         "a package install gets neither",
+			setup:        app.SetupState{SignalsIncomplete: true},
+			action:       "package",
+			wantMenuRows: 11,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := homeModelWithSetup(tc.setup, tc.action)
+			m.width, m.height = 80, 40
+			out := m.View()
+
+			hasCard := strings.Contains(out, "Install the suite")
+			if hasCard != tc.wantCard {
+				t.Fatalf("setup card present = %v, want %v:\n%s", hasCard, tc.wantCard, out)
+			}
+			hasNotice := strings.Contains(out, "could not read the installer home")
+			if hasNotice != tc.wantNotice {
+				t.Fatalf("diagnostic present = %v, want %v:\n%s", hasNotice, tc.wantNotice, out)
+			}
+			if tc.wantNotice {
+				if strings.Contains(out, "Put the managed bin on PATH") {
+					t.Fatal("the checklist must be gone entirely, not just its first row")
+				}
+				if !strings.Contains(out, "festival doctor") {
+					t.Fatal("the diagnostic must name the command that explains the incident")
+				}
+			}
+
+			// The menu rows sequence 03 records must not move.
+			rows := 0
+			for _, item := range m.homeItems() {
+				if strings.Contains(out, item) {
+					rows++
+				}
+			}
+			if rows != tc.wantMenuRows {
+				t.Fatalf("menu rows visible = %d, want %d", rows, tc.wantMenuRows)
+			}
+		})
+	}
+}
+
+// TestHome_TheDiagnosticIsOneLine keeps the notice from growing into a second
+// card and pushing the menu down.
+func TestHome_TheDiagnosticIsOneLine(t *testing.T) {
+	m := homeModelWithSetup(app.SetupState{SignalsIncomplete: true}, "absent")
+	m.width, m.height = 80, 40
+
+	notice := m.setupNotice()
+	if notice == "" {
+		t.Fatal("expected a diagnostic")
+	}
+	if strings.Contains(notice, "\n") {
+		t.Fatalf("the diagnostic must be one line, got:\n%s", notice)
+	}
+	if got := lipgloss.Width(notice); got > 80 {
+		t.Fatalf("the diagnostic is %d columns wide, over 80", got)
+	}
+	if m.setupCard() != "" {
+		t.Fatal("the card and the diagnostic must never both render")
+	}
+}

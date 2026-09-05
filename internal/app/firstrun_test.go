@@ -185,17 +185,110 @@ func writeInstalledReceipt(t *testing.T, home string) {
 	}
 }
 
-// TestSetupState_UnreadableSignalsAreNotAFirstRun guards the guidance that goes
-// out during an incident. A home whose database will not open has state; it is
-// just unreadable, and telling its owner that nothing is set up would send them
-// to run install over a broken install.
-func TestSetupState_UnreadableSignalsAreNotAFirstRun(t *testing.T) {
-	st := SetupState{SignalsIncomplete: true}
-	if st.IsFirstRun() {
-		t.Fatal("a home with unreadable signals must not read as a first run")
+// TestSetupState_ThreeStates guards the guidance that goes out during an
+// incident. A home whose database will not open has state, it is just
+// unreadable, so it is neither a first run nor a home that needs setup. It is
+// unknown, and every caller that renders guidance has to be able to see that.
+//
+// An earlier version of this test asserted NeedsSetup was true for unreadable
+// signals, which is what let the home screen offer "install the suite" to
+// someone whose installed home had simply become unreadable.
+func TestSetupState_ThreeStates(t *testing.T) {
+	tests := []struct {
+		name         string
+		state        SetupState
+		wantUnknown  bool
+		wantFirstRun bool
+		wantNeeds    bool
+	}{
+		{
+			name:         "an empty home is a first run that needs setup",
+			state:        SetupState{},
+			wantFirstRun: true,
+			wantNeeds:    true,
+		},
+		{
+			name:      "a half set up home needs setup but is not a first run",
+			state:     SetupState{HasMarketplaces: true},
+			wantNeeds: true,
+		},
+		{
+			name:      "receipts without PATH still needs setup",
+			state:     SetupState{HasReceipts: true},
+			wantNeeds: true,
+		},
+		{
+			name:  "a finished home needs nothing",
+			state: SetupState{HasReceipts: true, ManagedBinOnPath: true, HasMarketplaces: true},
+		},
+		{
+			name:        "unreadable signals are unknown, not a first run and not needing setup",
+			state:       SetupState{SignalsIncomplete: true},
+			wantUnknown: true,
+		},
+		{
+			name: "unreadable signals win over whatever else was read",
+			state: SetupState{
+				SignalsIncomplete: true,
+				HasReceipts:       true,
+				ManagedBinOnPath:  true,
+			},
+			wantUnknown: true,
+		},
 	}
-	if !st.NeedsSetup() {
-		t.Fatal("a home with unreadable signals still needs attention")
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.state.Unknown(); got != tc.wantUnknown {
+				t.Fatalf("Unknown() = %v, want %v", got, tc.wantUnknown)
+			}
+			if got := tc.state.IsFirstRun(); got != tc.wantFirstRun {
+				t.Fatalf("IsFirstRun() = %v, want %v", got, tc.wantFirstRun)
+			}
+			if got := tc.state.NeedsSetup(); got != tc.wantNeeds {
+				t.Fatalf("NeedsSetup() = %v, want %v", got, tc.wantNeeds)
+			}
+			if tc.state.Unknown() && (tc.state.IsFirstRun() || tc.state.NeedsSetup()) {
+				t.Fatal("Unknown must exclude the other two states")
+			}
+		})
+	}
+}
+
+// TestResolveSetupState_UnreadableDatabaseFileIsUnknown drives the real read
+// path against a database file the process cannot open, which is the incident
+// the three states exist for.
+func TestResolveSetupState_UnreadableDatabaseFileIsUnknown(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read a mode 000 file, so this case cannot be staged")
+	}
+	home := freshHome(t)
+	dbPath := filepath.Join(home, "state.db")
+
+	ctx := context.Background()
+	db, err := state.OpenDB(ctx, home)
+	if err != nil {
+		t.Fatalf("OpenDB: %v", err)
+	}
+	if err := db.Close(ctx); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+	if err := os.Chmod(dbPath, 0o000); err != nil {
+		t.Fatalf("chmod db: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dbPath, 0o600) })
+
+	got, err := ResolveSetupState(ctx)
+	if err != nil {
+		t.Fatalf("ResolveSetupState: %v", err)
+	}
+	if !got.Unknown() {
+		t.Fatal("a database that will not open must read as unknown")
+	}
+	if got.IsFirstRun() {
+		t.Fatal("an unreadable database must not read as a first run")
+	}
+	if got.NeedsSetup() {
+		t.Fatal("an unreadable database must not ask the user to install the suite")
 	}
 }
 

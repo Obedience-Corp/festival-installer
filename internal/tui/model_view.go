@@ -127,6 +127,7 @@ func (m model) viewHome() string {
 	}
 	booths := anim.RenderBooths(anim.DefaultHomeBooths(m.homeBoothIndex()), m.animationFrame(), s)
 	card := m.setupCard()
+	notice := m.setupNotice()
 	// The blank line between the flame and the booths is ambient breathing room.
 	// It is the first thing to give up when the setup card needs the rows, since
 	// the card is the only part of this screen a new user has to read.
@@ -149,6 +150,10 @@ func (m model) viewHome() string {
 	if card != "" {
 		b.WriteString("\n")
 		b.WriteString(card)
+	}
+	if notice != "" {
+		b.WriteString("\n")
+		b.WriteString(notice)
 	}
 	b.WriteString("\n\n")
 	b.WriteString(center)
@@ -175,6 +180,18 @@ func (m model) setupCard() string {
 		{Label: "Browse the catalog", Done: setup.HasMarketplaces},
 	}
 	return components.SetupCard("Setup", steps, m.styles)
+}
+
+// setupNotice is what the home screen says instead of the setup card when the
+// hub could not read this installer home. The checklist would be a lie there:
+// an unreadable database reads as nothing installed, and offering onboarding to
+// someone in the middle of an incident hides the incident. One line, so it does
+// not push the menu down the way the card does.
+func (m model) setupNotice() string {
+	if m.status.Action == "package" || !m.status.Setup.Unknown() {
+		return ""
+	}
+	return components.StatusLine("could not read the installer home, run festival doctor", "warn", m.styles)
 }
 
 func (m model) homeChannelCard() (status, pathLine, extras string) {

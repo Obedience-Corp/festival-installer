@@ -30,11 +30,22 @@ type SetupState struct {
 	SignalsIncomplete bool `json:"signals_incomplete,omitempty"`
 }
 
+// A SetupState answers one of three questions, and Unknown excludes the other
+// two: either the hub could not read this home at all, or it could, in which
+// case the home is a first run, needs setup, or is ready. Callers that render
+// guidance ask Unknown first, because guidance derived from signals nobody could
+// read is guidance about a machine that does not exist.
+
+// Unknown reports whether a signal could not be read at all. Nothing about how
+// far along this home is can be concluded while it is true.
+func (s SetupState) Unknown() bool { return s.SignalsIncomplete }
+
 // IsFirstRun reports whether this home has never been set up. All three signals
 // must be absent: a home with a marketplace but no receipts is mid-setup, not a
-// first run, and should not get first-run guidance.
+// first run, and should not get first-run guidance. A home whose signals could
+// not be read is never a first run.
 func (s SetupState) IsFirstRun() bool {
-	if s.SignalsIncomplete {
+	if s.Unknown() {
 		return false
 	}
 	return !s.HasReceipts && !s.HasMarketplaces && !s.ManagedBinOnPath
@@ -43,19 +54,28 @@ func (s SetupState) IsFirstRun() bool {
 // NeedsSetup reports whether anything still stands between this home and a
 // working install. A registered marketplace is not enough on its own, so it is
 // deliberately not part of this answer.
+//
+// It is false when the signals could not be read. An existing home whose
+// database is locked or unreadable reads as no receipts and no PATH, and
+// answering "you still need to install the suite" would dress an incident up as
+// onboarding for the one user who most needs to know something is wrong.
 func (s SetupState) NeedsSetup() bool {
+	if s.Unknown() {
+		return false
+	}
 	return !s.HasReceipts || !s.ManagedBinOnPath
 }
 
 // ResolveSetupState computes the setup state from the three signals that decide
 // whether a home has been set up.
 //
-// The only error it returns is a cancelled context. Every other read degrades:
-// an unresolvable home, a locked database or an unreadable table all mean "no
-// signal we can see", which produces the same guidance as the signal being
-// absent. Reporting a broken home as a failure belongs to doctor, whose
-// receipts_integrity and sources_reachable checks already do it, and which must
-// keep working even when this function has nothing to say.
+// The only error it returns is a cancelled context. Every other read degrades
+// into SignalsIncomplete: an unresolvable home, a locked database or an
+// unreadable table all mean "no signal we can see", which is reported as its own
+// state rather than folded into the signal being absent. Callers ask Unknown
+// before concluding anything. Reporting a broken home as a failure belongs to
+// doctor, whose receipts_integrity and sources_reachable checks already do it,
+// and which must keep working even when this function has nothing to say.
 //
 // It never creates the installer home or state.db, matching the read-only
 // contract every other status path in this package holds to.
