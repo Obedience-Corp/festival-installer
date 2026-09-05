@@ -116,6 +116,13 @@ func managedBinOnPathFrom(origin SuiteOrigin, setup SetupState) DoctorCheck {
 	}
 }
 
+// noMarketplacesMessage names the command that fixes it. doctor deliberately
+// does not seed the official marketplace itself: seeding creates the installer
+// home and performs a git clone, and doctor is a read-only health check that
+// must not mkdir a home (internal/app/list_readonly_test.go pins that). browse
+// and marketplace list are the seeding paths, so doctor points at one.
+const noMarketplacesMessage = "no marketplaces registered; run 'festival browse' to fetch the official marketplace"
+
 func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "sources_reachable"}
 	// This check is about reachability, not verification; checkMarketplaceTrust
@@ -135,7 +142,7 @@ func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	switch {
 	case len(views) == 0:
 		c.Status = DoctorWarn
-		c.Message = "no marketplaces registered"
+		c.Message = noMarketplacesMessage
 	case len(broken) > 0:
 		c.Status = DoctorFail
 		c.Message = "unreachable sources: " + strings.Join(broken, ", ")

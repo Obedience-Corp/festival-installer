@@ -7,29 +7,46 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
-// MarketplaceSeedWarning reports that the official source could not be
-// bootstrapped while still allowing callers to render any existing sources.
-// CLI callers print it as a warning; TUI callers keep it alongside the views.
-type MarketplaceSeedWarning struct {
+// MarketplaceSeedProblem reports that the official source could not be
+// bootstrapped. It covers both outcomes, because the failure is the same and
+// only the caller's tolerance for it differs: a read path can still render the
+// sources it already has, while install has nothing to fall back on.
+//
+// The type is deliberately not called a warning. It used to be, and install then
+// had to either mislabel a fatal condition or reach around it and print the raw
+// git chain, which is the bug this type now closes.
+type MarketplaceSeedProblem struct {
 	Err error
+	// Fatal marks the case where the caller could not continue. It only selects
+	// the wording; both cases hide Err from the terminal.
+	Fatal bool
 }
 
-// marketplaceSeedFriendlyMessage is the user-facing rendering of a
-// MarketplaceSeedWarning. It intentionally omits Err's detail (which can
-// contain raw git command output, e.g. an auth failure trace) so terminal
-// and JSON consumers never see it.
-const marketplaceSeedFriendlyMessage = "couldn't reach the official marketplace; showing local sources only"
+// Seed problem renderings. Both intentionally omit Err's detail (which can
+// contain raw git command output, for example an auth failure trace) so
+// terminal and JSON consumers never see it. The fatal line is more directive
+// because the user asked for something that could not happen.
+const (
+	marketplaceSeedFriendlyMessage = "couldn't reach the official marketplace; showing local sources only"
+	marketplaceSeedFatalMessage    = "couldn't reach the official marketplace; check your network, " +
+		"or add a marketplace with 'festival marketplace add <url>'"
+)
 
-func (w *MarketplaceSeedWarning) Error() string {
+func (w *MarketplaceSeedProblem) Error() string {
 	return fmt.Sprintf("could not seed official marketplace: %v", w.Err)
 }
 
-// Friendly returns the one-line, user-facing rendering of this warning.
+// Friendly returns the one-line, user-facing rendering of this problem.
 // Callers rendering to a terminal or a JSON envelope should use this instead
 // of Error(), which carries full diagnostic detail meant for debugging.
-func (w *MarketplaceSeedWarning) Friendly() string { return marketplaceSeedFriendlyMessage }
+func (w *MarketplaceSeedProblem) Friendly() string {
+	if w.Fatal {
+		return marketplaceSeedFatalMessage
+	}
+	return marketplaceSeedFriendlyMessage
+}
 
-func (w *MarketplaceSeedWarning) Unwrap() error { return w.Err }
+func (w *MarketplaceSeedProblem) Unwrap() error { return w.Err }
 
 // MarketplaceAdd clones and registers a marketplace git URL.
 func MarketplaceAdd(ctx context.Context, url, name string, vo source.VerifyOptions) (source.Source, error) {
@@ -73,7 +90,7 @@ func MarketplaceList(ctx context.Context, vo source.VerifyOptions) ([]source.Lis
 		views = []source.ListView{}
 	}
 	if seedErr != nil {
-		return views, &MarketplaceSeedWarning{Err: seedErr}
+		return views, &MarketplaceSeedProblem{Err: seedErr}
 	}
 	return views, nil
 }
@@ -90,7 +107,7 @@ func MarketplaceRefresh(ctx context.Context, name string, vo source.VerifyOption
 		views = []source.RefreshView{}
 	}
 	if seedErr != nil {
-		return views, &MarketplaceSeedWarning{Err: seedErr}
+		return views, &MarketplaceSeedProblem{Err: seedErr}
 	}
 	return views, nil
 }

@@ -92,7 +92,7 @@ func ConfirmBox(msg string, yesSelected bool, s theme.Styles) string {
 	return s.Title.Render(msg) + "\n\n" + yes + "  " + no
 }
 
-// friendlyError is implemented by warnings (e.g. app.MarketplaceSeedWarning)
+// friendlyError is implemented by warnings (e.g. app.MarketplaceSeedProblem)
 // whose Error() carries diagnostic detail, such as raw git command output,
 // that must never reach the terminal.
 type friendlyError interface {

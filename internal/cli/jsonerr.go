@@ -57,7 +57,7 @@ func WrapJSONErrors(root *cobra.Command) {
 				return err
 			}
 			if f := c.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
-				if writeErr := jsonout.Failure(c.OutOrStdout(), jsonAction(c), errpkg.Code(err), err.Error()); writeErr != nil {
+				if writeErr := jsonout.Failure(c.OutOrStdout(), jsonAction(c), errpkg.Code(err), friendlyMessage(err)); writeErr != nil {
 					// Keep the domain error primary so exit codes/messages stay
 					// useful; surface the write failure alongside it.
 					return stderrors.Join(err, writeErr)

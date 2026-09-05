@@ -30,7 +30,7 @@ func NewBrowseCommand() *cobra.Command {
 				Kind:    kind,
 				Verify:  source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified),
 			})
-			var warning *app.MarketplaceSeedWarning
+			var warning *app.MarketplaceSeedProblem
 			if err != nil {
 				if !errors.As(err, &warning) {
 					return err

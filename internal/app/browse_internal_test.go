@@ -171,9 +171,9 @@ func TestBrowseSurfacesSeedWarningButStillReturnsCatalog(t *testing.T) {
 
 	res, err := Browse(ctx, BrowseOptions{})
 
-	var warning *MarketplaceSeedWarning
+	var warning *MarketplaceSeedProblem
 	if !errors.As(err, &warning) {
-		t.Fatalf("expected MarketplaceSeedWarning, got %v", err)
+		t.Fatalf("expected MarketplaceSeedProblem, got %v", err)
 	}
 	if !errors.Is(err, want) {
 		t.Fatalf("warning lost the underlying seed error: %v", err)
