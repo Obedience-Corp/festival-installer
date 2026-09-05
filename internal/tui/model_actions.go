@@ -142,6 +142,11 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch item.id {
+	case homeTour:
+		m.screen = screenTour
+		m.cursor = 0
+		m.err = nil
+		return m, m.loadTour()
 	case homeInstall:
 		m.screen = screenInstall
 		m.channelIdx = 0

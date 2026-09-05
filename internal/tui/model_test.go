@@ -357,8 +357,8 @@ func TestHomeDefaultCursor(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
 	next, _ := m.Update(statusMsg{sum: app.StatusSummary{Action: "managed"}})
-	if next.(model).cursor != 1 {
-		t.Fatalf("managed cursor=%d, want 1", next.(model).cursor)
+	if want := next.(model).homeIndexOf(homeUpdate); next.(model).cursor != want {
+		t.Fatalf("managed cursor=%d, want %d (Update)", next.(model).cursor, want)
 	}
 
 	m = newModel(Options{Version: "test"})

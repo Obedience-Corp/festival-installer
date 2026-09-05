@@ -12,6 +12,7 @@ import (
 // rather than position. A new entry that is not listed here fails the tests
 // below rather than shipping unaddressed.
 var homeEntryScreens = map[homeItemID]screen{
+	homeTour:        screenTour,
 	homeInstall:     screenInstall,
 	homeUpdate:      screenProgress,
 	homeList:        screenList,

@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/anim"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/components"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 func (m model) View() string {
@@ -76,6 +77,10 @@ func (m model) View() string {
 		title = "launchpad"
 		body = m.viewLaunchpad()
 		footer = "enter open tool · quit tool returns here · esc back"
+	case screenTour:
+		title = "getting started"
+		body = m.viewTour()
+		footer = "↑↓ steps  esc back"
 	case screenConfirm:
 		title = "confirm"
 		body = components.ConfirmBox(m.confirmMsg, m.confirmYes, s)
@@ -364,6 +369,53 @@ func (m model) animationFrame() int {
 		return 0
 	}
 	return m.frame
+}
+
+// viewTour renders the four getting-started steps, which are done, and which
+// one is next. Step state arrives through tourMsg; this function only draws it.
+//
+// Styles here are the unpadded ones (Title, Muted, StatusOK) rather than
+// Normal and Selected, which carry a left pad that would shift the selected
+// row out of line with the rest of the list.
+func (m model) viewTour() string {
+	s := m.styles
+	steps := m.tour.Steps
+	if len(steps) == 0 {
+		return s.Muted.Render("  the tour has no steps")
+	}
+
+	var b strings.Builder
+	b.WriteString("  " + s.Title.Render("Getting started") + "\n")
+	b.WriteString("  " + s.Muted.Render("four steps from an empty machine to a running fest next") + "\n\n")
+
+	next := m.tour.NextStep()
+	for i, st := range steps {
+		b.WriteString(tourStepRow(st, i, i == m.cursor, i == next, s) + "\n")
+		b.WriteString("        " + s.Muted.Render(textsafe.Line(st.Detail)) + "\n")
+	}
+
+	if m.tour.Complete() {
+		b.WriteString("\n  " + s.StatusOK.Render("all four steps are done, the suite is ready to use"))
+	}
+	return b.String()
+}
+
+func tourStepRow(st app.TourStep, i int, selected, isNext bool, s theme.Styles) string {
+	cursor := "    "
+	if selected {
+		cursor = "  " + s.Fire.Render("\u25b8") + " "
+	}
+	mark := s.Muted.Render("[ ]")
+	label := s.Title.Render(textsafe.Line(st.Title))
+	if st.Done {
+		mark = s.StatusOK.Render("[x]")
+		label = s.Muted.Render(textsafe.Line(st.Title))
+	}
+	row := cursor + mark + fmt.Sprintf(" %d. ", i+1) + label
+	if isNext {
+		row += s.FireTip.Render("   <- next")
+	}
+	return row
 }
 
 func (m model) viewLaunchpad() string {

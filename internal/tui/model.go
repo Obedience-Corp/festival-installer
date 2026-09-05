@@ -35,6 +35,8 @@ const (
 	screenResult
 	screenConfirm
 	screenChildOutput
+	// screenTour is appended last so no existing screen constant renumbers.
+	screenTour
 )
 
 type tickMsg time.Time
@@ -66,6 +68,14 @@ type browseMsg struct {
 
 type doctorMsg struct {
 	checks []app.DoctorCheck
+}
+
+// tourMsg carries the getting-started tour's persisted state. The tour is
+// loaded through a command like every other screen's data, never read from
+// disk inside View, which would stutter the ambient animation.
+type tourMsg struct {
+	tour app.Tour
+	err  error
 }
 
 type marketMsg struct {
@@ -191,6 +201,9 @@ type model struct {
 	// soft status after returning from a child tool
 	banner string
 
+	// getting started tour
+	tour app.Tour
+
 	// launchpad
 	launchEntries []launch.Entry
 
@@ -215,6 +228,7 @@ const captureMaxBytes = 512 * 1024
 type homeItemID string
 
 const (
+	homeTour        homeItemID = "tour"
 	homeInstall     homeItemID = "install"
 	homeUpdate      homeItemID = "update"
 	homeList        homeItemID = "list"
@@ -239,6 +253,7 @@ type homeItem struct {
 
 func (m model) homeMenu() []homeItem {
 	items := []homeItem{
+		{id: homeTour, label: "Getting started", booth: 0},
 		{id: homeInstall, label: "Install Festival suite", booth: 0},
 		{id: homeUpdate, label: "Update Festival", booth: 0},
 		{id: homeList, label: "Installed packages", booth: 1},
@@ -409,6 +424,14 @@ func (m model) loadBrowse(product, kind string) tea.Cmd {
 	}
 }
 
+func (m model) loadTour() tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		tour, err := app.LoadTour(ctx)
+		return tourMsg{tour: tour, err: err}
+	}
+}
+
 func (m model) loadDoctor() tea.Cmd {
 	ctx := m.ctx
 	return func() tea.Msg {
@@ -523,6 +546,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case doctorMsg:
 		m.checks = msg.checks
+		return m, nil
+
+	case tourMsg:
+		m.tour = msg.tour
+		m.err = msg.err
+		if m.screen == screenTour {
+			m.cursor = m.tourCursor()
+		}
 		return m, nil
 
 	case marketMsg:
@@ -800,7 +831,28 @@ func (m model) maxCursor() int {
 			return 0
 		}
 		return n - 1
+	case screenTour:
+		n := len(m.tour.Steps)
+		if n == 0 {
+			return 0
+		}
+		return n - 1
 	default:
 		return 0
 	}
+}
+
+// tourCursor is where the tour screen parks the cursor: on the first step still
+// to do, or on the last step once the tour is finished, so the screen opens on
+// the thing the user has to act on.
+func (m model) tourCursor() int {
+	n := len(m.tour.Steps)
+	if n == 0 {
+		return 0
+	}
+	next := m.tour.NextStep()
+	if next >= n {
+		return n - 1
+	}
+	return next
 }
