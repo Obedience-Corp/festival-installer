@@ -122,7 +122,15 @@ func (m model) viewHome() string {
 		flame = anim.Flame(m.frame, 1, s)
 	}
 	booths := anim.RenderBooths(anim.DefaultHomeBooths(homeBoothIndex(m.cursor)), m.animationFrame(), s)
-	center := lipgloss.JoinVertical(lipgloss.Center, flame, "", booths)
+	card := m.setupCard()
+	// The blank line between the flame and the booths is ambient breathing room.
+	// It is the first thing to give up when the setup card needs the rows, since
+	// the card is the only part of this screen a new user has to read.
+	centerParts := []string{flame, "", booths}
+	if card != "" {
+		centerParts = []string{flame, booths}
+	}
+	center := lipgloss.JoinVertical(lipgloss.Center, centerParts...)
 	menu := components.Menu(m.homeItems(), m.cursor, s)
 	tag := s.Tagline.Render(anim.Tagline)
 
@@ -134,6 +142,10 @@ func (m model) viewHome() string {
 		b.WriteByte('\n')
 		b.WriteString(extras)
 	}
+	if card != "" {
+		b.WriteString("\n")
+		b.WriteString(card)
+	}
 	b.WriteString("\n\n")
 	b.WriteString(center)
 	b.WriteString("\n\n")
@@ -141,6 +153,24 @@ func (m model) viewHome() string {
 	b.WriteByte('\n')
 	b.WriteString(tag)
 	return b.String()
+}
+
+// setupCard is the home checklist, shown while this home still needs setup and
+// gone once it does not, so a finished setup leaves no clutter behind. A
+// package-manager install is excluded: for those users neither "install the
+// suite" nor "put the managed bin on PATH" is the right advice, and the package
+// status line already says where the suite came from.
+func (m model) setupCard() string {
+	setup := m.status.Setup
+	if m.status.Action == "package" || !setup.NeedsSetup() {
+		return ""
+	}
+	steps := []components.SetupStep{
+		{Label: "Install the suite", Done: setup.HasReceipts},
+		{Label: "Put the managed bin on PATH", Done: setup.ManagedBinOnPath},
+		{Label: "Browse the catalog", Done: setup.HasMarketplaces},
+	}
+	return components.SetupCard("Setup", steps, m.styles)
 }
 
 func (m model) homeChannelCard() (status, pathLine, extras string) {

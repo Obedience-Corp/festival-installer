@@ -128,3 +128,51 @@ func HelpOverlay(s theme.Styles) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+// SetupStep is one line of the home setup card.
+type SetupStep struct {
+	Label string
+	Done  bool
+}
+
+// SetupCard renders the first-run checklist on the home screen. It is drawn from
+// plain box characters rather than a lipgloss border so it keeps its shape under
+// reduced motion and inside an 80 column recording, and so its width is a
+// function of its own content instead of the terminal.
+func SetupCard(title string, steps []SetupStep, s theme.Styles) string {
+	if len(steps) == 0 {
+		return ""
+	}
+	plain := make([]string, len(steps))
+	inner := lipgloss.Width(title) + 2
+	for i, st := range steps {
+		plain[i] = fmt.Sprintf("%s %d. %s", setupMark(st.Done), i+1, textsafe.Line(st.Label))
+		if w := lipgloss.Width(plain[i]); w > inner {
+			inner = w
+		}
+	}
+	var b strings.Builder
+	b.WriteString(s.Border.Render("┌ ") + s.Fire.Render(title) +
+		s.Border.Render(" "+strings.Repeat("─", inner-lipgloss.Width(title))+"┐"))
+	for i, st := range steps {
+		pad := strings.Repeat(" ", inner-lipgloss.Width(plain[i]))
+		b.WriteString("\n" + s.Border.Render("│ ") + setupRow(st, i+1, s) + pad + s.Border.Render(" │"))
+	}
+	b.WriteString("\n" + s.Border.Render("└"+strings.Repeat("─", inner+2)+"┘"))
+	return b.String()
+}
+
+func setupMark(done bool) string {
+	if done {
+		return "✓"
+	}
+	return "·"
+}
+
+func setupRow(st SetupStep, n int, s theme.Styles) string {
+	label := textsafe.Line(st.Label)
+	if st.Done {
+		return s.StatusOK.Render(setupMark(true)) + s.Muted.Render(fmt.Sprintf(" %d. %s", n, label))
+	}
+	return s.Muted.Render(setupMark(false)) + s.Title.Render(fmt.Sprintf(" %d. %s", n, label))
+}
