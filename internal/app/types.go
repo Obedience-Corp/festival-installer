@@ -121,6 +121,11 @@ type StatusSummary struct {
 	Dual             bool           `json:"dual,omitempty"`
 	ShadowNote       string         `json:"shadow_note,omitempty"`
 	Shadows          []ToolLocation `json:"shadows,omitempty"`
+	// Setup is the one authoritative answer to "how far along is this home",
+	// shared with doctor and the CLI. ManagedBin and ManagedBinOnPath above
+	// repeat two of its fields so existing TUI renders keep compiling; Setup is
+	// the field new code should read.
+	Setup SetupState `json:"setup"`
 	// Latest is channel-latest from a TUI/update probe; Status() never sets it.
 	Latest string `json:"latest,omitempty"`
 }
