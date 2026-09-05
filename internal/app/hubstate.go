@@ -27,6 +27,39 @@ func HubState(ctx context.Context, key string) (string, bool, error) {
 	return state.HubStateValue(ctx, db.Raw(), key)
 }
 
+// HubStateValues reads several hub-owned values in one database open. Opening
+// the database runs the migration ledger check, which takes SQLite's write lock
+// briefly, so callers that need more than one key must not open per key.
+// Missing keys are simply absent from the result.
+func HubStateValues(ctx context.Context, keys ...string) (map[string]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errpkg.Wrap("E_HUB_STATE_CTX", err, "context cancelled before reading hub state")
+	}
+	out := make(map[string]string, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	db, readable := openHomeDBIfExists(ctx)
+	if db == nil {
+		if !readable {
+			return nil, errpkg.New("E_HUB_STATE_HOME", "cannot read hub state from this home")
+		}
+		return out, nil
+	}
+	defer func() { _ = db.Close(ctx) }()
+
+	for _, key := range keys {
+		value, ok, err := state.HubStateValue(ctx, db.Raw(), key)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out[key] = value
+		}
+	}
+	return out, nil
+}
+
 // SetHubState writes a hub-owned value under the installer home lock, creating
 // the home and the database when they do not exist yet. The lock is what keeps
 // a hub write from racing an install that is running at the same time.

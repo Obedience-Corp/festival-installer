@@ -160,40 +160,53 @@ func LoadTour(ctx context.Context) (Tour, error) {
 	sig.rcFile, sig.rcDone = shellRCAlreadyWritten(ctx)
 
 	t := Tour{Steps: TourSteps()}
-	for i := range t.Steps {
-		recorded, _, rerr := HubState(ctx, state.HubStateTourStepKey(string(t.Steps[i].Key)))
-		if rerr != nil {
-			return Tour{}, rerr
-		}
-		applyTourStepState(&t.Steps[i], sig, recorded)
+	keys := make([]string, 0, len(t.Steps)+1)
+	for _, st := range t.Steps {
+		keys = append(keys, state.HubStateTourStepKey(string(st.Key)))
 	}
+	keys = append(keys, state.HubStateTourDismissed)
 
-	dismissed, ok, err := HubState(ctx, state.HubStateTourDismissed)
+	// One open for every key. Opening the database runs the migration ledger
+	// check, so a read per key would take SQLite's write lock five times over
+	// to read five rows.
+	stored, err := HubStateValues(ctx, keys...)
 	if err != nil {
 		return Tour{}, err
 	}
-	t.Dismissed = ok && dismissed == tourRecordDone
+	for i := range t.Steps {
+		applyTourStepState(&t.Steps[i], sig, stored[state.HubStateTourStepKey(string(t.Steps[i].Key))])
+	}
+	t.Dismissed = stored[state.HubStateTourDismissed] == tourRecordDone
 	return t, nil
 }
 
-// applyTourStepState resolves one step. Observation wins over anything stored,
-// so a step the user skipped and then finished anyway reads as done, and a
-// stored value can never claim something the machine contradicts.
+// applyTourStepState resolves one step. Only an observed Done is
+// unconditionally authoritative: a step the user skipped and then finished
+// anyway reads as done, while a skip still counts against an observation that
+// is not itself terminal, so pressing s on a step whose PATH line is written
+// but not yet active does what the user asked instead of nothing.
 func applyTourStepState(step *TourStep, sig tourSignals, recorded string) {
-	if observed, note, ok := observeTourStep(step.Key, sig); ok {
-		step.State = observed
-		step.Note = note
+	observed, note, seen := observeTourStep(step.Key, sig)
+	if seen && observed == TourStepDone {
+		step.State = TourStepDone
+		step.Note = ""
 		return
 	}
 	switch recorded {
 	case tourRecordDone:
 		step.State = TourStepDone
+		return
 	case tourRecordSkipped:
 		step.State = TourStepSkipped
-	default:
-		step.State = TourStepTodo
+		return
 	}
-	if step.Key == TourStepCampInit && step.State == TourStepTodo && !sig.camps.Installed {
+	if seen {
+		step.State = observed
+		step.Note = note
+		return
+	}
+	step.State = TourStepTodo
+	if step.Key == TourStepCampInit && !sig.camps.Installed {
 		step.Note = "camp is not installed yet, finish step 1 first"
 	}
 }

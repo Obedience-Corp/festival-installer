@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
-	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
@@ -228,122 +227,6 @@ type model struct {
 // captureMaxBytes bounds capture scrollback; the head is trimmed past this.
 const captureMaxBytes = 512 * 1024
 
-// homeItemID names a home menu entry independently of its position. Every
-// lookup of "what does this row do" goes through an id, so inserting or
-// reordering entries cannot silently rewire the menu, which a switch over
-// cursor indices did without any test noticing.
-type homeItemID string
-
-const (
-	homeTour        homeItemID = "tour"
-	homeInstall     homeItemID = "install"
-	homeUpdate      homeItemID = "update"
-	homeList        homeItemID = "list"
-	homeBrowse      homeItemID = "browse"
-	homeUninstall   homeItemID = "uninstall"
-	homeMarketplace homeItemID = "marketplace"
-	homeDoctor      homeItemID = "doctor"
-	homeShell       homeItemID = "shell"
-	homeLaunchpad   homeItemID = "launchpad"
-	homeQuit        homeItemID = "quit"
-)
-
-// homeItem is one home menu row. booth is the index into
-// anim.DefaultHomeBooths that lights up while the row is selected, so the
-// ambient strip tracks the menu without a second position table to keep in
-// sync.
-type homeItem struct {
-	id    homeItemID
-	label string
-	booth int
-}
-
-func (m model) homeMenu() []homeItem {
-	items := []homeItem{
-		{id: homeTour, label: "Getting started", booth: 0},
-		{id: homeInstall, label: "Install Festival suite", booth: 0},
-		{id: homeUpdate, label: "Update Festival", booth: 0},
-		{id: homeList, label: "Installed packages", booth: 1},
-		{id: homeBrowse, label: "Browse catalog", booth: 1},
-		{id: homeUninstall, label: "Uninstall package", booth: 1},
-		{id: homeMarketplace, label: "Marketplaces", booth: 2},
-		{id: homeDoctor, label: "Doctor", booth: 3},
-		{id: homeShell, label: "Shell / PATH setup", booth: 4},
-		{id: homeLaunchpad, label: "Launchpad (camp / fest tools)", booth: 0},
-		{id: homeQuit, label: "Quit", booth: 0},
-	}
-	if m.status.Action == "package" || m.status.Dual {
-		items[m.indexOfIn(items, homeInstall)].label = "How you installed"
-	}
-	if m.updateAvailable() {
-		items[m.indexOfIn(items, homeUpdate)].label = "Update Festival · " + m.status.Latest + " available"
-	}
-	return items
-}
-
-func (m model) homeItems() []string {
-	menu := m.homeMenu()
-	labels := make([]string, len(menu))
-	for i, it := range menu {
-		labels[i] = it.label
-	}
-	return labels
-}
-
-// homeIndexOf is the cursor position of id, or -1 when the menu does not
-// currently carry that entry.
-func (m model) homeIndexOf(id homeItemID) int {
-	return m.indexOfIn(m.homeMenu(), id)
-}
-
-func (m model) indexOfIn(items []homeItem, id homeItemID) int {
-	for i, it := range items {
-		if it.id == id {
-			return i
-		}
-	}
-	return -1
-}
-
-// homeItemAt is the entry under a cursor position, guarding the bounds so a
-// stale cursor cannot index out of the menu.
-func (m model) homeItemAt(cursor int) (homeItem, bool) {
-	menu := m.homeMenu()
-	if cursor < 0 || cursor >= len(menu) {
-		return homeItem{}, false
-	}
-	return menu[cursor], true
-}
-
-func (m model) updateAvailable() bool {
-	ver := strings.TrimPrefix(m.status.Version, "v")
-	latest := strings.TrimPrefix(m.status.Latest, "v")
-	return latest != "" && ver != "" && installer.VersionLess(ver, latest)
-}
-
-func (m model) defaultHomeCursor() int {
-	if m.updateAvailable() || (m.status.Action == "managed" && !m.status.Dual) {
-		if i := m.homeIndexOf(homeUpdate); i >= 0 {
-			return i
-		}
-	}
-	return 0
-}
-
-// moveToUpdateEntry parks the cursor on Update once a newer release is known,
-// but only when the user has not moved it off the entry the home screen opened
-// on. Nudging a cursor the user placed themselves would be rude.
-func (m model) moveToUpdateEntry(cursor int) int {
-	update := m.homeIndexOf(homeUpdate)
-	if update < 0 {
-		return cursor
-	}
-	if cursor == 0 || cursor == m.homeIndexOf(homeInstall) {
-		return update
-	}
-	return cursor
-}
-
 func newModel(opts Options) model {
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -435,14 +318,6 @@ func (m model) loadBrowse(product, kind string) tea.Cmd {
 			Verify:  tuiVerifyOptions(nil, false),
 		})
 		return browseMsg{res: res, err: err}
-	}
-}
-
-func (m model) loadTour() tea.Cmd {
-	ctx := m.ctx
-	return func() tea.Msg {
-		tour, err := app.LoadTour(ctx)
-		return tourMsg{tour: tour, err: err}
 	}
 }
 
@@ -604,6 +479,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmYes = false
 		m.confirmAct = msg.action
 		m.confirmArg = ""
+		m.confirmReturn = screenHome
 		m.err = msg.cause
 		m.screen = screenConfirm
 		return m, nil
@@ -635,8 +511,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.busy && m.opCancel != nil {
 			m.opCancel()
 			m.busy = false
-			m.screen = screenHome
-			return m, nil
+			return m.leaveForHome()
 		}
 		return m, tea.Quit
 	case "q":
@@ -646,10 +521,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenHome || m.screen == screenBoot {
 			return m, tea.Quit
 		}
-		m.screen = screenHome
-		m.cursor = 0
-		m.err = nil
-		return m, nil
+		return m.leaveForHome()
 	case "?":
 		m.help = !m.help
 		return m, nil
@@ -669,10 +541,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenHome {
 			return m, tea.Quit
 		}
-		m.screen = screenHome
-		m.cursor = 0
-		m.err = nil
-		return m, nil
+		return m.leaveForHome()
 	case "enter", " ":
 		if m.screen == screenBoot {
 			m.screen = screenHome
@@ -770,6 +639,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenTour {
 			return m.skipTourStep()
 		}
+	case "d":
+		if m.screen == screenTour {
+			return m.dismissTour()
+		}
 	case "f":
 		if m.screen == screenInstall && m.installKind == "package" {
 			m.installKind = ""
@@ -789,6 +662,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadBrowse(m.productF, m.kindF)
 		}
 	}
+	return m, nil
+}
+
+// leaveForHome is the generic back-out. It clears the confirmation screen's
+// return target as well, because esc and q can leave a confirmation without
+// answering it, and a return target left behind would misroute whichever
+// confirmation the user opens next.
+func (m model) leaveForHome() (tea.Model, tea.Cmd) {
+	m.screen = screenHome
+	m.cursor = 0
+	m.err = nil
+	m.confirmReturn = screenBoot
+	m.confirmAct = ""
+	m.confirmArg = ""
 	return m, nil
 }
 
@@ -863,19 +750,4 @@ func (m model) maxCursor() int {
 	default:
 		return 0
 	}
-}
-
-// tourCursor is where the tour screen parks the cursor: on the first step still
-// to do, or on the last step once the tour is finished, so the screen opens on
-// the thing the user has to act on.
-func (m model) tourCursor() int {
-	n := len(m.tour.Steps)
-	if n == 0 {
-		return 0
-	}
-	next := m.tour.NextStep()
-	if next >= n {
-		return n - 1
-	}
-	return next
 }

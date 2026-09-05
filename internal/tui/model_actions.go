@@ -50,6 +50,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		pkg := m.list.Packages[m.cursor]
 		m.confirmYes = false
 		m.confirmArg = pkg.PackageID
+		m.confirmReturn = screenHome
 		m.screen = screenConfirm
 		switch pkg.Origin {
 		case "package":
@@ -152,7 +153,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 
 // confirmDeclineScreen is where a declined confirmation returns to. Confirms
 // raised from the tour go back to the tour, so answering no does not throw the
-// user out of the thing they were working through.
+// user out of the thing they were working through. Every site that opens a
+// confirmation sets this, so a stale value cannot leak into the next one.
 func (m model) confirmDeclineScreen() screen {
 	if m.confirmReturn != screenBoot {
 		return m.confirmReturn

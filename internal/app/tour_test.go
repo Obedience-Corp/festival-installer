@@ -425,3 +425,155 @@ func TestTourStepKeysAreStableStrings(t *testing.T) {
 		}
 	}
 }
+
+// TestSkipTourStep_WorksForEveryStep covers the finding that skip tests only
+// exercised the one step with no observable signal, so a skip that never took
+// effect on the other three would have passed unnoticed.
+func TestSkipTourStep_WorksForEveryStep(t *testing.T) {
+	for _, step := range TourSteps() {
+		t.Run(string(step.Key), func(t *testing.T) {
+			ctx := context.Background()
+			tourHome(t)
+			if err := SkipTourStep(ctx, step.Key); err != nil {
+				t.Fatalf("SkipTourStep: %v", err)
+			}
+			tour, err := LoadTour(ctx)
+			if err != nil {
+				t.Fatalf("LoadTour: %v", err)
+			}
+			got, _ := tour.Step(step.Key)
+			if got.State != TourStepSkipped {
+				t.Fatalf("step %q is %q after a skip, want skipped", step.Key, got.State)
+			}
+			if got.Done() {
+				t.Fatalf("step %q reported done after a skip", step.Key)
+			}
+		})
+	}
+}
+
+// TestSkipTourStep_BeatsAPendingObservation is the PATH case: the rc line is
+// written but this shell's PATH predates it, and the user says skip. Before the
+// fix the skip was silently discarded on the next load.
+func TestSkipTourStep_BeatsAPendingObservation(t *testing.T) {
+	ctx := context.Background()
+	tourHome(t)
+
+	plan, err := PlanShellRCAppend(ctx, "zsh")
+	if err != nil {
+		t.Fatalf("PlanShellRCAppend: %v", err)
+	}
+	if err := os.WriteFile(plan.File, []byte(plan.Block), 0o644); err != nil {
+		t.Fatalf("write rc file: %v", err)
+	}
+
+	before, err := LoadTour(ctx)
+	if err != nil {
+		t.Fatalf("LoadTour: %v", err)
+	}
+	if step, _ := before.Step(TourStepPath); step.State != TourStepPending {
+		t.Fatalf("precondition: path step is %q, want pending", step.State)
+	}
+
+	if err := SkipTourStep(ctx, TourStepPath); err != nil {
+		t.Fatalf("SkipTourStep: %v", err)
+	}
+	after, err := LoadTour(ctx)
+	if err != nil {
+		t.Fatalf("LoadTour: %v", err)
+	}
+	if step, _ := after.Step(TourStepPath); step.State != TourStepSkipped {
+		t.Fatalf("path step is %q after a skip, want skipped", step.State)
+	}
+}
+
+// TestLoadTour_ObservedDoneBeatsASkipForEveryObservableStep: a skip is the
+// user's answer, but it must never outlive the thing being true.
+func TestLoadTour_ObservedDoneBeatsASkipForEveryObservableStep(t *testing.T) {
+	t.Run("path", func(t *testing.T) {
+		ctx := context.Background()
+		home := tourHome(t)
+		bin := filepath.Join(home, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatalf("mkdir bin: %v", err)
+		}
+		if err := SkipTourStep(ctx, TourStepPath); err != nil {
+			t.Fatalf("SkipTourStep: %v", err)
+		}
+		t.Setenv("PATH", bin)
+
+		tour, err := LoadTour(ctx)
+		if err != nil {
+			t.Fatalf("LoadTour: %v", err)
+		}
+		if step, _ := tour.Step(TourStepPath); step.State != TourStepDone {
+			t.Fatalf("path step is %q, want done", step.State)
+		}
+	})
+
+	t.Run("camp", func(t *testing.T) {
+		ctx := context.Background()
+		tourHome(t)
+		if err := SkipTourStep(ctx, TourStepCampInit); err != nil {
+			t.Fatalf("SkipTourStep: %v", err)
+		}
+		fakeCamp(t, `[{"name":"demo","path":"/tmp/demo"}]`, 0)
+
+		tour, err := LoadTour(ctx)
+		if err != nil {
+			t.Fatalf("LoadTour: %v", err)
+		}
+		if step, _ := tour.Step(TourStepCampInit); step.State != TourStepDone {
+			t.Fatalf("camp step is %q, want done", step.State)
+		}
+	})
+}
+
+func TestHubStateValues_ReadsEveryKeyInOneOpen(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("an empty home returns no values and no error", func(t *testing.T) {
+		tourHome(t)
+		got, err := HubStateValues(ctx, "tour.step.path", "tour.dismissed")
+		if err != nil {
+			t.Fatalf("HubStateValues: %v", err)
+		}
+		if len(got) != 0 {
+			t.Fatalf("got %v, want nothing on a home that was never written", got)
+		}
+	})
+
+	t.Run("no keys is not an error", func(t *testing.T) {
+		tourHome(t)
+		got, err := HubStateValues(ctx)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("HubStateValues() = (%v, %v), want an empty result and no error", got, err)
+		}
+	})
+
+	t.Run("a cancelled context is reported", func(t *testing.T) {
+		tourHome(t)
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := HubStateValues(cancelled, "tour.dismissed"); err == nil {
+			t.Fatal("expected an error with a cancelled context")
+		}
+	})
+
+	t.Run("written keys come back and missing ones stay absent", func(t *testing.T) {
+		tourHome(t)
+		if err := SetHubState(ctx, "tour.step.path", "skipped"); err != nil {
+			t.Fatalf("SetHubState: %v", err)
+		}
+		got, err := HubStateValues(ctx, "tour.step.path", "tour.step.fest-next")
+		if err != nil {
+			t.Fatalf("HubStateValues: %v", err)
+		}
+		if got["tour.step.path"] != "skipped" {
+			t.Fatalf("path = %q, want skipped", got["tour.step.path"])
+		}
+		if _, present := got["tour.step.fest-next"]; present {
+			t.Fatal("a key that was never written must be absent, not empty")
+		}
+	})
+}

@@ -389,3 +389,99 @@ func TestTourEscapeDoesNotDismiss(t *testing.T) {
 		t.Fatal("escaping out of the tour must not mark it dismissed")
 	}
 }
+
+// TestConfirmReturn_DoesNotLeakBetweenDialogs is the regression test for a
+// confirmation raised by the tour, backed out of with esc, leaving its return
+// screen behind so that declining a later unrelated confirmation landed on the
+// tour instead of home.
+func TestConfirmReturn_DoesNotLeakBetweenDialogs(t *testing.T) {
+	exits := []struct {
+		name string
+		key  tea.KeyMsg
+	}{
+		{name: "esc", key: tea.KeyMsg{Type: tea.KeyEsc}},
+		{name: "q", key: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}},
+	}
+	for _, exit := range exits {
+		t.Run(exit.name, func(t *testing.T) {
+			home := tourEnv(t)
+			if err := os.MkdirAll(filepath.Join(home, "bin"), 0o755); err != nil {
+				t.Fatalf("mkdir bin: %v", err)
+			}
+
+			m := tourAt(t, app.TourStepPath)
+			next, _ := m.handleEnter()
+			nm := next.(model)
+			if nm.screen != screenConfirm {
+				t.Fatalf("screen = %v, want screenConfirm", nm.screen)
+			}
+
+			backed, _ := nm.handleKey(exit.key)
+			bm := backed.(model)
+			if bm.screen != screenHome {
+				t.Fatalf("screen after %s = %v, want screenHome", exit.name, bm.screen)
+			}
+			if bm.confirmReturn != screenBoot {
+				t.Fatalf("confirmReturn survived %s: %v", exit.name, bm.confirmReturn)
+			}
+
+			// An unrelated confirmation, declined, must land on home.
+			bm.screen = screenConfirm
+			bm.confirmAct = "uninstall"
+			bm.confirmYes = false
+			done, _ := bm.handleEnter()
+			if got := done.(model).screen; got != screenHome {
+				t.Fatalf("declining an unrelated confirm went to %v, want screenHome", got)
+			}
+		})
+	}
+}
+
+func TestConfirmReturn_UninstallDeclineGoesHome(t *testing.T) {
+	m := newModel(Options{Version: "test"})
+	m.screen = screenConfirm
+	m.confirmAct = "uninstall"
+	m.confirmReturn = screenTour // a stale value from an earlier dialog
+	m.confirmYes = false
+
+	// The uninstall dialog sets its own return screen, so opening it clears
+	// whatever was there before.
+	m.confirmReturn = screenHome
+	next, _ := m.handleEnter()
+	if got := next.(model).screen; got != screenHome {
+		t.Fatalf("screen = %v, want screenHome", got)
+	}
+}
+
+func TestDismissTour_RecordsOnlyOnAnExplicitKey(t *testing.T) {
+	ctx := context.Background()
+	tourEnv(t)
+
+	m := tourAt(t, app.TourStepInstall)
+	m.ctx = ctx
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	if cmd == nil {
+		t.Fatal("d must return a command that records the dismissal")
+	}
+	msg, ok := cmd().(tourMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want tourMsg", cmd())
+	}
+	if msg.err != nil {
+		t.Fatalf("dismiss reported: %v", msg.err)
+	}
+	if !msg.tour.Dismissed {
+		t.Fatal("the reloaded tour must report itself dismissed")
+	}
+
+	tour, err := app.LoadTour(ctx)
+	if err != nil {
+		t.Fatalf("LoadTour: %v", err)
+	}
+	if !tour.Dismissed {
+		t.Fatal("the dismissal must survive a reload")
+	}
+	if tour.Complete() {
+		t.Fatal("dismissing must not mark the steps done")
+	}
+}

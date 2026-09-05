@@ -65,6 +65,21 @@ func (m model) skipTourStep() (tea.Model, tea.Cmd) {
 	}
 }
 
+// dismissTour records that the user closed the tour deliberately. It stays in
+// the home menu afterwards; what changes is that the hub stops treating it as
+// the thing the user still has to get through. Leaving the screen with esc is
+// not this: only pressing d is.
+func (m model) dismissTour() (tea.Model, tea.Cmd) {
+	ctx := m.ctx
+	return m, func() tea.Msg {
+		if err := app.DismissTour(ctx); err != nil {
+			return tourMsg{err: err}
+		}
+		tour, err := app.LoadTour(ctx)
+		return tourMsg{tour: tour, err: err}
+	}
+}
+
 // confirmTourPathAppend shows the exact rc file and block, then asks. The rc
 // file belongs to the user, so the tour never writes to it without a yes on
 // this screen, matching what `festival shell-init --append` does at the CLI.
@@ -175,4 +190,27 @@ func recordTourStepAfterChild(ctx context.Context, key app.TourStepKey, res laun
 		return nil
 	}
 	return app.RecordTourStepDone(ctx, key)
+}
+
+func (m model) loadTour() tea.Cmd {
+	ctx := m.ctx
+	return func() tea.Msg {
+		tour, err := app.LoadTour(ctx)
+		return tourMsg{tour: tour, err: err}
+	}
+}
+
+// tourCursor is where the tour screen parks the cursor: on the first step still
+// to do, or on the last step once the tour is finished, so the screen opens on
+// the thing the user has to act on.
+func (m model) tourCursor() int {
+	n := len(m.tour.Steps)
+	if n == 0 {
+		return 0
+	}
+	next := m.tour.NextStep()
+	if next >= n {
+		return n - 1
+	}
+	return next
 }
