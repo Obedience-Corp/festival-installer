@@ -301,33 +301,42 @@ func TestMaxCursorHome(t *testing.T) {
 
 func TestHomeItemsLengthAndRelabel(t *testing.T) {
 	m := newModel(Options{Version: "test"})
-	if got := len(m.homeItems()); got != 10 {
-		t.Fatalf("len(homeItems)=%d, want 10", got)
+	if got, want := len(m.homeItems()), len(m.homeMenu()); got != want {
+		t.Fatalf("len(homeItems)=%d, want %d", got, want)
 	}
-	if m.homeItems()[0] != "Install Festival suite" {
-		t.Fatalf("absent index 0 = %q", m.homeItems()[0])
+	if got := homeLabel(t, m, homeInstall); got != "Install Festival suite" {
+		t.Fatalf("absent install label = %q", got)
 	}
-	if m.homeItems()[9] != "Quit" {
-		t.Fatalf("index 9 = %q, want Quit", m.homeItems()[9])
+	if got := homeLabel(t, m, homeQuit); got != "Quit" {
+		t.Fatalf("quit label = %q, want Quit", got)
+	}
+	if got, want := m.homeIndexOf(homeQuit), len(m.homeMenu())-1; got != want {
+		t.Fatalf("Quit index = %d, want %d (last)", got, want)
 	}
 
 	m.status.Action = "package"
-	if m.homeItems()[0] != "How you installed" {
-		t.Fatalf("package index 0 = %q, want How you installed", m.homeItems()[0])
-	}
-	if got := len(m.homeItems()); got != 10 {
-		t.Fatalf("package len=%d, want 10", got)
+	if got := homeLabel(t, m, homeInstall); got != "How you installed" {
+		t.Fatalf("package install label = %q, want How you installed", got)
 	}
 
 	m.status = app.StatusSummary{Action: "unmanaged", Dual: false}
-	if m.homeItems()[0] != "Install Festival suite" {
-		t.Fatalf("leftover index 0 = %q, want Install Festival suite", m.homeItems()[0])
+	if got := homeLabel(t, m, homeInstall); got != "Install Festival suite" {
+		t.Fatalf("leftover install label = %q, want Install Festival suite", got)
 	}
 
 	m.status = app.StatusSummary{Action: "managed", Dual: true}
-	if m.homeItems()[0] != "How you installed" {
-		t.Fatalf("Dual index 0 = %q, want How you installed", m.homeItems()[0])
+	if got := homeLabel(t, m, homeInstall); got != "How you installed" {
+		t.Fatalf("dual install label = %q, want How you installed", got)
 	}
+}
+
+func homeLabel(t *testing.T, m model, id homeItemID) string {
+	t.Helper()
+	i := m.homeIndexOf(id)
+	if i < 0 {
+		t.Fatalf("home menu has no entry %q", id)
+	}
+	return m.homeItems()[i]
 }
 
 func TestDigitZeroSelectsQuit(t *testing.T) {
@@ -336,8 +345,8 @@ func TestDigitZeroSelectsQuit(t *testing.T) {
 	m.cursor = 0
 	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
 	nm := next.(model)
-	if nm.cursor != 9 {
-		t.Fatalf("digit 0 cursor=%d, want 9 (Quit)", nm.cursor)
+	if want := m.homeIndexOf(homeQuit); nm.cursor != want {
+		t.Fatalf("digit 0 cursor=%d, want %d (Quit)", nm.cursor, want)
 	}
 	if cmd == nil {
 		t.Fatal("digit 0 should quit")
@@ -370,8 +379,8 @@ func TestHomeDefaultCursor(t *testing.T) {
 func TestOpenHomeItemInstallKind(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
-	m.cursor = 0
 	m.status.Action = "package"
+	m.cursor = m.homeIndexOf(homeInstall)
 	next, _ := m.openHomeItem()
 	if got := next.(model).installKind; got != "package" {
 		t.Fatalf("package installKind=%q", got)
@@ -470,11 +479,11 @@ func TestLatestMsgSelectsUpdateWhenAvailable(t *testing.T) {
 	if nm.status.Latest != "0.3.3" {
 		t.Fatalf("Latest=%q", nm.status.Latest)
 	}
-	if nm.cursor != 1 {
-		t.Fatalf("cursor=%d, want 1 (Update Festival)", nm.cursor)
+	if want := nm.homeIndexOf(homeUpdate); nm.cursor != want {
+		t.Fatalf("cursor=%d, want %d (Update Festival)", nm.cursor, want)
 	}
-	if nm.homeItems()[1] != "Update Festival · 0.3.3 available" {
-		t.Fatalf("item 1 = %q", nm.homeItems()[1])
+	if got := homeLabel(t, nm, homeUpdate); got != "Update Festival · 0.3.3 available" {
+		t.Fatalf("update label = %q", got)
 	}
 }
 

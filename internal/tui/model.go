@@ -208,26 +208,89 @@ type model struct {
 // captureMaxBytes bounds capture scrollback; the head is trimmed past this.
 const captureMaxBytes = 512 * 1024
 
-func (m model) homeItems() []string {
-	items := []string{
-		"Install Festival suite",
-		"Update Festival",
-		"Installed packages",
-		"Browse catalog",
-		"Uninstall package",
-		"Marketplaces",
-		"Doctor",
-		"Shell / PATH setup",
-		"Launchpad (camp / fest tools)",
-		"Quit",
+// homeItemID names a home menu entry independently of its position. Every
+// lookup of "what does this row do" goes through an id, so inserting or
+// reordering entries cannot silently rewire the menu, which a switch over
+// cursor indices did without any test noticing.
+type homeItemID string
+
+const (
+	homeInstall     homeItemID = "install"
+	homeUpdate      homeItemID = "update"
+	homeList        homeItemID = "list"
+	homeBrowse      homeItemID = "browse"
+	homeUninstall   homeItemID = "uninstall"
+	homeMarketplace homeItemID = "marketplace"
+	homeDoctor      homeItemID = "doctor"
+	homeShell       homeItemID = "shell"
+	homeLaunchpad   homeItemID = "launchpad"
+	homeQuit        homeItemID = "quit"
+)
+
+// homeItem is one home menu row. booth is the index into
+// anim.DefaultHomeBooths that lights up while the row is selected, so the
+// ambient strip tracks the menu without a second position table to keep in
+// sync.
+type homeItem struct {
+	id    homeItemID
+	label string
+	booth int
+}
+
+func (m model) homeMenu() []homeItem {
+	items := []homeItem{
+		{id: homeInstall, label: "Install Festival suite", booth: 0},
+		{id: homeUpdate, label: "Update Festival", booth: 0},
+		{id: homeList, label: "Installed packages", booth: 1},
+		{id: homeBrowse, label: "Browse catalog", booth: 1},
+		{id: homeUninstall, label: "Uninstall package", booth: 1},
+		{id: homeMarketplace, label: "Marketplaces", booth: 2},
+		{id: homeDoctor, label: "Doctor", booth: 3},
+		{id: homeShell, label: "Shell / PATH setup", booth: 4},
+		{id: homeLaunchpad, label: "Launchpad (camp / fest tools)", booth: 0},
+		{id: homeQuit, label: "Quit", booth: 0},
 	}
 	if m.status.Action == "package" || m.status.Dual {
-		items[0] = "How you installed"
+		items[m.indexOfIn(items, homeInstall)].label = "How you installed"
 	}
 	if m.updateAvailable() {
-		items[1] = "Update Festival · " + m.status.Latest + " available"
+		items[m.indexOfIn(items, homeUpdate)].label = "Update Festival · " + m.status.Latest + " available"
 	}
 	return items
+}
+
+func (m model) homeItems() []string {
+	menu := m.homeMenu()
+	labels := make([]string, len(menu))
+	for i, it := range menu {
+		labels[i] = it.label
+	}
+	return labels
+}
+
+// homeIndexOf is the cursor position of id, or -1 when the menu does not
+// currently carry that entry.
+func (m model) homeIndexOf(id homeItemID) int {
+	return m.indexOfIn(m.homeMenu(), id)
+}
+
+func (m model) indexOfIn(items []homeItem, id homeItemID) int {
+	for i, it := range items {
+		if it.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// homeItemAt is the entry under a cursor position, guarding the bounds so a
+// stale cursor cannot index out of the menu.
+func (m model) homeItemAt(cursor int) (homeItem, bool) {
+	menu := m.homeMenu()
+	if cursor < 0 || cursor >= len(menu) {
+		return homeItem{}, false
+	}
+	return menu[cursor], true
 }
 
 func (m model) updateAvailable() bool {
@@ -237,13 +300,26 @@ func (m model) updateAvailable() bool {
 }
 
 func (m model) defaultHomeCursor() int {
-	if m.updateAvailable() {
-		return 1
-	}
-	if m.status.Action == "managed" && !m.status.Dual {
-		return 1
+	if m.updateAvailable() || (m.status.Action == "managed" && !m.status.Dual) {
+		if i := m.homeIndexOf(homeUpdate); i >= 0 {
+			return i
+		}
 	}
 	return 0
+}
+
+// moveToUpdateEntry parks the cursor on Update once a newer release is known,
+// but only when the user has not moved it off the entry the home screen opened
+// on. Nudging a cursor the user placed themselves would be rude.
+func (m model) moveToUpdateEntry(cursor int) int {
+	update := m.homeIndexOf(homeUpdate)
+	if update < 0 {
+		return cursor
+	}
+	if cursor == 0 || cursor == m.homeIndexOf(homeInstall) {
+		return update
+	}
+	return cursor
 }
 
 func newModel(opts Options) model {
@@ -423,8 +499,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case latestMsg:
 		m.status.Latest = strings.TrimPrefix(msg.latest, "v")
-		if (m.screen == screenHome || m.screen == screenBoot) && m.cursor == 0 && m.updateAvailable() {
-			m.cursor = 1
+		if (m.screen == screenHome || m.screen == screenBoot) && m.updateAvailable() {
+			m.cursor = m.moveToUpdateEntry(m.cursor)
 		}
 		return m, nil
 
@@ -597,9 +673,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleEnter()
 		}
 	case "0":
-		// Digit 0 is Quit (home has 10 items; 1–9 cover the first nine).
+		// Digit 0 is Quit, whatever position Quit currently holds. Digits 1
+		// through 9 address the first nine entries.
 		if m.screen == screenHome {
-			m.cursor = len(m.homeItems()) - 1
+			if i := m.homeIndexOf(homeQuit); i >= 0 {
+				m.cursor = i
+			}
 			return m.handleEnter()
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":

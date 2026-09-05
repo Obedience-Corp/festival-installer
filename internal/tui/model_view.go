@@ -121,7 +121,7 @@ func (m model) viewHome() string {
 	} else {
 		flame = anim.Flame(m.frame, 1, s)
 	}
-	booths := anim.RenderBooths(anim.DefaultHomeBooths(homeBoothIndex(m.cursor)), m.animationFrame(), s)
+	booths := anim.RenderBooths(anim.DefaultHomeBooths(m.homeBoothIndex()), m.animationFrame(), s)
 	card := m.setupCard()
 	// The blank line between the flame and the booths is ambient breathing room.
 	// It is the first thing to give up when the setup card needs the rows, since
@@ -618,23 +618,13 @@ func short(s string, n int) string {
 	return s[:n]
 }
 
-// homeBoothIndex maps the home menu cursor onto ambient booths so the
-// multi-activity strip tracks what the user is looking at.
-func homeBoothIndex(cursor int) int {
-	switch cursor {
-	case 0, 1: // install / update
-		return 0
-	case 2, 3, 4: // list / browse / uninstall
-		return 1
-	case 5: // marketplaces
-		return 2
-	case 6: // doctor
-		return 3
-	case 7: // shell / path
-		return 4
-	case 8: // launchpad: multi-activity energy
-		return 0
-	default:
+// homeBoothIndex is the ambient booth the selected menu entry lights, so the
+// multi-activity strip tracks what the user is looking at. The mapping lives on
+// the menu entry itself rather than in a parallel table of positions.
+func (m model) homeBoothIndex() int {
+	item, ok := m.homeItemAt(m.cursor)
+	if !ok {
 		return 0
 	}
+	return item.booth
 }

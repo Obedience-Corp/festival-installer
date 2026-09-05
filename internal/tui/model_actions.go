@@ -137,8 +137,12 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 }
 
 func (m model) openHomeItem() (tea.Model, tea.Cmd) {
-	switch m.cursor {
-	case 0:
+	item, ok := m.homeItemAt(m.cursor)
+	if !ok {
+		return m, nil
+	}
+	switch item.id {
+	case homeInstall:
 		m.screen = screenInstall
 		m.channelIdx = 0
 		m.installKind = ""
@@ -150,27 +154,27 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 			m.installKind = "leftover"
 		}
 		return m, nil
-	case 1:
+	case homeUpdate:
 		m.screen = screenUpdate
 		return m.startUpdate(false)
-	case 2:
+	case homeList:
 		m.screen = screenList
 		return m, m.loadList()
-	case 3:
+	case homeBrowse:
 		m.screen = screenBrowse
 		m.productF, m.kindF = "", ""
 		return m, m.loadBrowse("", "")
-	case 4:
+	case homeUninstall:
 		m.screen = screenUninstall
 		return m, m.loadList()
-	case 5:
+	case homeMarketplace:
 		m.screen = screenMarketplace
 		m.marketMode = "list"
 		return m, m.loadMarkets()
-	case 6:
+	case homeDoctor:
 		m.screen = screenDoctor
 		return m, m.loadDoctor()
-	case 7:
+	case homeShell:
 		m.screen = screenShell
 		g, err := app.ShellGuidanceFor(m.ctx, "zsh")
 		m.shellBin = g.Bin
@@ -180,12 +184,12 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 			m.err = err
 		}
 		return m, nil
-	case 8:
+	case homeLaunchpad:
 		m.screen = screenLaunchpad
 		m.cursor = 0
 		m.err = nil
 		return m, nil
-	case 9:
+	case homeQuit:
 		return m, tea.Quit
 	}
 	return m, nil
