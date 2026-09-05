@@ -132,3 +132,84 @@ func TestIsSignatureError(t *testing.T) {
 		})
 	}
 }
+
+// TestManagedBinOnPathFrom covers the grading in isolation. The two rows that
+// matter most sit next to each other: the same absent origin reads as pending on
+// a first run and as fail once the home has been set up. If the relaxation ever
+// leaks into the post-setup case, the "absent, past first run" rows fail here
+// before any CLI test notices.
+func TestManagedBinOnPathFrom(t *testing.T) {
+	firstRun := SetupState{ManagedBin: "/home/u/.obey/installer/bin"}
+	installed := SetupState{HasReceipts: true, ManagedBin: "/home/u/.obey/installer/bin"}
+	registered := SetupState{HasMarketplaces: true, ManagedBin: "/home/u/.obey/installer/bin"}
+	wired := SetupState{ManagedBinOnPath: true, ManagedBin: "/home/u/.obey/installer/bin"}
+
+	tests := []struct {
+		name       string
+		origin     SuiteOrigin
+		setup      SetupState
+		wantStatus string
+		wantSubstr string
+	}{
+		{"absent on a first run is pending", SuiteOrigin{Kind: OriginAbsent}, firstRun, DoctorPending, "festival shell-init"},
+		{"absent with a receipt still fails", SuiteOrigin{Kind: OriginAbsent}, installed, DoctorFail, "no usable camp/fest/festival"},
+		{"absent with a registered source still fails", SuiteOrigin{Kind: OriginAbsent}, registered, DoctorFail, "no usable camp/fest/festival"},
+		{"absent with PATH already wired still fails", SuiteOrigin{Kind: OriginAbsent}, wired, DoctorFail, "no usable camp/fest/festival"},
+		{
+			"leftover binaries fail even on a first run",
+			SuiteOrigin{Kind: OriginLeftover, Prefix: "/usr/local/bin"},
+			firstRun,
+			DoctorFail,
+			"leftover camp/fest on PATH",
+		},
+		{
+			"managed install is ok",
+			SuiteOrigin{Kind: OriginManaged, Prefix: "/home/u/.obey/installer/bin"},
+			installed,
+			DoctorOK,
+			"managed bin dir is on PATH",
+		},
+		{
+			"managed install beside a package copy warns",
+			SuiteOrigin{Kind: OriginManaged, Prefix: "/home/u/.obey/installer/bin", Dual: true},
+			installed,
+			DoctorWarn,
+			"also a package copy",
+		},
+		{
+			"package install is ok",
+			SuiteOrigin{Kind: OriginPackage, Prefix: "/opt/homebrew/bin", Flavor: FlavorHomebrew},
+			installed,
+			DoctorOK,
+			"suite on PATH via package",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := managedBinOnPathFrom(tt.origin, tt.setup)
+			if got.ID != "managed_bin_on_path" {
+				t.Fatalf("ID=%q", got.ID)
+			}
+			if got.Status != tt.wantStatus {
+				t.Fatalf("Status=%q, want %q (message %q)", got.Status, tt.wantStatus, got.Message)
+			}
+			if !strings.Contains(got.Message, tt.wantSubstr) {
+				t.Fatalf("Message=%q, want it to contain %q", got.Message, tt.wantSubstr)
+			}
+		})
+	}
+}
+
+func TestDoctorFailed_PendingIsNotAFailure(t *testing.T) {
+	checks := []DoctorCheck{
+		{ID: "managed_bin_on_path", Status: DoctorPending},
+		{ID: "sources_reachable", Status: DoctorWarn},
+		{ID: "receipts_integrity", Status: DoctorOK},
+	}
+	if DoctorFailed(checks) {
+		t.Fatal("pending and warn must not set the failing exit code")
+	}
+	if !DoctorFailed(append(checks, DoctorCheck{ID: "path_shadowing", Status: DoctorFail})) {
+		t.Fatal("a failing check must still set the failing exit code")
+	}
+}

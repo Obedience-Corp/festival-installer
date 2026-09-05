@@ -99,9 +99,15 @@ func TestJSONFailure_HumanPathUnchanged(t *testing.T) {
 	}
 }
 
+// TestJSONFailure_DoctorEmitsSingleEnvelope guards the one-envelope rule: doctor
+// writes its own envelope, so WrapJSONErrors must not append a second one. The
+// home carries a receipt because a fresh home no longer fails. This test used to
+// assert ok=true on a nonzero run, which was the bug, not the contract.
 func TestJSONFailure_DoctorEmitsSingleEnvelope(t *testing.T) {
-	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
 	t.Setenv("PATH", t.TempDir())
+	writeCleanReceipt(t, home)
 
 	out, _, err := runInstaller(t, "doctor", "--json")
 	if err == nil {
@@ -118,7 +124,7 @@ func TestJSONFailure_DoctorEmitsSingleEnvelope(t *testing.T) {
 	if decErr := json.Unmarshal([]byte(out), &env); decErr != nil {
 		t.Fatalf("doctor stdout must be a single JSON envelope, not two: %v\n%s", decErr, out)
 	}
-	if !env.OK || env.Action != "doctor" {
-		t.Fatalf("doctor keeps its own data envelope (ok=true): %+v", env)
+	if env.OK || env.Action != "doctor" {
+		t.Fatalf("a nonzero doctor run must emit its own ok=false envelope: %+v", env)
 	}
 }

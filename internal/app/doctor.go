@@ -21,8 +21,14 @@ var managedBinaries = []string{"camp", "fest", selfBinaryName}
 
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.
 func Doctor(ctx context.Context) []DoctorCheck {
+	// The setup state is resolved once and handed to the checks that need it,
+	// so every check grades against the same answer. Its only error is a
+	// cancelled context, and the zero state is the right fallback there: the
+	// checks themselves surface the cancellation as a failure, so no check can
+	// be relaxed into passing by a context that has already been cancelled.
+	setup, _ := ResolveSetupState(ctx)
 	return []DoctorCheck{
-		checkManagedBinOnPath(ctx),
+		checkManagedBinOnPath(ctx, setup),
 		checkSourcesReachable(ctx),
 		checkMarketplaceTrust(ctx),
 		checkReceiptsIntegrity(ctx),
@@ -30,24 +36,45 @@ func Doctor(ctx context.Context) []DoctorCheck {
 	}
 }
 
-// DoctorFailed reports whether any check failed.
+// DoctorFailed reports whether any check failed. Only DoctorFail counts, so a
+// pending-setup check leaves the exit code at zero while a real problem on a
+// set-up home still exits nonzero.
 func DoctorFailed(checks []DoctorCheck) bool {
 	for _, c := range checks {
-		if c.Status == "fail" {
+		if c.Status == DoctorFail {
 			return true
 		}
 	}
 	return false
 }
 
-func checkManagedBinOnPath(ctx context.Context) DoctorCheck {
-	c := DoctorCheck{ID: "managed_bin_on_path"}
+func checkManagedBinOnPath(ctx context.Context, setup SetupState) DoctorCheck {
 	origin, err := DetectSuite(ctx)
 	if err != nil && origin.Kind == OriginAbsent {
-		c.Status = "fail"
-		c.Message = err.Error()
-		return c
+		return DoctorCheck{ID: "managed_bin_on_path", Status: DoctorFail, Message: err.Error()}
 	}
+	return managedBinOnPathFrom(origin, setup)
+}
+
+// pendingSetupMessage names both remaining steps rather than only the PATH one,
+// because on a home this fresh there is nothing installed for PATH to find yet.
+func pendingSetupMessage(binDir string) string {
+	msg := `setup not finished: install the suite with "festival install festival", ` +
+		`then put the managed bin dir on PATH with eval "$(festival shell-init zsh)"`
+	if binDir != "" {
+		msg += " (dir: " + binDir + ")"
+	}
+	return msg
+}
+
+// managedBinOnPathFrom is the pure decision logic behind checkManagedBinOnPath,
+// unexported but table-tested directly so the grading can be exercised without
+// a filesystem. The pending relaxation is deliberately narrow: it applies only
+// when nothing usable was detected at all AND the home has never been set up.
+// A leftover install, a shadowed prefix or a home that is past its first run
+// still fails, because agents rely on that exit code.
+func managedBinOnPathFrom(origin SuiteOrigin, setup SetupState) DoctorCheck {
+	c := DoctorCheck{ID: "managed_bin_on_path"}
 	switch origin.Kind {
 	case OriginPackage:
 		label := origin.Prefix
@@ -57,28 +84,33 @@ func checkManagedBinOnPath(ctx context.Context) DoctorCheck {
 			label += " (" + string(origin.Flavor) + ")"
 		}
 		if origin.Dual {
-			c.Status = "warn"
+			c.Status = DoctorWarn
 			c.Message = "suite on PATH via package: " + label + "; also a hub copy at managed bin"
 			return c
 		}
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = "suite on PATH via package: " + label
 		return c
 	case OriginManaged:
 		if origin.Dual {
-			c.Status = "warn"
+			c.Status = DoctorWarn
 			c.Message = "managed bin dir is on PATH: " + origin.Prefix + "; also a package copy on PATH"
 			return c
 		}
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = "managed bin dir is on PATH: " + origin.Prefix
 		return c
 	case OriginLeftover:
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = "leftover camp/fest on PATH at " + origin.Prefix + "; see " + docsInstall
 		return c
 	default:
-		c.Status = "fail"
+		if setup.IsFirstRun() {
+			c.Status = DoctorPending
+			c.Message = pendingSetupMessage(setup.ManagedBin)
+			return c
+		}
+		c.Status = DoctorFail
 		c.Message = "no usable camp/fest/festival on PATH"
 		return c
 	}
@@ -90,7 +122,7 @@ func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	// below is the dedicated check that reads ListView.Verified.
 	views, err := source.ListMarketplacesIfExists(ctx, source.DefaultVerifyOptions(nil, false))
 	if err != nil {
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = err.Error()
 		return c
 	}
@@ -102,13 +134,13 @@ func checkSourcesReachable(ctx context.Context) DoctorCheck {
 	}
 	switch {
 	case len(views) == 0:
-		c.Status = "warn"
+		c.Status = DoctorWarn
 		c.Message = "no marketplaces registered"
 	case len(broken) > 0:
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = "unreachable sources: " + strings.Join(broken, ", ")
 	default:
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = fmt.Sprintf("%d source(s) reachable", len(views))
 	}
 	return c
@@ -134,7 +166,7 @@ func checkMarketplaceTrust(ctx context.Context) DoctorCheck {
 	}
 	views, err := source.ListMarketplacesIfExists(ctx, vo)
 	if err != nil {
-		return DoctorCheck{ID: "marketplace_trust", Status: "fail", Message: err.Error()}
+		return DoctorCheck{ID: "marketplace_trust", Status: DoctorFail, Message: err.Error()}
 	}
 	return marketplaceTrustFrom(views)
 }
@@ -185,21 +217,21 @@ func marketplaceTrustFrom(views []source.ListView) DoctorCheck {
 	}
 	switch {
 	case len(views) == 0:
-		c.Status = "warn"
+		c.Status = DoctorWarn
 		c.Message = "no marketplaces registered"
 	case len(officialUnverified) > 0:
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = "official marketplace metadata is not signed or does not verify: " +
 			strings.Join(officialUnverified, ", ")
 	case len(thirdPartyInvalid) > 0:
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = "third-party source has a signature that does not verify: " +
 			strings.Join(thirdPartyInvalid, ", ")
 	case len(thirdPartyUnsigned) > 0:
-		c.Status = "warn"
+		c.Status = DoctorWarn
 		c.Message = "unsigned third-party sources: " + strings.Join(thirdPartyUnsigned, ", ")
 	default:
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = fmt.Sprintf("%d source(s) verified against the pinned key", len(views))
 	}
 	return c
@@ -209,18 +241,18 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 	c := DoctorCheck{ID: "receipts_integrity"}
 	home, err := state.Home(ctx)
 	if err != nil {
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = err.Error()
 		return c
 	}
 	db, ok, err := state.OpenDBIfExists(ctx, home)
 	if err != nil {
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = err.Error()
 		return c
 	}
 	if !ok {
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = "no receipts"
 		return c
 	}
@@ -228,7 +260,7 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 
 	recs, err := receipts.List(ctx, db.Raw(), receipts.Filter{})
 	if err != nil {
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = err.Error()
 		return c
 	}
@@ -245,27 +277,27 @@ func checkReceiptsIntegrity(ctx context.Context) DoctorCheck {
 	}
 	switch {
 	case len(recs) == 0:
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = "no receipts"
 	case len(problems) > 0:
-		c.Status = "fail"
+		c.Status = DoctorFail
 		c.Message = "orphan or mismatched receipt files: " + strings.Join(problems, ", ")
 	default:
-		c.Status = "ok"
+		c.Status = DoctorOK
 		c.Message = fmt.Sprintf("%d receipt(s) verified", len(recs))
 	}
 	return c
 }
 
 func checkPathShadowing(ctx context.Context) DoctorCheck {
-	c := DoctorCheck{ID: "path_shadowing", Status: "ok", Message: "no managed binary is shadowed"}
+	c := DoctorCheck{ID: "path_shadowing", Status: DoctorOK, Message: "no managed binary is shadowed"}
 	origin, _ := DetectSuite(ctx)
 	if len(origin.Shadows) > 0 {
 		var names []string
 		for _, s := range origin.Shadows {
 			names = append(names, s.Path)
 		}
-		c.Status = "warn"
+		c.Status = DoctorWarn
 		c.Message = "PATH copies ahead of or beside the active prefix: " + strings.Join(names, ", ")
 		return c
 	}
@@ -280,7 +312,7 @@ func checkPathShadowing(ctx context.Context) DoctorCheck {
 		}
 	}
 	if len(shadowed) > 0 {
-		c.Status = "warn"
+		c.Status = DoctorWarn
 		c.Message = "managed binaries shadowed on PATH: " + strings.Join(shadowed, ", ")
 	}
 	return c

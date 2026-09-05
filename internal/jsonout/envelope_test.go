@@ -110,3 +110,41 @@ func TestFailure_MatchesSuccessConventions(t *testing.T) {
 		t.Fatalf("failure envelope must omit data: %v", f)
 	}
 }
+
+func TestFailureWithData_ReportsFailureAndKeepsData(t *testing.T) {
+	var buf bytes.Buffer
+	data := map[string]any{"checks": []map[string]string{{"id": "managed_bin_on_path", "status": "fail"}}}
+	if err := jsonout.FailureWithData(&buf, "doctor", "E_DOCTOR_FAIL", "one or more doctor checks failed", data); err != nil {
+		t.Fatalf("FailureWithData: %v", err)
+	}
+	var env struct {
+		OK       bool     `json:"ok"`
+		Action   string   `json:"action"`
+		Warnings []string `json:"warnings"`
+		Error    *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		Data struct {
+			Checks []map[string]string `json:"checks"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, buf.String())
+	}
+	if env.OK {
+		t.Fatalf("FailureWithData must report ok:false, got %s", buf.String())
+	}
+	if env.Error == nil || env.Error.Code != "E_DOCTOR_FAIL" {
+		t.Fatalf("missing error payload: %s", buf.String())
+	}
+	if len(env.Data.Checks) != 1 {
+		t.Fatalf("data must survive the failure envelope: %s", buf.String())
+	}
+	if env.Warnings == nil {
+		t.Fatalf("warnings must be an array, not null: %s", buf.String())
+	}
+	if strings.Count(buf.String(), `"schema_version"`) != 1 {
+		t.Fatalf("expected one envelope: %s", buf.String())
+	}
+}

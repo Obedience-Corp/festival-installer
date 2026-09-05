@@ -78,10 +78,20 @@ type ListResult struct {
 	Packages []ListEntry `json:"packages"`
 }
 
+// Doctor check statuses. Pending is distinct from Warn on purpose: "you have
+// not finished setting up" is not "here is a mild concern about a working
+// install", and only Fail decides the exit code.
+const (
+	DoctorOK      = "ok"
+	DoctorWarn    = "warn"
+	DoctorPending = "pending"
+	DoctorFail    = "fail"
+)
+
 // DoctorCheck is one health check result.
 type DoctorCheck struct {
 	ID      string `json:"id"`
-	Status  string `json:"status"` // ok | warn | fail
+	Status  string `json:"status"` // ok | warn | pending | fail
 	Message string `json:"message"`
 }
 
