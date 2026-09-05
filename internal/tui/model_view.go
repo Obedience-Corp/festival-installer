@@ -605,7 +605,10 @@ func (m model) viewResult() string {
 		}
 		return title + "\n\n" + s.OK.Render("done") + "\n\n" + s.Normal.Render(body)
 	}
-	return title + "\n\n" + s.Err.Render(body)
+	// Failure bodies are prose a user has to act on, and the seed failure names a
+	// command. Wrapping to the terminal width keeps the end of that command on
+	// screen instead of clipped at the right edge.
+	return title + "\n\n" + s.Err.Width(max(20, m.width)).Render(body)
 }
 
 func short(s string, n int) string {

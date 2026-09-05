@@ -27,7 +27,10 @@ Or use a subcommand:      festival install festival
 // command list, not onboarding.
 func BareInvocation(ctx context.Context, out, errOut io.Writer, help func() error) error {
 	setup, err := app.ResolveSetupState(ctx)
-	if err == nil && setup.IsFirstRun() {
+	if err != nil {
+		return err
+	}
+	if setup.IsFirstRun() {
 		_, werr := fmt.Fprint(out, FirstRunGuidance(ShellFromEnv()))
 		return werr
 	}

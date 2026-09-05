@@ -31,6 +31,12 @@ type ShellRCPlan struct {
 	// Present is true when the marker is already in the file, in which case
 	// appending would duplicate it.
 	Present bool
+	// Appendable is false when the block would do nothing once written. A
+	// leftover install renders a snippet of pure comments, and writing that
+	// under the guard marker would strand the user: the marker is then present,
+	// so a later append after the leftover is cleaned up would decline to write
+	// the line that actually fixes PATH.
+	Appendable bool
 }
 
 // ShellRCFile returns the rc file festival would append to for shell.
@@ -69,10 +75,11 @@ func PlanShellRCAppend(ctx context.Context, shell string) (ShellRCPlan, error) {
 		return ShellRCPlan{}, err
 	}
 	return ShellRCPlan{
-		Shell:   shell,
-		File:    file,
-		Block:   shellRCBlock(snippet),
-		Present: present,
+		Shell:      shell,
+		File:       file,
+		Block:      shellRCBlock(snippet),
+		Present:    present,
+		Appendable: snippetHasEffect(snippet),
 	}, nil
 }
 
@@ -84,6 +91,9 @@ func ApplyShellRCAppend(ctx context.Context, plan ShellRCPlan) error {
 	}
 	if plan.File == "" {
 		return errpkg.New("E_SHELL_RC_PLAN", "rc append plan has no target file")
+	}
+	if !plan.Appendable {
+		return errpkg.New("E_SHELL_RC_NO_EFFECT", "refusing to write a shell block that would do nothing")
 	}
 	present, err := shellRCBlockPresent(plan.File)
 	if err != nil {
@@ -104,6 +114,20 @@ func ApplyShellRCAppend(ctx context.Context, plan ShellRCPlan) error {
 		return errpkg.Wrap("E_SHELL_RC_WRITE", err, "append to "+plan.File)
 	}
 	return nil
+}
+
+// snippetHasEffect reports whether a snippet carries at least one line a shell
+// would act on. Checking the content rather than the install origin keeps the
+// guard correct for any future snippet that turns out to be advice only.
+func snippetHasEffect(snippet string) bool {
+	for _, line := range strings.Split(snippet, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func shellRCBlock(snippet string) string {

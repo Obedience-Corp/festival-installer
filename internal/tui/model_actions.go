@@ -325,7 +325,7 @@ func runInstall(ctx context.Context, channel string, allowUnverified, force bool
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "install-unverified", cause: err}
 			}
-			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Install failed", err, "")
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
 		for _, f := range res.Files {
@@ -360,7 +360,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 				res.Action = "package"
 			}
 			if warning == "" && err != nil {
-				warning = err.Error()
+				warning = app.FriendlyMessage(err)
 			}
 			if spec, ok := packageUpgradeSpec(res); ok {
 				return packageUpgradeMsg{spec: spec}
@@ -368,7 +368,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			return updateOpDoneMsg(ps, res, warning)
 		}
 		if err != nil {
-			return opDoneMsg{stream: ps, title: "Update failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Update failed", err, "")
 		}
 		return updateOpDoneMsg(ps, res, warning)
 	}
@@ -467,12 +467,24 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(runUninstall(ctx, packageID, ps), waitProgress(ps))
 }
 
+// opFailed builds the result-screen message for a failed operation. Every
+// failure path goes through here so the body is always the friendly rendering:
+// this screen is where a first-time install failure lands, and printing the
+// error chain there put raw git output in front of the newest users.
+func opFailed(ps *progressStream, title string, err error, note string) opDoneMsg {
+	body := app.FriendlyMessage(err)
+	if note != "" {
+		body += "\n\n" + note
+	}
+	return opDoneMsg{stream: ps, title: title, body: body, err: err, success: false}
+}
+
 func runUninstall(ctx context.Context, packageID string, ps *progressStream) tea.Cmd {
 	return func() tea.Msg {
 		defer ps.close()
 		res, err := app.UninstallPackage(ctx, packageID)
 		if err != nil {
-			return opDoneMsg{stream: ps, title: "Uninstall failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Uninstall failed", err, "")
 		}
 		body := res.Note
 		if body == "" {
@@ -521,7 +533,7 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "browse-install-unverified", cause: err}
 			}
-			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error() + "\n\n(selected " + entryID + " as " + target + ")", err: err, success: false}
+			return opFailed(ps, "Install failed", err, "(selected "+entryID+" as "+target+")")
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
 		for _, f := range res.Files {

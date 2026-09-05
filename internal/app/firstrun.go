@@ -22,12 +22,21 @@ type SetupState struct {
 	ManagedBinOnPath bool `json:"managed_bin_on_path"`
 	// ManagedBin is the managed bin dir, for rendering.
 	ManagedBin string `json:"managed_bin,omitempty"`
+	// SignalsIncomplete is true when a signal could not be read at all: an
+	// unresolvable home, or a database that exists but will not open. Such a
+	// home is not a first run. It has state, we just cannot see it, and telling
+	// its owner that nothing is set up would be wrong during exactly the
+	// incident where the guidance matters most.
+	SignalsIncomplete bool `json:"signals_incomplete,omitempty"`
 }
 
 // IsFirstRun reports whether this home has never been set up. All three signals
 // must be absent: a home with a marketplace but no receipts is mid-setup, not a
 // first run, and should not get first-run guidance.
 func (s SetupState) IsFirstRun() bool {
+	if s.SignalsIncomplete {
+		return false
+	}
 	return !s.HasReceipts && !s.HasMarketplaces && !s.ManagedBinOnPath
 }
 
@@ -55,46 +64,65 @@ func ResolveSetupState(ctx context.Context) (SetupState, error) {
 		return SetupState{}, errpkg.Wrap("E_SETUP_CTX", err, "context cancelled before resolving setup state")
 	}
 	st := SetupState{}
-	if binDir, err := state.BinDir(ctx); err == nil && binDir != "" {
+	binDir, err := state.BinDir(ctx)
+	if err != nil || binDir == "" {
+		st.SignalsIncomplete = true
+	} else {
 		st.ManagedBin = binDir
 		st.ManagedBinOnPath = dirOnPath(binDir)
 	}
-	db, ok := openHomeDBIfExists(ctx)
-	if !ok {
+	db, readable := openHomeDBIfExists(ctx)
+	if db == nil {
+		st.SignalsIncomplete = st.SignalsIncomplete || !readable
 		return st, nil
 	}
 	defer func() { _ = db.Close(ctx) }()
 
-	st.HasReceipts = hasAnyReceipt(ctx, db.Raw())
-	st.HasMarketplaces = hasAnyMarketplace(ctx, db.Raw())
+	receipts, receiptsOK := anyReceipt(ctx, db.Raw())
+	sources, sourcesOK := anyMarketplace(ctx, db.Raw())
+	st.HasReceipts = receipts
+	st.HasMarketplaces = sources
+	if !receiptsOK || !sourcesOK {
+		st.SignalsIncomplete = true
+	}
 	return st, nil
 }
 
-// openHomeDBIfExists opens the installer database when it already exists,
-// reporting only whether a usable handle came back. Callers here treat every
-// failure the same way they treat a missing file.
-func openHomeDBIfExists(ctx context.Context) (*state.DB, bool) {
+// openHomeDBIfExists opens the installer database when it already exists. The
+// second return distinguishes the two ways of getting no handle: a home with no
+// database yet (readable, and a genuine first run) from one whose database is
+// there but will not open (not readable, and not a first run).
+func openHomeDBIfExists(ctx context.Context) (db *state.DB, readable bool) {
 	home, err := state.Home(ctx)
 	if err != nil {
 		return nil, false
 	}
-	db, ok, err := state.OpenDBIfExists(ctx, home)
-	if err != nil || !ok || db == nil {
+	opened, exists, err := state.OpenDBIfExists(ctx, home)
+	if err != nil {
 		return nil, false
 	}
-	return db, true
+	if !exists || opened == nil {
+		return nil, true
+	}
+	return opened, true
 }
 
-func hasAnyReceipt(ctx context.Context, db *sql.DB) bool {
+func anyReceipt(ctx context.Context, db *sql.DB) (found, ok bool) {
 	recs, err := receipts.List(ctx, db, receipts.Filter{})
-	return err == nil && len(recs) > 0
+	if err != nil {
+		return false, false
+	}
+	return len(recs) > 0, true
 }
 
-// hasAnyMarketplace counts registered sources straight from the registry table
+// anyMarketplace counts registered sources straight from the registry table
 // rather than through source.ListMarketplacesIfExists, which also stats clone
 // directories and verifies signatures. Registration is the signal; whether a
 // source currently verifies is doctor's marketplace_trust check.
-func hasAnyMarketplace(ctx context.Context, db *sql.DB) bool {
+func anyMarketplace(ctx context.Context, db *sql.DB) (found, ok bool) {
 	srcs, err := source.List(ctx, db)
-	return err == nil && len(srcs) > 0
+	if err != nil {
+		return false, false
+	}
+	return len(srcs) > 0, true
 }

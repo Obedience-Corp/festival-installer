@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
 )
@@ -57,7 +58,7 @@ func WrapJSONErrors(root *cobra.Command) {
 				return err
 			}
 			if f := c.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
-				if writeErr := jsonout.Failure(c.OutOrStdout(), jsonAction(c), errpkg.Code(err), friendlyMessage(err)); writeErr != nil {
+				if writeErr := jsonout.Failure(c.OutOrStdout(), jsonAction(c), errpkg.Code(err), app.FriendlyMessage(err)); writeErr != nil {
 					// Keep the domain error primary so exit codes/messages stay
 					// useful; surface the write failure alongside it.
 					return stderrors.Join(err, writeErr)

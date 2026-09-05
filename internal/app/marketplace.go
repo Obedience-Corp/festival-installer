@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 
 	"github.com/Obedience-Corp/festival-installer/internal/source"
@@ -47,6 +48,27 @@ func (w *MarketplaceSeedProblem) Friendly() string {
 }
 
 func (w *MarketplaceSeedProblem) Unwrap() error { return w.Err }
+
+// friendlyError is implemented by errors whose Error() carries diagnostic
+// detail, such as raw git command output, that must never reach a user.
+type friendlyError interface {
+	Friendly() string
+}
+
+// FriendlyMessage returns the text a user should see for err. Every surface that
+// renders an error to a person routes through here, so an error that hides its
+// diagnostic detail hides it on the CLI, in the JSON envelope and in the TUI
+// alike rather than in whichever one someone remembered.
+func FriendlyMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	var f friendlyError
+	if stderrors.As(err, &f) {
+		return f.Friendly()
+	}
+	return err.Error()
+}
 
 // MarketplaceAdd clones and registers a marketplace git URL.
 func MarketplaceAdd(ctx context.Context, url, name string, vo source.VerifyOptions) (source.Source, error) {

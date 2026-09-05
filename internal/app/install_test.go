@@ -100,3 +100,48 @@ func TestMarketplaceListSurfacesSeedWarning(t *testing.T) {
 		t.Fatalf("warning lost seed error: %v", err)
 	}
 }
+
+func TestFriendlyMessage(t *testing.T) {
+	raw := errors.New("E_GIT_CLONE: fatal: could not read Username for 'https://github.com'")
+	tests := []struct {
+		name      string
+		err       error
+		want      string
+		wantEmpty bool
+	}{
+		{name: "nil", err: nil, wantEmpty: true},
+		{name: "plain error keeps its text", err: errors.New("disk full"), want: "disk full"},
+		{
+			name: "fatal seed problem renders the directive line",
+			err:  &MarketplaceSeedProblem{Err: raw, Fatal: true},
+			want: marketplaceSeedFatalMessage,
+		},
+		{
+			name: "read-path seed problem renders the softer line",
+			err:  &MarketplaceSeedProblem{Err: raw},
+			want: marketplaceSeedFriendlyMessage,
+		},
+		{
+			name: "a wrapped seed problem is still found",
+			err:  errpkg.Wrap("E_INSTALL", &MarketplaceSeedProblem{Err: raw, Fatal: true}, "install festival"),
+			want: marketplaceSeedFatalMessage,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FriendlyMessage(tt.err)
+			if tt.wantEmpty {
+				if got != "" {
+					t.Fatalf("want empty, got %q", got)
+				}
+				return
+			}
+			if got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+			if strings.Contains(got, "could not read Username") {
+				t.Fatalf("leaked the git chain: %q", got)
+			}
+		})
+	}
+}

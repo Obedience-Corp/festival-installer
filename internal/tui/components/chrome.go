@@ -92,9 +92,9 @@ func ConfirmBox(msg string, yesSelected bool, s theme.Styles) string {
 	return s.Title.Render(msg) + "\n\n" + yes + "  " + no
 }
 
-// friendlyError is implemented by warnings (e.g. app.MarketplaceSeedProblem)
-// whose Error() carries diagnostic detail, such as raw git command output,
-// that must never reach the terminal.
+// friendlyError mirrors app's interface of the same name. components must not
+// import app (it is a leaf rendering package), so ErrorBox re-declares the one
+// method it needs rather than taking that dependency.
 type friendlyError interface {
 	Friendly() string
 }

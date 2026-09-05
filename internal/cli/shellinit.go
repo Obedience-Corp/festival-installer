@@ -64,6 +64,11 @@ func runShellRCAppend(cmd *cobra.Command, shell string, assumeYes bool) error {
 		_, err := fmt.Fprintf(out, "already present in %s; nothing to do\n", plan.File)
 		return err
 	}
+	if !plan.Appendable {
+		_, err := fmt.Fprintf(out,
+			"not appending: there is nothing here for a shell to run yet. Resolve the note above first.\n")
+		return err
+	}
 	ok, err := shellRCConsent(cmd, plan.File, assumeYes)
 	if err != nil {
 		return err

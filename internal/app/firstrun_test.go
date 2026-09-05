@@ -78,8 +78,11 @@ func TestResolveSetupState_FreshHomeIsFirstRun(t *testing.T) {
 }
 
 func TestResolveSetupState_MarketplaceOnlyIsMidSetup(t *testing.T) {
+	// Resolved before freshHome clears PATH, or LookPath would search the empty
+	// directory freshHome installs and this test would silently skip.
+	gitDir := gitOnlyPath(t)
 	freshHome(t)
-	t.Setenv("PATH", gitOnlyPath(t))
+	t.Setenv("PATH", gitDir)
 	ctx := context.Background()
 	fixture := browseSeedFixtureRepo(t)
 	if _, err := source.AddMarketplace(ctx, fixture, "acme", source.DefaultVerifyOptions(nil, false)); err != nil {
@@ -179,5 +182,37 @@ func writeInstalledReceipt(t *testing.T, home string) {
 	}
 	if err := receipts.Write(ctx, db.Raw(), rec); err != nil {
 		t.Fatalf("write receipt: %v", err)
+	}
+}
+
+// TestSetupState_UnreadableSignalsAreNotAFirstRun guards the guidance that goes
+// out during an incident. A home whose database will not open has state; it is
+// just unreadable, and telling its owner that nothing is set up would send them
+// to run install over a broken install.
+func TestSetupState_UnreadableSignalsAreNotAFirstRun(t *testing.T) {
+	st := SetupState{SignalsIncomplete: true}
+	if st.IsFirstRun() {
+		t.Fatal("a home with unreadable signals must not read as a first run")
+	}
+	if !st.NeedsSetup() {
+		t.Fatal("a home with unreadable signals still needs attention")
+	}
+}
+
+func TestResolveSetupState_UnreadableDatabaseIsNotAFirstRun(t *testing.T) {
+	home := freshHome(t)
+	if err := os.WriteFile(filepath.Join(home, "state.db"), []byte("not a database at all"), 0o644); err != nil {
+		t.Fatalf("write corrupt db: %v", err)
+	}
+
+	got, err := ResolveSetupState(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveSetupState: %v", err)
+	}
+	if !got.SignalsIncomplete {
+		t.Fatalf("a database that will not read must be reported as incomplete: %+v", got)
+	}
+	if got.IsFirstRun() {
+		t.Fatalf("a home with an unreadable database is not a first run: %+v", got)
 	}
 }
