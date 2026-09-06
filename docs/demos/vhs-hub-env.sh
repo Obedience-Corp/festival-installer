@@ -19,6 +19,13 @@ if [[ ! -x ${PWD}/bin/festival ]]; then
 fi
 
 mode=${1:-fresh}
+case ${mode} in
+fresh | tools) ;;
+*)
+	echo "vhs: unknown mode: ${mode} (want fresh or tools)" >&2
+	return 1 2>/dev/null || exit 1
+	;;
+esac
 
 camp_src=""
 fest_src=""
