@@ -13,7 +13,7 @@ fi
 mode=${1:-package}
 FAKE=$(mktemp -d /tmp/festival-vhs-fake-XXXXXX)
 CORE=${FAKE}/core
-mkdir -p "${FAKE}/usr/bin" "${FAKE}/usr/share/festival/shell" "${CORE}"
+mkdir -p "${FAKE}/usr/bin" "${FAKE}/usr/share/festival/shell" "${CORE}" "${FAKE}/home"
 cp "${PWD}/bin/festival" "${FAKE}/usr/bin/festival"
 chmod +x "${FAKE}/usr/bin/festival"
 
@@ -38,6 +38,7 @@ if [[ $mode == shadow ]]; then
 fi
 
 export PATH
+export HOME="${FAKE}/home"
 export TERM=xterm-256color
 export COLORTERM=truecolor
 export COLORFGBG='15;0'
