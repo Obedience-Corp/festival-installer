@@ -376,3 +376,117 @@ func workflowDir(t *testing.T, camp, rel string, runnable bool) string {
 	}
 	return dir
 }
+
+// festWorkspaceRefusal is what fest prints and exits with in a camp that has no
+// festivals directory, which is what `camp init` leaves behind when fest was
+// not on PATH. Captured from fest v0.6.6.
+const festWorkspaceRefusal = "Error: not in a fest workspace\n\n  Could not find a festivals/ directory.\n"
+
+// refusingFest puts a fest on PATH that writes fest's real workspace refusal to
+// stderr and exits 1 for every subcommand.
+func refusingFest(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\n>&2 echo '" + festWorkspaceRefusal + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "fest"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write refusing fest: %v", err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// TestResolveRunTarget_CampWithoutAFestivalsDirectory is the regression test for
+// a raw child exit status reaching the tour screen. A camp with no fest
+// workspace is not a failure to report, it is the answer "no festivals", and the
+// step goes on to scaffold a workflow.
+func TestResolveRunTarget_CampWithoutAFestivalsDirectory(t *testing.T) {
+	festEnv(t)
+	refusingFest(t)
+
+	_, err := ResolveRunTarget(context.Background(), t.TempDir())
+	if got := errpkg.Code(err); got != CodeNoFestival {
+		t.Fatalf("code = %q, want %q so the scaffold branch runs (err=%v)", got, CodeNoFestival, err)
+	}
+}
+
+// TestResolveRunTarget_TheThreeCampShapes pins the distinction the tour depends
+// on: a camp fest refuses to list, a fest that is not installed, and a working
+// fest with an empty camp.
+func TestResolveRunTarget_TheThreeCampShapes(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(t *testing.T)
+		wantCode string
+	}{
+		{
+			name:     "no festivals directory: fest runs and refuses",
+			setup:    func(t *testing.T) { refusingFest(t) },
+			wantCode: CodeNoFestival,
+		},
+		{
+			name:     "fest is not installed at all",
+			setup:    func(t *testing.T) {},
+			wantCode: "E_LAUNCH_NOT_FOUND",
+		},
+		{
+			name:     "fest works and the camp is empty",
+			setup:    func(t *testing.T) { fakeFest(t, `{"total":0}`) },
+			wantCode: CodeNoFestival,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			festEnv(t)
+			tc.setup(t)
+			_, err := ResolveRunTarget(context.Background(), t.TempDir())
+			if got := errpkg.Code(err); got != tc.wantCode {
+				t.Fatalf("code = %q, want %q (err=%v)", got, tc.wantCode, err)
+			}
+		})
+	}
+}
+
+// TestRunTargetProblem_KeepsDiagnosticsOffTheScreen is the guard on what a user
+// reads. FriendlyMessage is what every terminal surface renders, so an error
+// code or a child's exit status must not survive it.
+func TestRunTargetProblem_KeepsDiagnosticsOffTheScreen(t *testing.T) {
+	festEnv(t)
+	fakeFest(t, `this is not json`)
+
+	_, err := ResolveRunTarget(context.Background(), t.TempDir())
+	if got := errpkg.Code(err); got != CodeFestivalList {
+		t.Fatalf("code = %q, want %q", got, CodeFestivalList)
+	}
+	friendly := FriendlyMessage(err)
+	for _, leak := range []string{"E_FESTIVAL_", "exit status", "E_LAUNCH_"} {
+		if strings.Contains(friendly, leak) {
+			t.Fatalf("friendly line leaks %q: %q", leak, friendly)
+		}
+	}
+	if !strings.Contains(friendly, "fest list") {
+		t.Fatalf("the friendly line must name the command that shows the reason, got %q", friendly)
+	}
+	// The detail is still available to a log, just not to the screen.
+	if !strings.Contains(err.Error(), "E_FESTIVAL_LIST") {
+		t.Fatalf("Error() must keep the code for diagnosis, got %q", err.Error())
+	}
+}
+
+// TestUncheckedProblem_KeepsDiagnosticsOffTheScreen does the same for the probe
+// bound, which also renders on the tour screen.
+func TestUncheckedProblem_KeepsDiagnosticsOffTheScreen(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	entries := make([]string, 0, maxRunTargetProbes+2)
+	for i := 0; i < maxRunTargetProbes+2; i++ {
+		entries = append(entries, entry(festivalDir(t, camp, "f"+string(rune('a'+i)), false)))
+	}
+	fakeFest(t, `{"active":[`+strings.Join(entries, ",")+`],"total":7}`)
+
+	_, err := ResolveRunTarget(context.Background(), camp)
+	friendly := FriendlyMessage(err)
+	for _, leak := range []string{"E_FESTIVAL_", "exit status"} {
+		if strings.Contains(friendly, leak) {
+			t.Fatalf("friendly line leaks %q: %q", leak, friendly)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,13 +143,47 @@ func ResolveRunTarget(ctx context.Context, campRoot string) (RunTarget, error) {
 	return RunTarget{}, errpkg.New(CodeNoFestival, "nothing in "+campRoot+" that fest next can run yet")
 }
 
+// RunTargetProblem is a question about a camp that the hub asked and could not
+// use the answer to. Error carries the diagnostic detail, including a child
+// process's exit status; Friendly is the single line a person sees, so a code
+// or an "exit status 1" never reaches the tour screen.
+type RunTargetProblem struct {
+	// Message is the user-facing line.
+	Message string
+	// Err is the coded, detailed error underneath.
+	Err error
+}
+
+func (p *RunTargetProblem) Error() string { return p.Err.Error() }
+
+// Friendly returns the one-line rendering for a person. Callers drawing to a
+// terminal route through app.FriendlyMessage or components.ErrorBox, both of
+// which prefer this over Error.
+func (p *RunTargetProblem) Friendly() string { return p.Message }
+
+func (p *RunTargetProblem) Unwrap() error { return p.Err }
+
+// listProblem wraps a failure to read fest's listing. The camp directory is
+// deliberately left out of the friendly line: it is already on screen, and the
+// useful half is the command that shows the real reason.
+func listProblem(err error) error {
+	return &RunTargetProblem{
+		Message: "could not read the festivals in this camp; run 'fest list' there to see why",
+		Err:     err,
+	}
+}
+
 // uncheckedErr is the answer when the search stopped early. It names the size
 // of the backlog it could not get through, because "the hub gave up after five"
 // and "your camp has no festivals" call for completely different reactions.
 func uncheckedErr(candidates int, campRoot string) error {
-	return errpkg.New(CodeRunTargetUnchecked,
-		"gave up checking "+strconv.Itoa(candidates)+" festivals in "+campRoot+
-			" before finding one fest next can run")
+	return &RunTargetProblem{
+		Message: "checked " + strconv.Itoa(maxRunTargetProbes) + " festivals in this camp without" +
+			" finding one fest next can run; open the one you want and run fest next there",
+		Err: errpkg.New(CodeRunTargetUnchecked,
+			"gave up checking "+strconv.Itoa(candidates)+" festivals in "+campRoot+
+				" before finding one fest next can run"),
+	}
 }
 
 // firstRunnable returns the first directory fest will actually run in. Probing
@@ -196,11 +231,24 @@ func festivalCandidates(ctx context.Context, festPath, campRoot string) ([]strin
 	cmd.Stderr = nil
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, errpkg.Wrap(CodeFestivalList, err, "ask fest what festivals are in "+campRoot)
+		// fest ran and refused. The ordinary cause is a camp that has no fest
+		// workspace at all, which is what `camp init` leaves behind when fest
+		// was not on PATH: fest exits 1 there saying it cannot find a festivals
+		// directory. That is not a failure to report, it is the answer "no
+		// festivals", and the step goes on to scaffold a workflow instead.
+		//
+		// A fest that never started is different and stays an error, because
+		// nothing was asked and nothing was answered.
+		var exitErr *exec.ExitError
+		if stderrors.As(err, &exitErr) {
+			return nil, nil
+		}
+		return nil, listProblem(errpkg.Wrap(CodeFestivalList, err, "run fest list in "+campRoot))
 	}
 	dirs, readable := festivalPaths(out)
 	if !readable {
-		return nil, errpkg.New(CodeFestivalList, "could not read the festival list fest printed for "+campRoot)
+		return nil, listProblem(errpkg.New(CodeFestivalList,
+			"could not read the festival list fest printed for "+campRoot))
 	}
 	return dirs, nil
 }
