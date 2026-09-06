@@ -130,8 +130,17 @@ func TestHome_UnknownSignalsShowADiagnosticNotTheChecklist(t *testing.T) {
 			wantMenuRows: 11,
 		},
 		{
-			name:         "a package install gets neither",
+			// The card is hidden for package installs because its advice does
+			// not apply. The diagnostic is not advice, so it still shows.
+			name:         "a package install still gets the diagnostic",
 			setup:        app.SetupState{SignalsIncomplete: true},
+			action:       "package",
+			wantNotice:   true,
+			wantMenuRows: 11,
+		},
+		{
+			name:         "a readable package install gets neither",
+			setup:        app.SetupState{HasReceipts: true},
 			action:       "package",
 			wantMenuRows: 11,
 		},
@@ -183,6 +192,13 @@ func TestHome_TheDiagnosticIsOneLine(t *testing.T) {
 	notice := m.setupNotice()
 	if notice == "" {
 		t.Fatal("expected a diagnostic")
+	}
+	pkg := homeModelWithSetup(app.SetupState{SignalsIncomplete: true}, "package")
+	if pkg.setupNotice() == "" {
+		t.Fatal("a package install with an unreadable home must still get the diagnostic")
+	}
+	if pkg.setupCard() != "" {
+		t.Fatal("a package install must still not get the checklist")
 	}
 	if strings.Contains(notice, "\n") {
 		t.Fatalf("the diagnostic must be one line, got:\n%s", notice)

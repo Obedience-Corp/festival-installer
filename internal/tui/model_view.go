@@ -187,8 +187,13 @@ func (m model) setupCard() string {
 // an unreadable database reads as nothing installed, and offering onboarding to
 // someone in the middle of an incident hides the incident. One line, so it does
 // not push the menu down the way the card does.
+//
+// Unlike the card, this is not hidden for a package-manager install. The card
+// is hidden there because its advice does not apply to those users. An
+// unreadable home is not advice, it is a fact about the machine, and it is
+// just as true when the suite came from a package manager.
 func (m model) setupNotice() string {
-	if m.status.Action == "package" || !m.status.Setup.Unknown() {
+	if !m.status.Setup.Unknown() {
 		return ""
 	}
 	return components.StatusLine("could not read the installer home, run festival doctor", "warn", m.styles)
