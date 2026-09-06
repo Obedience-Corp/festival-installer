@@ -22,25 +22,40 @@ func NewDoctorCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			checks := app.Doctor(cmd.Context())
+			failed := app.DoctorFailed(checks)
 			if asJSON {
-				if err := jsonout.Success(cmd.OutOrStdout(), "doctor", app.DoctorData{Checks: checks}, []string{}); err != nil {
-					return err
-				}
-			} else if err := renderDoctorTable(cmd.OutOrStdout(), checks); err != nil {
+				return emitDoctorJSON(cmd.OutOrStdout(), checks, failed)
+			}
+			if err := renderDoctorTable(cmd.OutOrStdout(), checks); err != nil {
 				return err
 			}
-			if app.DoctorFailed(checks) {
-				failErr := errpkg.New("E_DOCTOR_FAIL", "one or more doctor checks failed")
-				if asJSON {
-					return jsonAlreadyEmitted(failErr)
-				}
-				return failErr
+			if failed {
+				return doctorFailure()
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	return cmd
+}
+
+func doctorFailure() error {
+	return errpkg.New("E_DOCTOR_FAIL", "one or more doctor checks failed")
+}
+
+// emitDoctorJSON writes one envelope whose ok field matches the exit code. The
+// failure branch still carries the checks, so a consumer reading a nonzero run
+// sees which check failed instead of an error code with no detail.
+func emitDoctorJSON(out io.Writer, checks []app.DoctorCheck, failed bool) error {
+	data := app.DoctorData{Checks: checks}
+	if !failed {
+		return jsonout.Success(out, "doctor", data, []string{})
+	}
+	failErr := doctorFailure()
+	if err := jsonout.FailureWithData(out, "doctor", errpkg.Code(failErr), failErr.Error(), data); err != nil {
+		return err
+	}
+	return jsonAlreadyEmitted(failErr)
 }
 
 func renderDoctorTable(out io.Writer, checks []app.DoctorCheck) error {

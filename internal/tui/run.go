@@ -57,27 +57,33 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 		if spec.ReplaceHub {
 			resume = resumeState{}
 		} else {
-			// Remember launchpad cursor for post-child resume.
+			// Come back on the screen the launch started from, with its cursor.
 			resume = resumeState{
 				active: true,
-				screen: screenLaunchpad,
+				screen: sess.ResumeScreen,
 				cursor: sess.ResumeCursor,
 			}
 		}
 
-		// Child owns the terminal; hub alt-screen is already gone.
-		if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(spec)); err != nil {
-			return SessionResult{Quit: true}, errpkg.Wrap("E_TUI_LAUNCH_BANNER", err, "write launch banner")
+		res := runChild(ctx, opts, spec)
+		if sess.ThenLaunch != nil && cleanExit(res) {
+			// The step's work is two commands. Reassigning spec makes the
+			// banner and the recorded result describe the child the user
+			// actually finished on.
+			spec = *sess.ThenLaunch
+			res = runChild(ctx, opts, spec)
 		}
-		res := launch.Run(ctx, spec)
-		resetTerminalAfterChild()
 		if spec.ReplaceHub && res.Started && res.ExitCode == 0 {
 			if err := launch.ReplaceSelf(ctx); err != nil {
 				banner = "package upgraded, but festival could not restart: " + err.Error()
 				continue
 			}
 		}
-		banner = formatChildBanner(spec, res)
+		if err := recordTourStepAfterChild(ctx, sess.RecordTourStep, res); err != nil {
+			banner = "could not record tour progress: " + err.Error()
+			continue
+		}
+		banner = childBanner(sess, spec, res)
 		// Loop: re-enter hub TUI on launchpad with status refresh via Init.
 	}
 }
@@ -110,8 +116,12 @@ func runOnce(ctx context.Context, opts Options, banner string, resume resumeStat
 	if fm.pendingLaunch != nil {
 		spec := *fm.pendingLaunch
 		return SessionResult{
-			Launch:       &spec,
-			ResumeCursor: fm.cursor,
+			Launch:         &spec,
+			ResumeCursor:   fm.cursor,
+			ResumeScreen:   fm.screen,
+			RecordTourStep: fm.recordTourStep,
+			ThenLaunch:     fm.pendingThen,
+			Banner:         fm.launchBanner,
 		}, nil
 	}
 	return SessionResult{Quit: true}, nil
@@ -122,6 +132,38 @@ func launchLabel(s launch.Spec) string {
 		return s.Title
 	}
 	return s.Tool
+}
+
+// childBanner is what the hub says on the way back from a child. A session that
+// asked for its own line gets it, but only on a clean exit: a child that failed
+// or was interrupted did not do the thing that line describes, and the generic
+// diagnosis is worth more to the user than a claim that is now wrong.
+func childBanner(sess SessionResult, spec launch.Spec, res launch.Result) string {
+	if sess.Banner != "" && cleanExit(res) {
+		return sess.Banner
+	}
+	return formatChildBanner(spec, res)
+}
+
+// cleanExit reports whether a child did its job: it started, was not killed by
+// a signal, and returned zero.
+func cleanExit(res launch.Result) bool {
+	return res.Started && res.Signal == "" && res.ExitCode == 0
+}
+
+// runChild announces a child, hands it the terminal and restores the terminal
+// afterwards. It is the only place the hub starts a process.
+//
+// A failure to write the announcement becomes a failed Result rather than
+// ending the hub: losing stderr is not a reason to drop the user out of the
+// program, and the hub can still say what happened on its own screen.
+func runChild(ctx context.Context, opts Options, spec launch.Spec) launch.Result {
+	if _, err := fmt.Fprintf(opts.stderr(), "\n▸ launching %s … (quit the tool to return to festival)\n\n", launchLabel(spec)); err != nil {
+		return launch.Result{ExitCode: -1, Err: errpkg.Wrap("E_TUI_LAUNCH_BANNER", err, "write launch banner")}
+	}
+	res := launch.Run(ctx, spec)
+	resetTerminalAfterChild()
+	return res
 }
 
 // formatChildBanner distinguishes resolve/start failures from signalled or

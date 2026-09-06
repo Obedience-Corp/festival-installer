@@ -10,7 +10,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
-	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/launch"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
@@ -35,6 +34,8 @@ const (
 	screenResult
 	screenConfirm
 	screenChildOutput
+	// screenTour is appended last so no existing screen constant renumbers.
+	screenTour
 )
 
 type tickMsg time.Time
@@ -66,6 +67,14 @@ type browseMsg struct {
 
 type doctorMsg struct {
 	checks []app.DoctorCheck
+}
+
+// tourMsg carries the getting-started tour's persisted state. The tour is
+// loaded through a command like every other screen's data, never read from
+// disk inside View, which would stutter the ambient animation.
+type tourMsg struct {
+	tour app.Tour
+	err  error
 }
 
 type marketMsg struct {
@@ -179,8 +188,11 @@ type model struct {
 	// confirm
 	confirmMsg string
 	confirmYes bool
-	confirmAct string // uninstall | install-unverified | update-unverified | browse-install-unverified
+	confirmAct string // uninstall | install-unverified | update-unverified | browse-install-unverified | tour-path | tour-camp-init
 	confirmArg string
+	// confirmReturn is the screen a declined confirmation goes back to. Zero
+	// value screenBoot means home, which is where every pre-tour confirm went.
+	confirmReturn screen
 
 	// op in flight cancel
 	opCancel context.CancelFunc
@@ -190,6 +202,25 @@ type model struct {
 	pendingLaunch *launch.Spec
 	// soft status after returning from a child tool
 	banner string
+
+	// getting started tour
+	tour app.Tour
+	// recordTourStep names the tour step whose completion should be recorded
+	// when the pending launch's child exits cleanly. Empty when the pending
+	// launch is not a tour step.
+	recordTourStep app.TourStepKey
+
+	// launchBanner replaces the generic "returned from ..." line when the
+	// pending launch's child exits cleanly. It is for a child whose own success
+	// still leaves the user with something to do, where the generic line would
+	// read as though the step were finished.
+	launchBanner string
+
+	// pendingThen is a second child to run after the pending launch exits
+	// cleanly, on the same suspend and resume cycle. It exists so a step whose
+	// work is two commands finishes in one pass; both still go through the
+	// launchpad, which stays the only thing that runs a child.
+	pendingThen *launch.Spec
 
 	// launchpad
 	launchEntries []launch.Entry
@@ -207,44 +238,6 @@ type model struct {
 
 // captureMaxBytes bounds capture scrollback; the head is trimmed past this.
 const captureMaxBytes = 512 * 1024
-
-func (m model) homeItems() []string {
-	items := []string{
-		"Install Festival suite",
-		"Update Festival",
-		"Installed packages",
-		"Browse catalog",
-		"Uninstall package",
-		"Marketplaces",
-		"Doctor",
-		"Shell / PATH setup",
-		"Launchpad (camp / fest tools)",
-		"Quit",
-	}
-	if m.status.Action == "package" || m.status.Dual {
-		items[0] = "How you installed"
-	}
-	if m.updateAvailable() {
-		items[1] = "Update Festival · " + m.status.Latest + " available"
-	}
-	return items
-}
-
-func (m model) updateAvailable() bool {
-	ver := strings.TrimPrefix(m.status.Version, "v")
-	latest := strings.TrimPrefix(m.status.Latest, "v")
-	return latest != "" && ver != "" && installer.VersionLess(ver, latest)
-}
-
-func (m model) defaultHomeCursor() int {
-	if m.updateAvailable() {
-		return 1
-	}
-	if m.status.Action == "managed" && !m.status.Dual {
-		return 1
-	}
-	return 0
-}
 
 func newModel(opts Options) model {
 	if opts.Version == "" {
@@ -275,7 +268,14 @@ func newModel(opts Options) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(tickCmd(), m.loadStatus())
+	cmds := []tea.Cmd{tickCmd(), m.loadStatus()}
+	if m.screen == screenTour {
+		// The hub resumed onto the tour after handing the terminal to a child,
+		// and that child is exactly what may have finished a step. Without this
+		// the tour comes back with no state at all.
+		cmds = append(cmds, m.loadTour())
+	}
+	return tea.Batch(cmds...)
 }
 
 func tickCmd() tea.Cmd {
@@ -423,8 +423,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case latestMsg:
 		m.status.Latest = strings.TrimPrefix(msg.latest, "v")
-		if (m.screen == screenHome || m.screen == screenBoot) && m.cursor == 0 && m.updateAvailable() {
-			m.cursor = 1
+		if (m.screen == screenHome || m.screen == screenBoot) && m.updateAvailable() {
+			m.cursor = m.moveToUpdateEntry(m.cursor)
 		}
 		return m, nil
 
@@ -447,6 +447,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case doctorMsg:
 		m.checks = msg.checks
+		return m, nil
+
+	case tourMsg:
+		m.err = msg.err
+		// A failed load carries no steps. Keeping the ones already on screen
+		// beats replacing a working tour with an empty one, which is what the
+		// user would otherwise see the moment anything goes wrong.
+		if len(msg.tour.Steps) == 0 {
+			return m, nil
+		}
+		m.tour = msg.tour
+		if m.screen == screenTour {
+			m.cursor = m.tourCursor()
+		}
 		return m, nil
 
 	case marketMsg:
@@ -477,6 +491,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmYes = false
 		m.confirmAct = msg.action
 		m.confirmArg = ""
+		m.confirmReturn = screenHome
 		m.err = msg.cause
 		m.screen = screenConfirm
 		return m, nil
@@ -508,8 +523,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.busy && m.opCancel != nil {
 			m.opCancel()
 			m.busy = false
-			m.screen = screenHome
-			return m, nil
+			return m.leaveForHome()
 		}
 		return m, tea.Quit
 	case "q":
@@ -519,10 +533,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenHome || m.screen == screenBoot {
 			return m, tea.Quit
 		}
-		m.screen = screenHome
-		m.cursor = 0
-		m.err = nil
-		return m, nil
+		return m.leaveForHome()
 	case "?":
 		m.help = !m.help
 		return m, nil
@@ -542,10 +553,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenHome {
 			return m, tea.Quit
 		}
-		m.screen = screenHome
-		m.cursor = 0
-		m.err = nil
-		return m, nil
+		return m.leaveForHome()
 	case "enter", " ":
 		if m.screen == screenBoot {
 			m.screen = screenHome
@@ -597,9 +605,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleEnter()
 		}
 	case "0":
-		// Digit 0 is Quit (home has 10 items; 1–9 cover the first nine).
+		// Digit 0 is Quit, whatever position Quit currently holds. Digits 1
+		// through 9 address the first nine entries.
 		if m.screen == screenHome {
-			m.cursor = len(m.homeItems()) - 1
+			if i := m.homeIndexOf(homeQuit); i >= 0 {
+				m.cursor = i
+			}
 			return m.handleEnter()
 		}
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
@@ -637,6 +648,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == screenMarketplace && m.marketMode != "add" {
 			return m, m.seedOfficialMarketplace()
 		}
+		if m.screen == screenTour {
+			return m.skipTourStep()
+		}
+	case "d":
+		if m.screen == screenTour {
+			return m.dismissTour()
+		}
 	case "f":
 		if m.screen == screenInstall && m.installKind == "package" {
 			m.installKind = ""
@@ -656,6 +674,20 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadBrowse(m.productF, m.kindF)
 		}
 	}
+	return m, nil
+}
+
+// leaveForHome is the generic back-out. It clears the confirmation screen's
+// return target as well, because esc and q can leave a confirmation without
+// answering it, and a return target left behind would misroute whichever
+// confirmation the user opens next.
+func (m model) leaveForHome() (tea.Model, tea.Cmd) {
+	m.screen = screenHome
+	m.cursor = 0
+	m.err = nil
+	m.confirmReturn = screenBoot
+	m.confirmAct = ""
+	m.confirmArg = ""
 	return m, nil
 }
 
@@ -717,6 +749,12 @@ func (m model) maxCursor() int {
 		return 1 // channel row is left/right; enter installs
 	case screenLaunchpad:
 		n := len(m.launchEntries)
+		if n == 0 {
+			return 0
+		}
+		return n - 1
+	case screenTour:
+		n := len(m.tour.Steps)
 		if n == 0 {
 			return 0
 		}

@@ -11,16 +11,22 @@ subcommands for scripts and agents.
 
 Recorded against a real `./bin/festival` binary (VHS + PTY).
 
+**First run: the setup card, the getting started tour, PATH with your consent**
+
+<p align="center">
+  <img src="docs/demos/festival-first-run.gif" alt="festival TUI first run: the setup card on a fresh home, the four step getting started tour, and the PATH block shown before it is written" width="900">
+</p>
+
 **Home: boot splash, ambient flame, multi-activity booths, menu → doctor**
 
 <p align="center">
   <img src="docs/demos/festival-home.gif" alt="festival TUI: boot splash, fire ambient, multi-activity booths, and home menu" width="900">
 </p>
 
-**Tour: install channel picker, shell/PATH, installed list**
+**Channels: install channel picker, shell/PATH, installed list**
 
 <p align="center">
-  <img src="docs/demos/festival-tour.gif" alt="festival TUI tour: install channel picker, shell/PATH, and installed packages" width="900">
+  <img src="docs/demos/festival-channels.gif" alt="festival TUI: install channel picker, shell/PATH guidance, and the installed packages list" width="900">
 </p>
 
 **Launchpad: open camp as a child tool, quit back to the hub**

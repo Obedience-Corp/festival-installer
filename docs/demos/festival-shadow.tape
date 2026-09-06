@@ -1,4 +1,4 @@
-# festival leftover-shadow TUI — package prefix plus leftover camp/fest.
+# festival leftover-shadow TUI: package prefix plus leftover camp/fest.
 #
 # Record with: just vhs record docs/demos/festival-shadow.tape
 # Requires: just build (bin/festival). Leftover stubs have no bundle line.
@@ -31,8 +31,8 @@ Sleep 2000ms
 # home: package card + leftover shadow lines (v0.5.0 / dev)
 Sleep 2400ms
 
-# doctor (key 7) — path_shadowing warn lists leftover paths
-Type "7"
+# doctor (menu row 8): path_shadowing warn lists leftover paths
+Type "8"
 Sleep 2400ms
 Escape
 Sleep 700ms

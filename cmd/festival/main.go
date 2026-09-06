@@ -46,8 +46,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 				_, err := tui.RunLoop(cmd.Context(), tui.Options{Version: version})
 				return err
 			}
-			_, _ = fmt.Fprint(cmd.ErrOrStderr(), nonTTYBareMessage())
-			return cmd.Help()
+			return cli.BareInvocation(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cmd.Help)
 		},
 	}
 	root.Flags().BoolVar(&forceTUI, "tui", false, "force the interactive TUI (requires a terminal)")
@@ -67,7 +66,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 	cli.WrapJSONErrors(root)
 
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		cli.RenderError(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -77,13 +76,4 @@ func tuiLaunchDecision(force, stdinTTY, stdoutTTY bool) (bool, error) {
 		return false, fmt.Errorf("TUI requires an interactive terminal; use festival <command> or open a TTY")
 	}
 	return force || (stdinTTY && stdoutTTY), nil
-}
-
-func nonTTYBareMessage() string {
-	return `festival: no interactive terminal detected.
-
-Open a terminal and run:  festival
-Or use a subcommand:      festival install festival
-                          festival --help
-`
 }

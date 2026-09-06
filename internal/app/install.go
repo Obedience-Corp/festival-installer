@@ -102,7 +102,11 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 	}
 	if sourceName == state.OfficialSeedKey {
 		if err := ensureOfficialSeed(ctx, vo); err != nil {
-			return InstallResult{}, errpkg.Wrap("E_MARKETPLACE_SEED", err, "ensure official marketplace")
+			// Fatal here, unlike on the read paths, but the user still must not
+			// see the git chain. The coded error stays in the chain so
+			// errpkg.Code and --json keep reporting E_MARKETPLACE_SEED.
+			coded := errpkg.Wrap("E_MARKETPLACE_SEED", err, "ensure official marketplace")
+			return InstallResult{}, &MarketplaceSeedProblem{Err: coded, Fatal: true}
 		}
 	}
 

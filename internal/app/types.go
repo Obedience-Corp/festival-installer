@@ -78,10 +78,20 @@ type ListResult struct {
 	Packages []ListEntry `json:"packages"`
 }
 
+// Doctor check statuses. Pending is distinct from Warn on purpose: "you have
+// not finished setting up" is not "here is a mild concern about a working
+// install", and only Fail decides the exit code.
+const (
+	DoctorOK      = "ok"
+	DoctorWarn    = "warn"
+	DoctorPending = "pending"
+	DoctorFail    = "fail"
+)
+
 // DoctorCheck is one health check result.
 type DoctorCheck struct {
 	ID      string `json:"id"`
-	Status  string `json:"status"` // ok | warn | fail
+	Status  string `json:"status"` // ok | warn | pending | fail
 	Message string `json:"message"`
 }
 
@@ -121,6 +131,11 @@ type StatusSummary struct {
 	Dual             bool           `json:"dual,omitempty"`
 	ShadowNote       string         `json:"shadow_note,omitempty"`
 	Shadows          []ToolLocation `json:"shadows,omitempty"`
+	// Setup is the one authoritative answer to "how far along is this home",
+	// shared with doctor and the CLI. ManagedBin and ManagedBinOnPath above
+	// repeat two of its fields so existing TUI renders keep compiling; Setup is
+	// the field new code should read.
+	Setup SetupState `json:"setup"`
 	// Latest is channel-latest from a TUI/update probe; Status() never sets it.
 	Latest string `json:"latest,omitempty"`
 }

@@ -40,3 +40,18 @@ func Failure(w io.Writer, action, code, message string) error {
 		Error:         &ErrPayload{Code: code, Message: message},
 	})
 }
+
+// FailureWithData reports a failure while still carrying the data the command
+// already computed. Commands whose whole output is the diagnosis (doctor is the
+// case that forced this) would otherwise have to choose between an honest "ok"
+// field and a body a consumer can act on.
+func FailureWithData(w io.Writer, action, code, message string, data any) error {
+	return Print(w, Envelope{
+		OK:            false,
+		Action:        action,
+		SchemaVersion: SchemaVersion,
+		Warnings:      []string{},
+		Data:          data,
+		Error:         &ErrPayload{Code: code, Message: message},
+	})
+}

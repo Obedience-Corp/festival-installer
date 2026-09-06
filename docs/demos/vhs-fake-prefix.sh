@@ -11,9 +11,16 @@ if [[ ! -x ${PWD}/bin/festival ]]; then
 fi
 
 mode=${1:-package}
+case ${mode} in
+package | shadow) ;;
+*)
+	echo "vhs: unknown mode: ${mode} (want package or shadow)" >&2
+	return 1 2>/dev/null || exit 1
+	;;
+esac
 FAKE=$(mktemp -d /tmp/festival-vhs-fake-XXXXXX)
 CORE=${FAKE}/core
-mkdir -p "${FAKE}/usr/bin" "${FAKE}/usr/share/festival/shell" "${CORE}"
+mkdir -p "${FAKE}/usr/bin" "${FAKE}/usr/share/festival/shell" "${CORE}" "${FAKE}/home"
 cp "${PWD}/bin/festival" "${FAKE}/usr/bin/festival"
 chmod +x "${FAKE}/usr/bin/festival"
 
@@ -38,6 +45,7 @@ if [[ $mode == shadow ]]; then
 fi
 
 export PATH
+export HOME="${FAKE}/home"
 export TERM=xterm-256color
 export COLORTERM=truecolor
 export COLORFGBG='15;0'
@@ -45,3 +53,8 @@ export FESTIVAL_REDUCED_MOTION=1
 export FESTIVAL_HOME="${FAKE}/missing-home"
 hash -r
 export PS1=$'\033[38;5;208m❯\033[0m '
+
+# Hand the recorded shell back its ordinary behavior; a strict shell would exit
+# the recording on the first command that returns non-zero.
+set +e +u
+set +o pipefail

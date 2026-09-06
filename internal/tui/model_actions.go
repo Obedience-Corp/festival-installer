@@ -50,6 +50,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		pkg := m.list.Packages[m.cursor]
 		m.confirmYes = false
 		m.confirmArg = pkg.PackageID
+		m.confirmReturn = screenHome
 		m.screen = screenConfirm
 		switch pkg.Origin {
 		case "package":
@@ -74,7 +75,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		return m, nil
 	case screenConfirm:
 		if !m.confirmYes {
-			m.screen = screenHome
+			m.screen = m.confirmDeclineScreen()
+			m.confirmReturn = screenBoot
 			m.err = nil
 			return m, nil
 		}
@@ -94,6 +96,17 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m.startUpdate(true)
 		case "browse-install-unverified":
 			return m.installBrowseSelection(true)
+		case "tour-path":
+			return m.applyTourPathAppend()
+		case "tour-camp-init":
+			// No record key: whether a camp exists is asked of camp on the
+			// next load, which beats trusting camp init's exit status.
+			return m.launchTourStep("", launch.Spec{
+				Tool:  "camp",
+				Args:  []string{"init"},
+				Dir:   m.confirmArg,
+				Title: "camp init",
+			})
 		}
 		m.screen = screenHome
 		return m, nil
@@ -132,45 +145,73 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		return m, nil
 	case screenLaunchpad:
 		return m.launchSelected()
+	case screenTour:
+		return m.runTourStep()
+	}
+	return m, nil
+}
+
+// confirmDeclineScreen is where a declined confirmation returns to. Confirms
+// raised from the tour go back to the tour, so answering no does not throw the
+// user out of the thing they were working through. Every site that opens a
+// confirmation sets this, so a stale value cannot leak into the next one.
+func (m model) confirmDeclineScreen() screen {
+	if m.confirmReturn != screenBoot {
+		return m.confirmReturn
+	}
+	return screenHome
+}
+
+// openInstallScreen opens the channel picker, applying the same package and
+// leftover guards wherever the install is reached from.
+func (m model) openInstallScreen() (tea.Model, tea.Cmd) {
+	m.screen = screenInstall
+	m.channelIdx = 0
+	m.installKind = ""
+	m.installForce = false
+	switch {
+	case m.status.Action == "package" || m.status.Dual:
+		m.installKind = "package"
+	case m.status.Action == "unmanaged":
+		m.installKind = "leftover"
 	}
 	return m, nil
 }
 
 func (m model) openHomeItem() (tea.Model, tea.Cmd) {
-	switch m.cursor {
-	case 0:
-		m.screen = screenInstall
-		m.channelIdx = 0
-		m.installKind = ""
-		m.installForce = false
-		switch {
-		case m.status.Action == "package" || m.status.Dual:
-			m.installKind = "package"
-		case m.status.Action == "unmanaged":
-			m.installKind = "leftover"
-		}
+	item, ok := m.homeItemAt(m.cursor)
+	if !ok {
 		return m, nil
-	case 1:
+	}
+	switch item.id {
+	case homeTour:
+		m.screen = screenTour
+		m.cursor = 0
+		m.err = nil
+		return m, m.loadTour()
+	case homeInstall:
+		return m.openInstallScreen()
+	case homeUpdate:
 		m.screen = screenUpdate
 		return m.startUpdate(false)
-	case 2:
+	case homeList:
 		m.screen = screenList
 		return m, m.loadList()
-	case 3:
+	case homeBrowse:
 		m.screen = screenBrowse
 		m.productF, m.kindF = "", ""
 		return m, m.loadBrowse("", "")
-	case 4:
+	case homeUninstall:
 		m.screen = screenUninstall
 		return m, m.loadList()
-	case 5:
+	case homeMarketplace:
 		m.screen = screenMarketplace
 		m.marketMode = "list"
 		return m, m.loadMarkets()
-	case 6:
+	case homeDoctor:
 		m.screen = screenDoctor
 		return m, m.loadDoctor()
-	case 7:
+	case homeShell:
 		m.screen = screenShell
 		g, err := app.ShellGuidanceFor(m.ctx, "zsh")
 		m.shellBin = g.Bin
@@ -180,12 +221,12 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 			m.err = err
 		}
 		return m, nil
-	case 8:
+	case homeLaunchpad:
 		m.screen = screenLaunchpad
 		m.cursor = 0
 		m.err = nil
 		return m, nil
-	case 9:
+	case homeQuit:
 		return m, tea.Quit
 	}
 	return m, nil
@@ -325,7 +366,7 @@ func runInstall(ctx context.Context, channel string, allowUnverified, force bool
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "install-unverified", cause: err}
 			}
-			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Install failed", err, "")
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
 		for _, f := range res.Files {
@@ -360,7 +401,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 				res.Action = "package"
 			}
 			if warning == "" && err != nil {
-				warning = err.Error()
+				warning = app.FriendlyMessage(err)
 			}
 			if spec, ok := packageUpgradeSpec(res); ok {
 				return packageUpgradeMsg{spec: spec}
@@ -368,7 +409,7 @@ func runUpdate(ctx context.Context, allowUnverified bool, ps *progressStream) te
 			return updateOpDoneMsg(ps, res, warning)
 		}
 		if err != nil {
-			return opDoneMsg{stream: ps, title: "Update failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Update failed", err, "")
 		}
 		return updateOpDoneMsg(ps, res, warning)
 	}
@@ -467,12 +508,24 @@ func (m model) startUninstall(packageID string) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(runUninstall(ctx, packageID, ps), waitProgress(ps))
 }
 
+// opFailed builds the result-screen message for a failed operation. Every
+// failure path goes through here so the body is always the friendly rendering:
+// this screen is where a first-time install failure lands, and printing the
+// error chain there put raw git output in front of the newest users.
+func opFailed(ps *progressStream, title string, err error, note string) opDoneMsg {
+	body := app.FriendlyMessage(err)
+	if note != "" {
+		body += "\n\n" + note
+	}
+	return opDoneMsg{stream: ps, title: title, body: body, err: err, success: false}
+}
+
 func runUninstall(ctx context.Context, packageID string, ps *progressStream) tea.Cmd {
 	return func() tea.Msg {
 		defer ps.close()
 		res, err := app.UninstallPackage(ctx, packageID)
 		if err != nil {
-			return opDoneMsg{stream: ps, title: "Uninstall failed", body: err.Error(), err: err, success: false}
+			return opFailed(ps, "Uninstall failed", err, "")
 		}
 		body := res.Note
 		if body == "" {
@@ -521,7 +574,7 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 			if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
 				return consentNeededMsg{action: "browse-install-unverified", cause: err}
 			}
-			return opDoneMsg{stream: ps, title: "Install failed", body: err.Error() + "\n\n(selected " + entryID + " as " + target + ")", err: err, success: false}
+			return opFailed(ps, "Install failed", err, "(selected "+entryID+" as "+target+")")
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
 		for _, f := range res.Files {

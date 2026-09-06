@@ -2,16 +2,18 @@ package app
 
 import (
 	"context"
-
-	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
 // Status returns a summary for the TUI home screen.
 func Status(ctx context.Context) (StatusSummary, error) {
-	binDir, _ := state.BinDir(ctx)
+	setup, err := ResolveSetupState(ctx)
+	if err != nil {
+		return StatusSummary{}, err
+	}
 	sum := StatusSummary{
-		ManagedBin:       binDir,
-		ManagedBinOnPath: binDir != "" && dirOnPath(binDir),
+		ManagedBin:       setup.ManagedBin,
+		ManagedBinOnPath: setup.ManagedBinOnPath,
+		Setup:            setup,
 		Action:           "absent",
 	}
 	origin, err := DetectSuite(ctx)

@@ -26,11 +26,14 @@ record tape:
     just build
     vhs "{{tape}}"
 
+# The self-contained tapes. festival-launchpad.tape is excluded on purpose:
+# it needs a real camp and fest on PATH, which not every machine has.
 all:
     #!/usr/bin/env bash
     set -euo pipefail
     just build
+    vhs docs/demos/festival-first-run.tape
     vhs docs/demos/festival-home.tape
-    vhs docs/demos/festival-tour.tape
+    vhs docs/demos/festival-channels.tape
     vhs docs/demos/festival-package.tape
     vhs docs/demos/festival-shadow.tape

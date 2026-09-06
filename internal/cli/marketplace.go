@@ -24,8 +24,9 @@ func shortCommit(c string) string {
 	return c
 }
 
-// seedWarnings renders a seed warning for a jsonout envelope's warnings field.
-func seedWarnings(w *app.MarketplaceSeedWarning) []string {
+// seedWarnings renders a non-fatal seed problem for a jsonout envelope's
+// warnings field. Fatal seed problems travel as errors, not warnings.
+func seedWarnings(w *app.MarketplaceSeedProblem) []string {
 	if w == nil {
 		return nil
 	}
@@ -90,7 +91,7 @@ func newMarketplaceListCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			views, err := app.MarketplaceList(cmd.Context(), source.DefaultVerifyOptions(cmd.ErrOrStderr(), false))
-			var warning *app.MarketplaceSeedWarning
+			var warning *app.MarketplaceSeedProblem
 			if err != nil {
 				if !errors.As(err, &warning) {
 					return err
@@ -137,7 +138,7 @@ func newMarketplaceRefreshCommand() *cobra.Command {
 			}
 			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			views, err := app.MarketplaceRefresh(cmd.Context(), name, vo)
-			var warning *app.MarketplaceSeedWarning
+			var warning *app.MarketplaceSeedProblem
 			if err != nil {
 				if !errors.As(err, &warning) {
 					return err

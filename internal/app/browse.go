@@ -26,7 +26,7 @@ func Browse(ctx context.Context, opts BrowseOptions) (BrowseResult, error) {
 	}
 	res := BuildBrowseResult(pkgs, opts.Product, opts.Kind)
 	if seedErr != nil {
-		return res, &MarketplaceSeedWarning{Err: seedErr}
+		return res, &MarketplaceSeedProblem{Err: seedErr}
 	}
 	return res, nil
 }

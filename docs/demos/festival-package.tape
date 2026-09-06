@@ -1,4 +1,4 @@
-# festival package-origin TUI — just-built hub in a fake helper-adjacent prefix.
+# festival package-origin TUI: just-built hub in a fake helper-adjacent prefix.
 #
 # Record with: just vhs record docs/demos/festival-package.tape
 # Requires: just build (bin/festival). Do not record against live /usr/bin/festival.
@@ -34,26 +34,26 @@ Sleep 1800ms
 # home channel card (package, FlavorUnknown, no yay)
 Sleep 2200ms
 
-# doctor (key 7)
-Type "7"
+# doctor (menu row 8, one lower since Getting started took row 1)
+Type "8"
 Sleep 2200ms
 Escape
 Sleep 600ms
 
-# shell / PATH (key 8)
-Type "8"
+# shell / PATH (menu row 9)
+Type "9"
 Sleep 2000ms
 Escape
 Sleep 600ms
 
-# installed packages (key 3)
-Type "3"
+# installed packages (menu row 4)
+Type "4"
 Sleep 1600ms
 Escape
 Sleep 500ms
 
-# How you installed (key 1) — do not confirm a network install
-Type "1"
+# How you installed (menu row 2). Do not confirm a network install.
+Type "2"
 Sleep 1800ms
 Escape
 Sleep 700ms
