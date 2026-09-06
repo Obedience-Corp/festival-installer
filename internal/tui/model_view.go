@@ -555,27 +555,44 @@ func (m model) viewDoctor() string {
 		if !m.reduced {
 			spin = []string{"·", "°", "*", "✦"}[(m.frame+i)%4]
 		}
+		label := fmt.Sprintf("[%s %s] ", spin, doctorBadgeLabel(c.Status))
 		var badge string
 		switch c.Status {
-		case "ok":
-			badge = s.OK.Render(fmt.Sprintf("[%s ok] ", spin))
-		case "warn":
-			badge = s.Warn.Render(fmt.Sprintf("[%s warn] ", spin))
+		case app.DoctorOK:
+			badge = s.OK.Render(label)
+		case app.DoctorWarn:
+			badge = s.Warn.Render(label)
+		case app.DoctorPending:
+			badge = s.Muted.Render(label)
 		default:
-			badge = s.Err.Render(fmt.Sprintf("[%s fail] ", spin))
+			badge = s.Err.Render(label)
 		}
+		indent := strings.Repeat(" ", lipgloss.Width(label))
 		msg := c.ID + ": " + textsafe.Line(c.Message)
 		wrapped := wrapWords(msg, msgWidth)
 		for j, part := range wrapped {
 			if j == 0 {
 				b.WriteString(badge + s.Normal.Render(part))
 			} else {
-				b.WriteString(s.Muted.Render("         ") + s.Normal.Render(part))
+				b.WriteString(s.Muted.Render(indent) + s.Normal.Render(part))
 			}
 			b.WriteByte('\n')
 		}
 	}
 	return b.String()
+}
+
+// doctorBadgeLabel keeps the TUI badge word identical to the STATUS column the
+// CLI table prints. A fresh home is graded pending, and rendering that as fail
+// told the user the opposite of what "festival doctor" says and of the zero
+// exit code agents read.
+func doctorBadgeLabel(status string) string {
+	switch status {
+	case app.DoctorOK, app.DoctorWarn, app.DoctorPending:
+		return status
+	default:
+		return app.DoctorFail
+	}
 }
 
 func wrapWords(text string, width int) []string {
