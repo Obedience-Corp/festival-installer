@@ -54,10 +54,30 @@ func TestLoadTour_Errors(t *testing.T) {
 		}
 	})
 
-	t.Run("a relative home is refused", func(t *testing.T) {
+	// A malformed FESTIVAL_HOME degrades the same way an unreadable one does,
+	// because ResolveSetupState already reports it as an incomplete signal
+	// rather than an error. The tour renders, says its answers are unreliable,
+	// and doctor is where the path itself gets diagnosed.
+	t.Run("a relative home renders as unknown rather than failing", func(t *testing.T) {
+		tourHome(t)
 		t.Setenv("FESTIVAL_HOME", "relative/home")
-		if _, err := LoadTour(context.Background()); err == nil {
-			t.Fatal("expected an error for a relative FESTIVAL_HOME")
+		tour, err := LoadTour(context.Background())
+		if err != nil {
+			t.Fatalf("LoadTour: %v", err)
+		}
+		if len(tour.Steps) != 4 {
+			t.Fatalf("len(Steps) = %d, want 4", len(tour.Steps))
+		}
+		if !tour.SignalsUnknown {
+			t.Fatal("a home path the hub cannot use must be reported as unknown")
+		}
+		// Steps 1, 2 and 4 read from the installer home. Step 3 asks camp,
+		// whose registry has nothing to do with FESTIVAL_HOME, so it is
+		// deliberately not part of this assertion.
+		for _, key := range []TourStepKey{TourStepInstall, TourStepPath, TourStepFestNext} {
+			if st, _ := tour.Step(key); st.Done() {
+				t.Fatalf("step %q claimed done from a home that cannot be read", key)
+			}
 		}
 	})
 
