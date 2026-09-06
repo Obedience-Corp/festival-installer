@@ -81,7 +81,7 @@ func RunLoop(ctx context.Context, opts Options) (SessionResult, error) {
 			banner = "could not record tour progress: " + err.Error()
 			continue
 		}
-		banner = formatChildBanner(spec, res)
+		banner = childBanner(sess, spec, res)
 		// Loop: re-enter hub TUI on launchpad with status refresh via Init.
 	}
 }
@@ -118,6 +118,7 @@ func runOnce(ctx context.Context, opts Options, banner string, resume resumeStat
 			ResumeCursor:   fm.cursor,
 			ResumeScreen:   fm.screen,
 			RecordTourStep: fm.recordTourStep,
+			Banner:         fm.launchBanner,
 		}, nil
 	}
 	return SessionResult{Quit: true}, nil
@@ -128,6 +129,17 @@ func launchLabel(s launch.Spec) string {
 		return s.Title
 	}
 	return s.Tool
+}
+
+// childBanner is what the hub says on the way back from a child. A session that
+// asked for its own line gets it, but only on a clean exit: a child that failed
+// or was interrupted did not do the thing that line describes, and the generic
+// diagnosis is worth more to the user than a claim that is now wrong.
+func childBanner(sess SessionResult, spec launch.Spec, res launch.Result) string {
+	if sess.Banner != "" && res.Started && res.Signal == "" && res.ExitCode == 0 {
+		return sess.Banner
+	}
+	return formatChildBanner(spec, res)
 }
 
 // formatChildBanner distinguishes resolve/start failures from signalled or

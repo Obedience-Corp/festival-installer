@@ -210,6 +210,12 @@ type model struct {
 	// launch is not a tour step.
 	recordTourStep app.TourStepKey
 
+	// launchBanner replaces the generic "returned from ..." line when the
+	// pending launch's child exits cleanly. It is for a child whose own success
+	// still leaves the user with something to do, where the generic line would
+	// read as though the step were finished.
+	launchBanner string
+
 	// launchpad
 	launchEntries []launch.Entry
 

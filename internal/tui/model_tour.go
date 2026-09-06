@@ -36,13 +36,55 @@ func (m model) runTourStep() (tea.Model, tea.Cmd) {
 	case app.TourStepCampInit:
 		return m.confirmTourCampInit()
 	case app.TourStepFestNext:
+		return m.runTourFestNext()
+	}
+	return m, nil
+}
+
+// tourFestivalCreatedBanner is what the hub says on the way back from creating a
+// festival. The step is not finished by that child, and saying so here is the
+// only place the user finds out why the box is still empty.
+const tourFestivalCreatedBanner = "festival created, run this step again to start fest next in it"
+
+// runTourFestNext resolves the directory fest next has to run inside.
+//
+// fest next fails outside a festival directory, so launching it at the camp root
+// could never finish this step. When the camp holds no festival yet the step
+// hands the user fest's own create flow instead and stays unfinished, because
+// creating a festival is not the same as running fest next in one. Both branches
+// go through the launchpad's suspend, exec and resume loop; neither spawns a
+// child here.
+func (m model) runTourFestNext() (tea.Model, tea.Cmd) {
+	root := launch.DetectCampaignRoot("")
+	dir, err := app.ResolveFestivalDir(m.ctx, root)
+	switch {
+	case err == nil:
 		return m.launchTourStep(app.TourStepFestNext, launch.Spec{
 			Tool:  "fest",
 			Args:  []string{"next"},
+			Dir:   dir,
 			Title: "fest next",
 		})
+	case errpkg.Code(err) == app.CodeNoFestival:
+		// Bare `fest create festival` opens fest's own interactive form, so the
+		// user names it themselves rather than having the hub invent a name.
+		next, cmd := m.launchTourStep("", launch.Spec{
+			Tool:  "fest",
+			Args:  []string{"create", "festival"},
+			Dir:   root,
+			Title: "fest create festival",
+		})
+		nm, ok := next.(model)
+		if !ok || nm.pendingLaunch == nil {
+			return next, cmd
+		}
+		nm.launchBanner = tourFestivalCreatedBanner
+		return nm, cmd
+	default:
+		m.err = err
+		m.screen = screenTour
+		return m, nil
 	}
-	return m, nil
 }
 
 // skipTourStep records that the user passed over the selected step. A skipped
@@ -174,6 +216,7 @@ func (m model) launchTourStep(record app.TourStepKey, spec launch.Spec) (tea.Mod
 	m.confirmReturn = screenBoot
 	m.screen = screenTour
 	m.recordTourStep = record
+	m.launchBanner = ""
 	cp := spec
 	m.pendingLaunch = &cp
 	return m, tea.Quit

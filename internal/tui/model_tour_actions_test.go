@@ -247,9 +247,44 @@ func TestRunTourStep_ApprovingCampInitLaunchesInTheNamedDirectory(t *testing.T) 
 	}
 }
 
-func TestRunTourStep_FestNextLaunchesAndAsksForItsExitStatus(t *testing.T) {
+// fakeFestListing puts a fest on PATH that answers with body. The script uses
+// only shell builtins because PATH here holds nothing but this fake, so a script
+// calling cat would print nothing and read as an empty camp.
+func fakeFestListing(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\necho '" + body + "'\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "fest"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake fest: %v", err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// campRootAt makes a directory the hub detects as a camp and moves into it, so
+// DetectCampaignRoot answers with a temp dir rather than whichever camp the
+// developer happens to be running the tests from. It returns the path as the
+// process sees it, which is what DetectCampaignRoot will compute.
+func campRootAt(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".campaign"), 0o755); err != nil {
+		t.Fatalf("mkdir .campaign: %v", err)
+	}
+	t.Chdir(root)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	return wd
+}
+
+// TestRunTourStep_FestNextRunsInsideTheResolvedFestival is the regression test
+// for a step that could never finish. fest next fails outside a festival
+// directory, so launching it at the camp root left the box permanently empty.
+func TestRunTourStep_FestNextRunsInsideTheResolvedFestival(t *testing.T) {
 	tourEnv(t)
-	fakeToolOnPath(t, "fest")
+	campRootAt(t)
+	fakeFestListing(t, `{"active":[{"name":"a","path":"/camp/festivals/active/a","status":"active"}],"total":1}`)
 
 	m := tourAt(t, app.TourStepFestNext)
 	next, cmd := m.handleEnter()
@@ -267,11 +302,72 @@ func TestRunTourStep_FestNextLaunchesAndAsksForItsExitStatus(t *testing.T) {
 	if got := strings.Join(nm.pendingLaunch.Args, " "); got != "next" {
 		t.Fatalf("args = %q, want next", got)
 	}
+	if got := nm.pendingLaunch.Dir; got != "/camp/festivals/active/a" {
+		t.Fatalf("dir = %q, want the resolved festival directory", got)
+	}
 	if nm.recordTourStep != app.TourStepFestNext {
 		t.Fatalf("recordTourStep = %q, want %q", nm.recordTourStep, app.TourStepFestNext)
 	}
+	if nm.launchBanner != "" {
+		t.Fatalf("banner = %q: running fest next needs no explanation", nm.launchBanner)
+	}
 	if nm.screen != screenTour {
 		t.Fatalf("screen = %v, want screenTour", nm.screen)
+	}
+}
+
+// TestRunTourStep_FestNextCreatesAFestivalWhenTheCampHasNone covers the other
+// branch. Bare `fest create festival` opens fest's own interactive form, and the
+// step stays unfinished because creating a festival is not running fest next.
+func TestRunTourStep_FestNextCreatesAFestivalWhenTheCampHasNone(t *testing.T) {
+	tourEnv(t)
+	root := campRootAt(t)
+	fakeFestListing(t, `{"total":0}`)
+
+	m := tourAt(t, app.TourStepFestNext)
+	next, cmd := m.handleEnter()
+	nm := next.(model)
+
+	if nm.pendingLaunch == nil {
+		t.Fatal("an empty camp must still offer a way forward, not a dead step")
+	}
+	if cmd == nil {
+		t.Fatal("the step must quit so the child gets the terminal")
+	}
+	if got := strings.Join(nm.pendingLaunch.Args, " "); got != "create festival" {
+		t.Fatalf("args = %q, want create festival", got)
+	}
+	if got := nm.pendingLaunch.Dir; got != root {
+		t.Fatalf("dir = %q, want the camp root %q", got, root)
+	}
+	if nm.recordTourStep != "" {
+		t.Fatalf("recordTourStep = %q: creating a festival must not tick the step", nm.recordTourStep)
+	}
+	if nm.launchBanner == "" {
+		t.Fatal("the user must be told why the step is still empty after creating a festival")
+	}
+	if nm.err != nil {
+		t.Fatalf("an empty camp is not an error: %v", nm.err)
+	}
+}
+
+// TestRunTourStep_FestNextReportsAnUnreadableListing keeps a broken fest from
+// looking like an empty camp, which would offer to create a festival that may
+// already exist.
+func TestRunTourStep_FestNextReportsAnUnreadableListing(t *testing.T) {
+	tourEnv(t)
+	campRootAt(t)
+	fakeFestListing(t, `not json at all`)
+
+	m := tourAt(t, app.TourStepFestNext)
+	next, _ := m.handleEnter()
+	nm := next.(model)
+
+	if nm.err == nil {
+		t.Fatal("a listing the hub cannot read must surface an error")
+	}
+	if nm.pendingLaunch != nil {
+		t.Fatal("a listing the hub cannot read must not schedule a launch")
 	}
 }
 

@@ -56,6 +56,59 @@ func TestFormatChildBanner(t *testing.T) {
 	}
 }
 
+// TestChildBanner_SessionLineOnlySurvivesACleanExit pins when a session's own
+// banner replaces the generic one. The tour uses it to say a festival was
+// created and the step still has to be run; on a child that failed or was
+// interrupted that sentence would be a claim about work that did not happen.
+func TestChildBanner_SessionLineOnlySurvivesACleanExit(t *testing.T) {
+	const line = "festival created, run this step again to start fest next in it"
+	spec := launch.Spec{Tool: "fest", Title: "fest create festival"}
+	tests := []struct {
+		name    string
+		session SessionResult
+		res     launch.Result
+		want    string
+	}{
+		{
+			name:    "clean exit keeps the session line",
+			session: SessionResult{Banner: line},
+			res:     launch.Result{Started: true, ExitCode: 0},
+			want:    line,
+		},
+		{
+			name:    "a non-zero exit falls back to the generic line",
+			session: SessionResult{Banner: line},
+			res:     launch.Result{Started: true, ExitCode: 1, Err: errors.New("exit 1")},
+			want:    "returned from fest create festival (exit 1)",
+		},
+		{
+			name:    "an interrupted child falls back to the generic line",
+			session: SessionResult{Banner: line},
+			res:     launch.Result{Started: true, ExitCode: 130, Signal: "interrupt"},
+			want:    "returned from fest create festival (interrupt), back in festival hub",
+		},
+		{
+			name:    "a child that never started falls back to the generic line",
+			session: SessionResult{Banner: line},
+			res:     launch.Result{Started: false, ExitCode: -1},
+			want:    "could not launch fest create festival",
+		},
+		{
+			name:    "an ordinary launch keeps the generic line",
+			session: SessionResult{},
+			res:     launch.Result{Started: true, ExitCode: 0},
+			want:    "returned from fest create festival, back in festival hub",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := childBanner(tc.session, spec, tc.res); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHomeDigitZeroQuits(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.reduced = true

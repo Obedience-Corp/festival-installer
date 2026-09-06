@@ -128,6 +128,12 @@ func TestTourStepFestNext_SaysWhatDoneMeans(t *testing.T) {
 	if !strings.Contains(last.Detail, "launched") {
 		t.Fatalf("step detail must say completion means launching from here, got %q", last.Detail)
 	}
+	// fest next only works inside a festival, and the step creates one when the
+	// camp has none. A user who lands on the create flow should have read that
+	// here first rather than meeting it as a surprise.
+	if !strings.Contains(last.Detail, "festival") || !strings.Contains(last.Detail, "create") {
+		t.Fatalf("step detail must say it runs inside a festival and creates one when there is none, got %q", last.Detail)
+	}
 }
 
 func TestTour_NextStepAndComplete(t *testing.T) {

@@ -93,10 +93,11 @@ func TourSteps() []TourStep {
 			State:  TourStepTodo,
 		},
 		{
-			Key:    TourStepFestNext,
-			Title:  "Run fest next in that camp",
-			Detail: "done when fest next is launched from here and exits cleanly, which needs a festival in the camp",
-			State:  TourStepTodo,
+			Key:   TourStepFestNext,
+			Title: "Run fest next inside a festival",
+			Detail: "done when fest next is launched from here inside a festival the hub found " +
+				"in your camp, and the hub offers to create one when the camp has none",
+			State: TourStepTodo,
 		},
 	}
 }
