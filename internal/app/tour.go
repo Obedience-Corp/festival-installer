@@ -63,6 +63,11 @@ func (s TourStep) Done() bool { return s.State == TourStepDone }
 type Tour struct {
 	Steps     []TourStep `json:"steps"`
 	Dismissed bool       `json:"dismissed"`
+	// SignalsUnknown is true when the hub could not read this installer home,
+	// so the first two steps are showing an absence of evidence rather than
+	// evidence of absence. Renderers say so instead of letting the list imply
+	// that nothing has been installed.
+	SignalsUnknown bool `json:"signals_unknown,omitempty"`
 }
 
 // TourSteps is the compiled-in step list with nothing observed yet. It is the
@@ -177,6 +182,7 @@ func LoadTour(ctx context.Context) (Tour, error) {
 		applyTourStepState(&t.Steps[i], sig, stored[state.HubStateTourStepKey(string(t.Steps[i].Key))])
 	}
 	t.Dismissed = stored[state.HubStateTourDismissed] == tourRecordDone
+	t.SignalsUnknown = setup.Unknown()
 	return t, nil
 }
 

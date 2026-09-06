@@ -252,3 +252,28 @@ func TestTour_ShowsTheChildReturnBanner(t *testing.T) {
 		t.Fatalf("the tour must show what happened to the child:\n%s", out)
 	}
 }
+
+func TestTour_UnknownSignalsAreSaidOutLoud(t *testing.T) {
+	m := tourModel(t)
+	m.width, m.height = 80, 30
+
+	if out := m.View(); strings.Contains(out, "could not read the installer home") {
+		t.Fatal("a readable home must not carry the warning")
+	}
+
+	m.tour.SignalsUnknown = true
+	out := m.View()
+	if !strings.Contains(out, "could not read the installer home") {
+		t.Fatalf("an unreadable home must say so on the tour:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if lipgloss.Width(line) > 80 {
+			t.Fatalf("the warning pushed a line to %d columns: %q", lipgloss.Width(line), line)
+		}
+	}
+	for _, st := range app.TourSteps() {
+		if !strings.Contains(out, st.Title) {
+			t.Fatalf("step %q disappeared when signals were unknown", st.Title)
+		}
+	}
+}

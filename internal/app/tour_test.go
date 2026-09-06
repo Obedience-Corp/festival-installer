@@ -577,3 +577,46 @@ func TestHubStateValues_ReadsEveryKeyInOneOpen(t *testing.T) {
 		}
 	})
 }
+
+// TestLoadTour_UnreadableHomeIsReportedNotImplied is the tour's half of the
+// same finding the home setup card had: an unticked box during an incident
+// means the hub cannot tell, and the tour has to say which one it is.
+func TestLoadTour_UnreadableHomeIsReportedNotImplied(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read a mode 000 file, so this case cannot be staged")
+	}
+	ctx := context.Background()
+	home := tourHome(t)
+
+	if err := SetHubState(ctx, state.HubStateTourStepKey(string(TourStepFestNext)), "done"); err != nil {
+		t.Fatalf("SetHubState: %v", err)
+	}
+	dbPath := state.DatabasePath(home)
+	if err := os.Chmod(dbPath, 0o000); err != nil {
+		t.Fatalf("chmod db: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dbPath, 0o600) })
+
+	if _, err := LoadTour(ctx); err == nil {
+		t.Fatal("a home whose database will not open must not silently report a clean tour")
+	}
+}
+
+func TestLoadTour_SignalsUnknownTravelsWithTheTour(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup SetupState
+		want  bool
+	}{
+		{name: "readable home", setup: SetupState{}},
+		{name: "unreadable home", setup: SetupState{SignalsIncomplete: true}, want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tour := Tour{Steps: TourSteps(), SignalsUnknown: tc.setup.Unknown()}
+			if tour.SignalsUnknown != tc.want {
+				t.Fatalf("SignalsUnknown = %v, want %v", tour.SignalsUnknown, tc.want)
+			}
+		})
+	}
+}
