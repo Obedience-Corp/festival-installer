@@ -64,9 +64,9 @@ type Tour struct {
 	Steps     []TourStep `json:"steps"`
 	Dismissed bool       `json:"dismissed"`
 	// SignalsUnknown is true when the hub could not read this installer home,
-	// so the first two steps are showing an absence of evidence rather than
-	// evidence of absence. Renderers say so instead of letting the list imply
-	// that nothing has been installed.
+	// so the steps are showing an absence of evidence rather than evidence of
+	// absence. Renderers say so instead of letting the list imply that nothing
+	// has been done.
 	SignalsUnknown bool `json:"signals_unknown,omitempty"`
 }
 
@@ -174,15 +174,22 @@ func LoadTour(ctx context.Context) (Tour, error) {
 	// One open for every key. Opening the database runs the migration ledger
 	// check, so a read per key would take SQLite's write lock five times over
 	// to read five rows.
-	stored, err := HubStateValues(ctx, keys...)
-	if err != nil {
-		return Tour{}, err
+	//
+	// A home the hub cannot read is reported as unknown rather than returned as
+	// an error. A tour that refuses to render leaves the user with an error code
+	// and no steps, which is worse than one that shows the steps and says which
+	// of its answers it could not check.
+	stored, storeErr := HubStateValues(ctx, keys...)
+	unknown := setup.Unknown()
+	if storeErr != nil {
+		stored = nil
+		unknown = true
 	}
 	for i := range t.Steps {
 		applyTourStepState(&t.Steps[i], sig, stored[state.HubStateTourStepKey(string(t.Steps[i].Key))])
 	}
 	t.Dismissed = stored[state.HubStateTourDismissed] == tourRecordDone
-	t.SignalsUnknown = setup.Unknown()
+	t.SignalsUnknown = unknown
 	return t, nil
 }
 

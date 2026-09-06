@@ -578,17 +578,18 @@ func TestHubStateValues_ReadsEveryKeyInOneOpen(t *testing.T) {
 	})
 }
 
-// TestLoadTour_UnreadableHomeIsReportedNotImplied is the tour's half of the
-// same finding the home setup card had: an unticked box during an incident
-// means the hub cannot tell, and the tour has to say which one it is.
-func TestLoadTour_UnreadableHomeIsReportedNotImplied(t *testing.T) {
+// TestLoadTour_UnreadableHomeStillRenders is the tour's half of the same
+// finding the home setup card had. An unticked box during an incident means the
+// hub cannot tell, not that the work is outstanding, and a tour that refuses to
+// render leaves the user with an error code and no steps at all.
+func TestLoadTour_UnreadableHomeStillRenders(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can read a mode 000 file, so this case cannot be staged")
 	}
 	ctx := context.Background()
 	home := tourHome(t)
 
-	if err := SetHubState(ctx, state.HubStateTourStepKey(string(TourStepFestNext)), "done"); err != nil {
+	if err := SetHubState(ctx, state.HubStateTourStepKey(string(TourStepFestNext)), tourRecordDone); err != nil {
 		t.Fatalf("SetHubState: %v", err)
 	}
 	dbPath := state.DatabasePath(home)
@@ -597,8 +598,21 @@ func TestLoadTour_UnreadableHomeIsReportedNotImplied(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dbPath, 0o600) })
 
-	if _, err := LoadTour(ctx); err == nil {
-		t.Fatal("a home whose database will not open must not silently report a clean tour")
+	tour, err := LoadTour(ctx)
+	if err != nil {
+		t.Fatalf("LoadTour on an unreadable home: %v", err)
+	}
+	if len(tour.Steps) != 4 {
+		t.Fatalf("len(Steps) = %d, want 4: the tour must still render", len(tour.Steps))
+	}
+	if !tour.SignalsUnknown {
+		t.Fatal("an unreadable home must be reported as unknown")
+	}
+	if tour.Complete() {
+		t.Fatal("an unreadable home must not read as a finished tour")
+	}
+	if step, _ := tour.Step(TourStepFestNext); step.Done() {
+		t.Fatal("a recorded step must not be claimed done from a database that would not open")
 	}
 }
 

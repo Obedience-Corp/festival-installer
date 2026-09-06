@@ -28,10 +28,10 @@ func (m model) viewTour() string {
 	b.WriteString("  " + s.Title.Render("Getting started") + "\n")
 	b.WriteString("  " + s.Muted.Render("four steps from an empty machine to a running fest next") + "\n")
 	if m.tour.SignalsUnknown {
-		// The first two steps read from the installer home. When that could not
-		// be read, an unticked box means the hub cannot tell, not that the work
-		// is outstanding, and saying which one it is belongs on screen.
-		b.WriteString("  " + s.StatusWarn.Render("could not read the installer home, so steps 1 and 2 may be out of date") + "\n")
+		// The steps read from the installer home. When that could not be read,
+		// an unticked box means the hub cannot tell, not that the work is
+		// outstanding, and which of the two it is belongs on screen.
+		b.WriteString("  " + s.StatusWarn.Render("could not read the installer home, these may be out of date") + "\n")
 	}
 	b.WriteString("\n")
 
