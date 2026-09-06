@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 )
@@ -27,6 +30,40 @@ func TestViewDoctor_GradesPendingAsPendingNotFail(t *testing.T) {
 	}
 	if strings.Contains(got, "fail") {
 		t.Fatalf("doctor screen grades a pending check as fail:\n%s", got)
+	}
+}
+
+// TestDoctorBadgeStyle_ColoursMatchTheWords guards the half of the fix a word
+// check cannot see. The label and the colour are two separate decisions, and
+// "pending" painted in the error red still tells the reader their machine is
+// broken.
+func TestDoctorBadgeStyle_ColoursMatchTheWords(t *testing.T) {
+	s := newModel(Options{Version: "test"}).styles
+	colour := func(status string) string {
+		return fmt.Sprintf("%v", doctorBadgeStyle(status, s).GetForeground())
+	}
+	want := func(c lipgloss.TerminalColor) string { return fmt.Sprintf("%v", c) }
+
+	if colour(app.DoctorPending) == colour(app.DoctorFail) {
+		t.Fatal("a pending check is painted in the failure colour")
+	}
+
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{app.DoctorOK, want(s.OK.GetForeground())},
+		{app.DoctorWarn, want(s.Warn.GetForeground())},
+		{app.DoctorPending, want(s.Muted.GetForeground())},
+		{app.DoctorFail, want(s.Err.GetForeground())},
+		{"a status the hub has never heard of", want(s.Err.GetForeground())},
+	}
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			if got := colour(tt.status); got != tt.want {
+				t.Fatalf("badge colour = %s, want %s", got, tt.want)
+			}
+		})
 	}
 }
 

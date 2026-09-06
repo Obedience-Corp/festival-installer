@@ -11,6 +11,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/anim"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/components"
+	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 func (m model) View() string {
@@ -556,17 +557,7 @@ func (m model) viewDoctor() string {
 			spin = []string{"·", "°", "*", "✦"}[(m.frame+i)%4]
 		}
 		label := fmt.Sprintf("[%s %s] ", spin, doctorBadgeLabel(c.Status))
-		var badge string
-		switch c.Status {
-		case app.DoctorOK:
-			badge = s.OK.Render(label)
-		case app.DoctorWarn:
-			badge = s.Warn.Render(label)
-		case app.DoctorPending:
-			badge = s.Muted.Render(label)
-		default:
-			badge = s.Err.Render(label)
-		}
+		badge := doctorBadgeStyle(c.Status, s).Render(label)
 		indent := strings.Repeat(" ", lipgloss.Width(label))
 		msg := c.ID + ": " + textsafe.Line(c.Message)
 		wrapped := wrapWords(msg, msgWidth)
@@ -592,6 +583,22 @@ func doctorBadgeLabel(status string) string {
 		return status
 	default:
 		return app.DoctorFail
+	}
+}
+
+// doctorBadgeStyle picks the colour for a check's badge. Pending is muted rather
+// than red: the word and the colour have to agree, because a reader takes in the
+// colour first and an unfinished setup is not a broken machine.
+func doctorBadgeStyle(status string, s theme.Styles) lipgloss.Style {
+	switch status {
+	case app.DoctorOK:
+		return s.OK
+	case app.DoctorWarn:
+		return s.Warn
+	case app.DoctorPending:
+		return s.Muted
+	default:
+		return s.Err
 	}
 }
 
