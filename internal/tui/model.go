@@ -216,6 +216,12 @@ type model struct {
 	// read as though the step were finished.
 	launchBanner string
 
+	// pendingThen is a second child to run after the pending launch exits
+	// cleanly, on the same suspend and resume cycle. It exists so a step whose
+	// work is two commands finishes in one pass; both still go through the
+	// launchpad, which stays the only thing that runs a child.
+	pendingThen *launch.Spec
+
 	// launchpad
 	launchEntries []launch.Entry
 

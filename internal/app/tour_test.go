@@ -125,14 +125,13 @@ func TestTourStepFestNext_SaysWhatDoneMeans(t *testing.T) {
 	if last.Key != TourStepFestNext {
 		t.Fatalf("last step is %q, want %q", last.Key, TourStepFestNext)
 	}
-	if !strings.Contains(last.Detail, "launched") {
-		t.Fatalf("step detail must say completion means launching from here, got %q", last.Detail)
-	}
-	// fest next only works inside a festival, and the step creates one when the
-	// camp has none. A user who lands on the create flow should have read that
-	// here first rather than meeting it as a surprise.
-	if !strings.Contains(last.Detail, "festival") || !strings.Contains(last.Detail, "create") {
-		t.Fatalf("step detail must say it runs inside a festival and creates one when there is none, got %q", last.Detail)
+	// The step runs fest next somewhere it will work, and scaffolds a workflow
+	// when the camp has nothing. A user whose camp gets a new directory should
+	// have read that here first rather than meeting it as a surprise.
+	for _, want := range []string{"fest next", "workflow", "scaffolds"} {
+		if !strings.Contains(last.Detail, want) {
+			t.Fatalf("step detail must mention %q, got %q", want, last.Detail)
+		}
 	}
 }
 

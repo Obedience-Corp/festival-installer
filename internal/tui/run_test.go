@@ -109,6 +109,31 @@ func TestChildBanner_SessionLineOnlySurvivesACleanExit(t *testing.T) {
 	}
 }
 
+// TestCleanExit is the one definition of "the child did its job", used both to
+// decide whether a chained second child runs and whether a tour step ticks. A
+// signalled child is deliberately not clean: Ctrl+C out of a tool means the
+// user stopped it, not that it succeeded.
+func TestCleanExit(t *testing.T) {
+	tests := []struct {
+		name string
+		res  launch.Result
+		want bool
+	}{
+		{"started and returned zero", launch.Result{Started: true, ExitCode: 0}, true},
+		{"non-zero exit", launch.Result{Started: true, ExitCode: 1}, false},
+		{"interrupted", launch.Result{Started: true, ExitCode: 130, Signal: "interrupt"}, false},
+		{"never started", launch.Result{Started: false, ExitCode: -1}, false},
+		{"never started but zero", launch.Result{Started: false, ExitCode: 0}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := cleanExit(tc.res); got != tc.want {
+				t.Fatalf("cleanExit = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHomeDigitZeroQuits(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.reduced = true

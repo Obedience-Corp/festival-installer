@@ -247,13 +247,18 @@ func TestRunTourStep_ApprovingCampInitLaunchesInTheNamedDirectory(t *testing.T) 
 	}
 }
 
-// fakeFestListing puts a fest on PATH that answers with body. The script uses
-// only shell builtins because PATH here holds nothing but this fake, so a script
-// calling cat would print nothing and read as an empty camp.
+// fakeFestListing puts a fest on PATH that answers list with body and answers
+// next according to whether the directory holds a .runnable marker. The script
+// uses only shell builtins because PATH here holds nothing but this fake.
 func fakeFestListing(t *testing.T, body string) {
 	t.Helper()
 	dir := t.TempDir()
-	script := "#!/bin/sh\necho '" + body + "'\nexit 0\n"
+	script := "#!/bin/sh\n" +
+		"case \"$1\" in\n" +
+		"  list) echo '" + body + "' ;;\n" +
+		"  next) if [ -f .runnable ]; then exit 0; fi; exit 1 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
 	if err := os.WriteFile(filepath.Join(dir, "fest"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake fest: %v", err)
 	}
@@ -278,13 +283,27 @@ func campRootAt(t *testing.T) string {
 	return wd
 }
 
+// runnableFestival makes a real directory fest's fake will accept.
+func runnableFestival(t *testing.T, camp string) string {
+	t.Helper()
+	dir := filepath.Join(camp, "festivals", "active", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir festival: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".runnable"), nil, 0o644); err != nil {
+		t.Fatalf("mark runnable: %v", err)
+	}
+	return dir
+}
+
 // TestRunTourStep_FestNextRunsInsideTheResolvedFestival is the regression test
 // for a step that could never finish. fest next fails outside a festival
 // directory, so launching it at the camp root left the box permanently empty.
 func TestRunTourStep_FestNextRunsInsideTheResolvedFestival(t *testing.T) {
 	tourEnv(t)
-	campRootAt(t)
-	fakeFestListing(t, `{"active":[{"name":"a","path":"/camp/festivals/active/a","status":"active"}],"total":1}`)
+	camp := campRootAt(t)
+	fest := runnableFestival(t, camp)
+	fakeFestListing(t, `{"active":[{"name":"demo","path":"`+fest+`","status":"active"}],"total":1}`)
 
 	m := tourAt(t, app.TourStepFestNext)
 	next, cmd := m.handleEnter()
@@ -296,14 +315,14 @@ func TestRunTourStep_FestNextRunsInsideTheResolvedFestival(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the step must quit so the child gets the terminal")
 	}
-	if got := nm.pendingLaunch.Tool; got != "fest" {
-		t.Fatalf("tool = %q, want fest", got)
-	}
 	if got := strings.Join(nm.pendingLaunch.Args, " "); got != "next" {
 		t.Fatalf("args = %q, want next", got)
 	}
-	if got := nm.pendingLaunch.Dir; got != "/camp/festivals/active/a" {
-		t.Fatalf("dir = %q, want the resolved festival directory", got)
+	if nm.pendingLaunch.Dir != fest {
+		t.Fatalf("dir = %q, want the resolved festival %q", nm.pendingLaunch.Dir, fest)
+	}
+	if nm.pendingThen != nil {
+		t.Fatal("a festival that already runs needs no second child")
 	}
 	if nm.recordTourStep != app.TourStepFestNext {
 		t.Fatalf("recordTourStep = %q, want %q", nm.recordTourStep, app.TourStepFestNext)
@@ -311,43 +330,113 @@ func TestRunTourStep_FestNextRunsInsideTheResolvedFestival(t *testing.T) {
 	if nm.launchBanner != "" {
 		t.Fatalf("banner = %q: running fest next needs no explanation", nm.launchBanner)
 	}
-	if nm.screen != screenTour {
-		t.Fatalf("screen = %v, want screenTour", nm.screen)
-	}
 }
 
-// TestRunTourStep_FestNextCreatesAFestivalWhenTheCampHasNone covers the other
-// branch. Bare `fest create festival` opens fest's own interactive form, and the
-// step stays unfinished because creating a festival is not running fest next.
-func TestRunTourStep_FestNextCreatesAFestivalWhenTheCampHasNone(t *testing.T) {
+// TestRunTourStep_FestNextScaffoldsAWorkflowWhenTheCampHasNothing covers the
+// empty camp. A brand new festival would fail its own validation, so the step
+// scaffolds a standalone workflow, which fest starts a run for as it writes it,
+// and runs fest next there in the same pass.
+func TestRunTourStep_FestNextScaffoldsAWorkflowWhenTheCampHasNothing(t *testing.T) {
 	tourEnv(t)
-	root := campRootAt(t)
+	camp := campRootAt(t)
 	fakeFestListing(t, `{"total":0}`)
 
 	m := tourAt(t, app.TourStepFestNext)
 	next, cmd := m.handleEnter()
 	nm := next.(model)
 
-	if nm.pendingLaunch == nil {
+	if nm.pendingLaunch == nil || cmd == nil {
 		t.Fatal("an empty camp must still offer a way forward, not a dead step")
 	}
-	if cmd == nil {
-		t.Fatal("the step must quit so the child gets the terminal")
+	args := nm.pendingLaunch.Args
+	if len(args) < 3 || args[0] != "create" || args[1] != "workflow" {
+		t.Fatalf("args = %v, want a create workflow launch", args)
 	}
-	if got := strings.Join(nm.pendingLaunch.Args, " "); got != "create festival" {
-		t.Fatalf("args = %q, want create festival", got)
+	if args[len(args)-2] != "--steps" || args[len(args)-1] == "" {
+		t.Fatalf("the workflow must be scaffolded from compiled-in steps, got %v", args)
 	}
-	if got := nm.pendingLaunch.Dir; got != root {
-		t.Fatalf("dir = %q, want the camp root %q", got, root)
+	wantDir := filepath.Join(camp, "workflow", app.GettingStartedWorkflowName)
+	if nm.pendingLaunch.Dir != wantDir {
+		t.Fatalf("dir = %q, want %q", nm.pendingLaunch.Dir, wantDir)
 	}
-	if nm.recordTourStep != "" {
-		t.Fatalf("recordTourStep = %q: creating a festival must not tick the step", nm.recordTourStep)
+	if nm.pendingThen == nil {
+		t.Fatal("scaffolding must be followed by fest next in the same pass")
+	}
+	if got := strings.Join(nm.pendingThen.Args, " "); got != "next" {
+		t.Fatalf("second child args = %q, want next", got)
+	}
+	if nm.pendingThen.Dir != wantDir {
+		t.Fatalf("second child dir = %q, want %q", nm.pendingThen.Dir, wantDir)
+	}
+	if nm.recordTourStep != app.TourStepFestNext {
+		t.Fatalf("recordTourStep = %q, want the step to tick on a clean pass", nm.recordTourStep)
 	}
 	if nm.launchBanner == "" {
-		t.Fatal("the user must be told why the step is still empty after creating a festival")
+		t.Fatal("writing a directory into the user's camp must be reported")
 	}
 	if nm.err != nil {
 		t.Fatalf("an empty camp is not an error: %v", nm.err)
+	}
+}
+
+// TestRunTourStep_FestNextStartsAFinishedWorkflowAgain covers the repeat visit.
+// fest next refuses in a workflow whose last run completed, and scaffolding over
+// it fails because fest will not overwrite an existing WORKFLOW.md.
+func TestRunTourStep_FestNextStartsAFinishedWorkflowAgain(t *testing.T) {
+	tourEnv(t)
+	camp := campRootAt(t)
+	wf := filepath.Join(camp, "workflow", app.GettingStartedWorkflowName)
+	if err := os.MkdirAll(filepath.Join(wf, ".workflow"), 0o755); err != nil {
+		t.Fatalf("mkdir workflow: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wf, "WORKFLOW.md"), []byte("# wf"), 0o644); err != nil {
+		t.Fatalf("write WORKFLOW.md: %v", err)
+	}
+	fakeFestListing(t, `{"total":0}`)
+
+	m := tourAt(t, app.TourStepFestNext)
+	next, _ := m.handleEnter()
+	nm := next.(model)
+
+	if nm.pendingLaunch == nil {
+		t.Fatal("a finished workflow must be restartable, not a dead end")
+	}
+	if got := strings.Join(nm.pendingLaunch.Args, " "); got != "workflow start" {
+		t.Fatalf("args = %q, want workflow start", got)
+	}
+	if nm.pendingLaunch.Dir != wf {
+		t.Fatalf("dir = %q, want %q", nm.pendingLaunch.Dir, wf)
+	}
+	if nm.pendingThen == nil || strings.Join(nm.pendingThen.Args, " ") != "next" {
+		t.Fatal("starting a run must be followed by fest next in the same pass")
+	}
+}
+
+// TestRunTourStep_FestNextWillNotScaffoldOverACampItCouldNotCheck is the guard
+// on the probe bound. Giving up early means the answer is unknown, and dropping
+// a getting started workflow into a camp full of real festivals is not it.
+func TestRunTourStep_FestNextWillNotScaffoldOverACampItCouldNotCheck(t *testing.T) {
+	tourEnv(t)
+	camp := campRootAt(t)
+	var entries []string
+	for i := 0; i < 7; i++ {
+		dir := filepath.Join(camp, "festivals", "active", "f"+string(rune('a'+i)))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		entries = append(entries, `{"name":"f","path":"`+dir+`","status":"active"}`)
+	}
+	fakeFestListing(t, `{"active":[`+strings.Join(entries, ",")+`],"total":7}`)
+
+	m := tourAt(t, app.TourStepFestNext)
+	next, _ := m.handleEnter()
+	nm := next.(model)
+
+	if nm.pendingLaunch != nil {
+		t.Fatalf("must not launch anything, got %v", nm.pendingLaunch.Args)
+	}
+	if nm.err == nil {
+		t.Fatal("the user must be told the camp could not be checked")
 	}
 }
 

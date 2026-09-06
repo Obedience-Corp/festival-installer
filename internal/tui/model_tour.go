@@ -41,50 +41,81 @@ func (m model) runTourStep() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// tourFestivalCreatedBanner is what the hub says on the way back from creating a
-// festival. The step is not finished by that child, and saying so here is the
-// only place the user finds out why the box is still empty.
-const tourFestivalCreatedBanner = "festival created, run this step again to start fest next in it"
+// tourWorkflowCreatedBanner names what the hub just wrote into the user's camp.
+// Scaffolding is a real mutation of their workspace, so it is reported rather
+// than left for them to find.
+const tourWorkflowCreatedBanner = "created workflow/getting-started and started fest next there"
 
-// runTourFestNext resolves the directory fest next has to run inside.
+// runTourFestNext runs fest next somewhere it will actually work.
 //
-// fest next fails outside a festival directory, so launching it at the camp root
-// could never finish this step. When the camp holds no festival yet the step
-// hands the user fest's own create flow instead and stays unfinished, because
-// creating a festival is not the same as running fest next in one. Both branches
-// go through the launchpad's suspend, exec and resume loop; neither spawns a
-// child here.
+// fest next fails outside a festival, and a freshly scaffolded festival fails
+// its own validation until an agent resolves its template markers, so neither
+// the camp root nor a brand new festival can finish this step. The hub asks
+// fest where next will run, and when the camp has nothing runnable it scaffolds
+// a standalone getting started workflow, which fest starts a run for as it
+// writes it, so fest next works there immediately.
 func (m model) runTourFestNext() (tea.Model, tea.Cmd) {
 	root := launch.DetectCampaignRoot("")
-	dir, err := app.ResolveFestivalDir(m.ctx, root)
+	target, err := app.ResolveRunTarget(m.ctx, root)
 	switch {
+	case err == nil && target.Ready:
+		return m.launchTourStep(app.TourStepFestNext, festNextSpec(target.Dir))
 	case err == nil:
-		return m.launchTourStep(app.TourStepFestNext, launch.Spec{
+		// A workflow whose last run finished. fest next refuses without an
+		// active run and says to start one, so that is what happens first.
+		return m.chainTourStep(launch.Spec{
 			Tool:  "fest",
-			Args:  []string{"next"},
-			Dir:   dir,
-			Title: "fest next",
-		})
+			Args:  []string{"workflow", "start"},
+			Dir:   target.Dir,
+			Title: "fest workflow start",
+		}, festNextSpec(target.Dir), "")
 	case errpkg.Code(err) == app.CodeNoFestival:
-		// Bare `fest create festival` opens fest's own interactive form, so the
-		// user names it themselves rather than having the hub invent a name.
-		next, cmd := m.launchTourStep("", launch.Spec{
-			Tool:  "fest",
-			Args:  []string{"create", "festival"},
-			Dir:   root,
-			Title: "fest create festival",
-		})
-		nm, ok := next.(model)
-		if !ok || nm.pendingLaunch == nil {
-			return next, cmd
-		}
-		nm.launchBanner = tourFestivalCreatedBanner
-		return nm, cmd
+		return m.scaffoldGettingStarted(root)
 	default:
+		// Includes CodeRunTargetUnchecked, where the camp has festivals and the
+		// hub ran out of probes before finding a runnable one. Scaffolding there
+		// would drop a getting started workflow into a camp that already holds
+		// real work, so the step reports and does nothing.
 		m.err = err
 		m.screen = screenTour
 		return m, nil
 	}
+}
+
+func festNextSpec(dir string) launch.Spec {
+	return launch.Spec{Tool: "fest", Args: []string{"next"}, Dir: dir, Title: "fest next"}
+}
+
+// scaffoldGettingStarted has fest write the workflow and then runs fest next in
+// it, both through the launchpad, so the step finishes in one pass.
+func (m model) scaffoldGettingStarted(campRoot string) (tea.Model, tea.Cmd) {
+	dir, steps, err := app.PrepareGettingStartedWorkflow(m.ctx, campRoot)
+	if err != nil {
+		m.err = err
+		m.screen = screenTour
+		return m, nil
+	}
+	return m.chainTourStep(launch.Spec{
+		Tool:  "fest",
+		Args:  []string{"create", "workflow", app.GettingStartedWorkflowName, "--steps", steps},
+		Dir:   dir,
+		Title: "fest create workflow",
+	}, festNextSpec(dir), tourWorkflowCreatedBanner)
+}
+
+// chainTourStep schedules two children on one suspend and resume cycle. The
+// second runs only if the first exits cleanly, the step is recorded from the
+// second's result, and banner replaces the generic return line on a clean pass.
+func (m model) chainTourStep(first, second launch.Spec, banner string) (tea.Model, tea.Cmd) {
+	next, cmd := m.launchTourStep(app.TourStepFestNext, first)
+	nm, ok := next.(model)
+	if !ok || nm.pendingLaunch == nil {
+		return next, cmd
+	}
+	then := second
+	nm.pendingThen = &then
+	nm.launchBanner = banner
+	return nm, cmd
 }
 
 // skipTourStep records that the user passed over the selected step. A skipped
@@ -217,6 +248,7 @@ func (m model) launchTourStep(record app.TourStepKey, spec launch.Spec) (tea.Mod
 	m.screen = screenTour
 	m.recordTourStep = record
 	m.launchBanner = ""
+	m.pendingThen = nil
 	cp := spec
 	m.pendingLaunch = &cp
 	return m, tea.Quit

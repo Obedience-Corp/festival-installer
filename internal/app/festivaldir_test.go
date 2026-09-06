@@ -4,29 +4,35 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"testing"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
-// fakeFest puts a fest on PATH that prints body on stdout and records the
-// directory it was run in, so a test can check both the answer the hub read and
-// the camp it asked about.
+// fakeFest puts a fest on PATH that answers list with body and answers next
+// according to whether the directory it was run in is marked runnable. It logs
+// every invocation so a test can count how many candidates were probed.
 //
-// The script uses only shell builtins. PATH here holds nothing but this fake, so
-// a script calling cat or printf would find neither and print nothing at all,
-// which reads as an empty listing instead of a broken fixture.
-func fakeFest(t *testing.T, body string, exit int) (cwdFile string) {
+// The script uses only shell builtins. PATH here holds nothing but this fake,
+// so a script calling cat or printf would find neither and print nothing at
+// all, which would read as an empty listing rather than a broken fixture.
+func fakeFest(t *testing.T, body string) (logFile string) {
 	t.Helper()
 	dir := t.TempDir()
-	cwdFile = filepath.Join(dir, "cwd")
-	script := "#!/bin/sh\npwd > " + cwdFile + "\necho '" + body + "'\nexit " + strconv.Itoa(exit) + "\n"
+	logFile = filepath.Join(dir, "calls.log")
+	script := "#!/bin/sh\n" +
+		"echo \"$1 $2 [$(pwd)]\" >> " + logFile + "\n" +
+		"case \"$1\" in\n" +
+		"  list) echo '" + body + "' ;;\n" +
+		"  next) if [ -f .runnable ]; then exit 0; fi; exit 1 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
 	if err := os.WriteFile(filepath.Join(dir, "fest"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake fest: %v", err)
 	}
 	t.Setenv("PATH", dir)
-	return cwdFile
+	return logFile
 }
 
 // festEnv points the installer home at an empty dir so ResolveTool finds the
@@ -38,88 +44,241 @@ func festEnv(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 }
 
-func TestResolveFestivalDir_PrefersActiveThenReadyThenPlanning(t *testing.T) {
+// festivalDir makes a real directory to stand in for a festival. The paths in
+// fest's listing must exist, because probing one means running fest with that
+// directory as its working directory.
+func festivalDir(t *testing.T, camp, name string, runnable bool) string {
+	t.Helper()
+	dir := filepath.Join(camp, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
+	if runnable {
+		if err := os.WriteFile(filepath.Join(dir, ".runnable"), nil, 0o644); err != nil {
+			t.Fatalf("mark runnable: %v", err)
+		}
+	}
+	return dir
+}
+
+func entry(path string) string {
+	return `{"name":"` + filepath.Base(path) + `","path":"` + path + `","status":"x"}`
+}
+
+func probeCount(t *testing.T, logFile string) int {
+	t.Helper()
+	raw, err := os.ReadFile(logFile)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "next ") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestResolveRunTarget_PrefersActiveThenReadyThenPlanning(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
-		want string
+		name    string
+		buckets []string
+		want    string
 	}{
-		{
-			name: "active wins over everything",
-			body: `{"active":[{"name":"a","path":"/camp/festivals/active/a","status":"active"}],` +
-				`"ready":[{"name":"r","path":"/camp/festivals/ready/r","status":"ready"}],` +
-				`"planning":[{"name":"p","path":"/camp/festivals/planning/p","status":"planning"}],"total":3}`,
-			want: "/camp/festivals/active/a",
-		},
-		{
-			name: "ready wins when nothing is active",
-			body: `{"ready":[{"name":"r","path":"/camp/festivals/ready/r","status":"ready"}],` +
-				`"planning":[{"name":"p","path":"/camp/festivals/planning/p","status":"planning"}],"total":2}`,
-			want: "/camp/festivals/ready/r",
-		},
-		{
-			name: "planning is used as a last resort",
-			body: `{"planning":[{"name":"p","path":"/camp/festivals/planning/p","status":"planning"}],"total":1}`,
-			want: "/camp/festivals/planning/p",
-		},
-		{
-			name: "the first entry in a bucket wins",
-			body: `{"active":[{"name":"one","path":"/camp/one","status":"active"},` +
-				`{"name":"two","path":"/camp/two","status":"active"}],"total":2}`,
-			want: "/camp/one",
-		},
+		{"active wins", []string{"active", "ready", "planning"}, "active"},
+		{"ready when nothing is active", []string{"ready", "planning"}, "ready"},
+		{"planning is the last resort", []string{"planning"}, "planning"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			festEnv(t)
-			fakeFest(t, tc.body, 0)
-			got, err := ResolveFestivalDir(context.Background(), t.TempDir())
-			if err != nil {
-				t.Fatalf("ResolveFestivalDir: %v", err)
+			camp := t.TempDir()
+			parts := make([]string, 0, len(tc.buckets))
+			var want string
+			for _, b := range tc.buckets {
+				dir := festivalDir(t, camp, b, true)
+				parts = append(parts, `"`+b+`":[`+entry(dir)+`]`)
+				if b == tc.want {
+					want = dir
+				}
 			}
-			if got != tc.want {
-				t.Fatalf("dir = %q, want %q", got, tc.want)
+			fakeFest(t, "{"+strings.Join(parts, ",")+`,"total":3}`)
+
+			got, err := ResolveRunTarget(context.Background(), camp)
+			if err != nil {
+				t.Fatalf("ResolveRunTarget: %v", err)
+			}
+			if got.Dir != want {
+				t.Fatalf("dir = %q, want %q", got.Dir, want)
+			}
+			if got.Kind != TargetFestival || !got.Ready {
+				t.Fatalf("kind/ready = %v/%v, want festival/true", got.Kind, got.Ready)
 			}
 		})
 	}
 }
 
-// TestResolveFestivalDir_IgnoresParkedAndRitual pins the deliberate exclusion. A
-// parked festival was set aside and a ritual is recurring machinery, so neither
-// is the festival a new user came here to work in.
-func TestResolveFestivalDir_IgnoresParkedAndRitual(t *testing.T) {
+// TestResolveRunTarget_SkipsAFestivalFestWillNotRun is the reason the probe
+// exists. A freshly scaffolded festival fails its own validation until an agent
+// resolves its markers, and picking it would leave the step permanently stuck.
+func TestResolveRunTarget_SkipsAFestivalFestWillNotRun(t *testing.T) {
 	festEnv(t)
-	fakeFest(t, `{"parked":[{"name":"pk","path":"/camp/parked/pk","status":"parked"}],`+
-		`"ritual":[{"name":"daily","path":"/camp/ritual/daily","status":"ritual"}],"total":2}`, 0)
+	camp := t.TempDir()
+	blocked := festivalDir(t, camp, "blocked", false)
+	good := festivalDir(t, camp, "good", true)
+	fakeFest(t, `{"active":[`+entry(blocked)+","+entry(good)+`],"total":2}`)
 
-	_, err := ResolveFestivalDir(context.Background(), t.TempDir())
+	got, err := ResolveRunTarget(context.Background(), camp)
+	if err != nil {
+		t.Fatalf("ResolveRunTarget: %v", err)
+	}
+	if got.Dir != good {
+		t.Fatalf("dir = %q, want the runnable festival %q", got.Dir, good)
+	}
+}
+
+// TestResolveRunTarget_StopsProbingAtTheFirstAcceptance keeps one keypress from
+// costing a subprocess per festival in a camp with a backlog.
+func TestResolveRunTarget_StopsProbingAtTheFirstAcceptance(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	first := festivalDir(t, camp, "first", true)
+	second := festivalDir(t, camp, "second", true)
+	logFile := fakeFest(t, `{"active":[`+entry(first)+","+entry(second)+`],"total":2}`)
+
+	if _, err := ResolveRunTarget(context.Background(), camp); err != nil {
+		t.Fatalf("ResolveRunTarget: %v", err)
+	}
+	if n := probeCount(t, logFile); n != 1 {
+		t.Fatalf("probed %d candidates, want 1", n)
+	}
+}
+
+// TestResolveRunTarget_GivingUpIsNotAnEmptyCamp is the guard against scaffolding
+// a getting started workflow into a camp that already holds real work. Running
+// out of probes means the answer is unknown, not that there is nothing here.
+func TestResolveRunTarget_GivingUpIsNotAnEmptyCamp(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	entries := make([]string, 0, maxRunTargetProbes+2)
+	for i := 0; i < maxRunTargetProbes+2; i++ {
+		entries = append(entries, entry(festivalDir(t, camp, "f"+string(rune('a'+i)), false)))
+	}
+	logFile := fakeFest(t, `{"active":[`+strings.Join(entries, ",")+`],"total":7}`)
+
+	_, err := ResolveRunTarget(context.Background(), camp)
+	if got := errpkg.Code(err); got != CodeRunTargetUnchecked {
+		t.Fatalf("code = %q, want %q (err=%v)", got, CodeRunTargetUnchecked, err)
+	}
+	if n := probeCount(t, logFile); n != maxRunTargetProbes {
+		t.Fatalf("probed %d candidates, want the cap of %d", n, maxRunTargetProbes)
+	}
+}
+
+// TestResolveRunTarget_AllCandidatesRuledOutFallsThrough is the other half: when
+// every candidate really was checked and none runs, scaffolding is correct.
+func TestResolveRunTarget_AllCandidatesRuledOutFallsThrough(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	blocked := festivalDir(t, camp, "blocked", false)
+	fakeFest(t, `{"planning":[`+entry(blocked)+`],"total":1}`)
+
+	_, err := ResolveRunTarget(context.Background(), camp)
 	if got := errpkg.Code(err); got != CodeNoFestival {
 		t.Fatalf("code = %q, want %q (err=%v)", got, CodeNoFestival, err)
 	}
 }
 
-// TestResolveFestivalDir_TotalDoesNotBreakTheParse is the regression test for
-// decoding fest's listing as a map of arrays. fest puts an integer total beside
-// the status buckets, which makes that parse fail on every real camp.
-func TestResolveFestivalDir_TotalDoesNotBreakTheParse(t *testing.T) {
+func TestResolveRunTarget_FindsAStandaloneWorkflow(t *testing.T) {
 	festEnv(t)
-	fakeFest(t, `{"active":[{"name":"a","path":"/camp/a","status":"active"}],`+
-		`"residents":{"active":[{"name":"someone"}]},"total":13}`, 0)
+	camp := t.TempDir()
+	wf := workflowDir(t, camp, filepath.Join("workflow", "getting-started"), true)
+	fakeFest(t, `{"total":0}`)
 
-	got, err := ResolveFestivalDir(context.Background(), t.TempDir())
+	got, err := ResolveRunTarget(context.Background(), camp)
 	if err != nil {
-		t.Fatalf("ResolveFestivalDir: %v", err)
+		t.Fatalf("ResolveRunTarget: %v", err)
 	}
-	if got != "/camp/a" {
-		t.Fatalf("dir = %q, want /camp/a", got)
+	if got.Dir != wf || got.Kind != TargetWorkflow || !got.Ready {
+		t.Fatalf("got %+v, want a ready workflow at %q", got, wf)
 	}
 }
 
-func TestResolveFestivalDir_EmptyCampHasNoFestival(t *testing.T) {
-	bodies := []struct {
-		name string
-		body string
-	}{
+// TestResolveRunTarget_AFinishedWorkflowNeedsANewRun covers the repeat visit. A
+// workflow whose last run completed is still the right place to go; fest next
+// refuses there until a run is started, so the target comes back not ready.
+func TestResolveRunTarget_AFinishedWorkflowNeedsANewRun(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	wf := workflowDir(t, camp, filepath.Join("workflow", "getting-started"), false)
+	fakeFest(t, `{"total":0}`)
+
+	got, err := ResolveRunTarget(context.Background(), camp)
+	if err != nil {
+		t.Fatalf("ResolveRunTarget: %v", err)
+	}
+	if got.Dir != wf || got.Kind != TargetWorkflow {
+		t.Fatalf("got %+v, want the workflow at %q", got, wf)
+	}
+	if got.Ready {
+		t.Fatal("a workflow with no active run must not be reported ready")
+	}
+}
+
+// TestResolveRunTarget_ADocumentAloneIsNotAWorkflow keeps a WORKFLOW.md copied
+// into a repo for reference from being mistaken for a run to continue.
+func TestResolveRunTarget_ADocumentAloneIsNotAWorkflow(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	dir := filepath.Join(camp, "docs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "WORKFLOW.md"), []byte("# copied"), 0o644); err != nil {
+		t.Fatalf("write doc: %v", err)
+	}
+	fakeFest(t, `{"total":0}`)
+
+	_, err := ResolveRunTarget(context.Background(), camp)
+	if got := errpkg.Code(err); got != CodeNoFestival {
+		t.Fatalf("code = %q, want %q (err=%v)", got, CodeNoFestival, err)
+	}
+}
+
+func TestResolveRunTarget_IgnoresParkedAndRitual(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	parked := festivalDir(t, camp, "parked", true)
+	ritual := festivalDir(t, camp, "ritual", true)
+	fakeFest(t, `{"parked":[`+entry(parked)+`],"ritual":[`+entry(ritual)+`],"total":2}`)
+
+	_, err := ResolveRunTarget(context.Background(), camp)
+	if got := errpkg.Code(err); got != CodeNoFestival {
+		t.Fatalf("code = %q, want %q (err=%v)", got, CodeNoFestival, err)
+	}
+}
+
+// TestResolveRunTarget_TotalDoesNotBreakTheParse is the regression test for
+// decoding fest's listing as a map of arrays. fest puts an integer total beside
+// the status buckets, which makes that parse fail on every real camp.
+func TestResolveRunTarget_TotalDoesNotBreakTheParse(t *testing.T) {
+	festEnv(t)
+	camp := t.TempDir()
+	good := festivalDir(t, camp, "good", true)
+	fakeFest(t, `{"active":[`+entry(good)+`],"residents":{"active":[{"name":"someone"}]},"total":13}`)
+
+	got, err := ResolveRunTarget(context.Background(), camp)
+	if err != nil {
+		t.Fatalf("ResolveRunTarget: %v", err)
+	}
+	if got.Dir != good {
+		t.Fatalf("dir = %q, want %q", got.Dir, good)
+	}
+}
+
+func TestResolveRunTarget_EmptyCampHasNothingToRun(t *testing.T) {
+	bodies := []struct{ name, body string }{
 		{"an empty document", `{"total":0}`},
 		{"no output at all", ``},
 		{"a json null", `null`},
@@ -128,8 +287,8 @@ func TestResolveFestivalDir_EmptyCampHasNoFestival(t *testing.T) {
 	for _, tc := range bodies {
 		t.Run(tc.name, func(t *testing.T) {
 			festEnv(t)
-			fakeFest(t, tc.body, 0)
-			_, err := ResolveFestivalDir(context.Background(), t.TempDir())
+			fakeFest(t, tc.body)
+			_, err := ResolveRunTarget(context.Background(), t.TempDir())
 			if got := errpkg.Code(err); got != CodeNoFestival {
 				t.Fatalf("code = %q, want %q (err=%v)", got, CodeNoFestival, err)
 			}
@@ -137,83 +296,83 @@ func TestResolveFestivalDir_EmptyCampHasNoFestival(t *testing.T) {
 	}
 }
 
-func TestResolveFestivalDir_AsksInsideTheCamp(t *testing.T) {
+func TestResolveRunTarget_AsksInsideTheCamp(t *testing.T) {
 	festEnv(t)
-	cwdFile := fakeFest(t, `{"active":[{"name":"a","path":"/camp/a","status":"active"}],"total":1}`, 0)
 	camp := t.TempDir()
+	good := festivalDir(t, camp, "good", true)
+	logFile := fakeFest(t, `{"active":[`+entry(good)+`],"total":1}`)
 
-	if _, err := ResolveFestivalDir(context.Background(), camp); err != nil {
-		t.Fatalf("ResolveFestivalDir: %v", err)
+	if _, err := ResolveRunTarget(context.Background(), camp); err != nil {
+		t.Fatalf("ResolveRunTarget: %v", err)
 	}
-	raw, err := os.ReadFile(cwdFile)
+	raw, err := os.ReadFile(logFile)
 	if err != nil {
-		t.Fatalf("read recorded cwd: %v", err)
+		t.Fatalf("read call log: %v", err)
 	}
-	got, err := filepath.EvalSymlinks(trimTrailingNewlines(string(raw)))
-	if err != nil {
-		t.Fatalf("resolve recorded cwd: %v", err)
+	// The fake reports the logical working directory, which is the path the
+	// test handed over, not its symlink-resolved form.
+	if !strings.Contains(string(raw), "list --json ["+camp+"]") {
+		t.Fatalf("the listing must run in the camp root %q, got:\n%s", camp, raw)
 	}
-	want, err := filepath.EvalSymlinks(camp)
-	if err != nil {
-		t.Fatalf("resolve camp: %v", err)
-	}
-	if got != want {
-		t.Fatalf("fest ran in %q, want the camp root %q", got, want)
+	if !strings.Contains(string(raw), "next --json ["+good+"]") {
+		t.Fatalf("the probe must run in the festival %q, got:\n%s", good, raw)
 	}
 }
 
-func TestResolveFestivalDir_NoCampRootIsItsOwnAnswer(t *testing.T) {
+func TestResolveRunTarget_NoCampRootIsItsOwnAnswer(t *testing.T) {
 	festEnv(t)
-	fakeFest(t, `{"total":0}`, 0)
+	fakeFest(t, `{"total":0}`)
 
-	_, err := ResolveFestivalDir(context.Background(), "  ")
+	_, err := ResolveRunTarget(context.Background(), "  ")
 	if got := errpkg.Code(err); got != CodeNoCampRoot {
 		t.Fatalf("code = %q, want %q (err=%v)", got, CodeNoCampRoot, err)
 	}
 }
 
-func TestResolveFestivalDir_UnreadableOutputIsNotNoFestival(t *testing.T) {
+func TestResolveRunTarget_UnreadableListingIsNotAnEmptyCamp(t *testing.T) {
 	festEnv(t)
-	fakeFest(t, `this is not json`, 0)
+	fakeFest(t, `this is not json`)
 
-	_, err := ResolveFestivalDir(context.Background(), t.TempDir())
+	_, err := ResolveRunTarget(context.Background(), t.TempDir())
 	if got := errpkg.Code(err); got != CodeFestivalList {
 		t.Fatalf("code = %q, want %q (err=%v)", got, CodeFestivalList, err)
 	}
 }
 
-func TestResolveFestivalDir_AFailingFestIsReported(t *testing.T) {
-	festEnv(t)
-	fakeFest(t, ``, 1)
-
-	_, err := ResolveFestivalDir(context.Background(), t.TempDir())
-	if got := errpkg.Code(err); got != CodeFestivalList {
-		t.Fatalf("code = %q, want %q (err=%v)", got, CodeFestivalList, err)
-	}
-}
-
-func TestResolveFestivalDir_MissingFestIsANotFound(t *testing.T) {
+func TestResolveRunTarget_MissingFestIsANotFound(t *testing.T) {
 	festEnv(t)
 
-	_, err := ResolveFestivalDir(context.Background(), t.TempDir())
+	_, err := ResolveRunTarget(context.Background(), t.TempDir())
 	if got := errpkg.Code(err); got != "E_LAUNCH_NOT_FOUND" {
 		t.Fatalf("code = %q, want E_LAUNCH_NOT_FOUND (err=%v)", got, err)
 	}
 }
 
-func TestResolveFestivalDir_CancelledContext(t *testing.T) {
+func TestResolveRunTarget_CancelledContext(t *testing.T) {
 	festEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := ResolveFestivalDir(ctx, t.TempDir()); err == nil {
+	if _, err := ResolveRunTarget(ctx, t.TempDir()); err == nil {
 		t.Fatal("a cancelled context must not run fest")
 	}
 }
 
-func trimTrailingNewlines(s string) string {
-	for len(s) > 0 && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
-		s = s[:len(s)-1]
+// workflowDir builds a standalone workflow: the document plus the runtime dir
+// fest writes beside it. runnable marks it as having an active run.
+func workflowDir(t *testing.T, camp, rel string, runnable bool) string {
+	t.Helper()
+	dir := filepath.Join(camp, rel)
+	if err := os.MkdirAll(filepath.Join(dir, ".workflow"), 0o755); err != nil {
+		t.Fatalf("mkdir workflow: %v", err)
 	}
-	return s
+	if err := os.WriteFile(filepath.Join(dir, "WORKFLOW.md"), []byte("# wf"), 0o644); err != nil {
+		t.Fatalf("write WORKFLOW.md: %v", err)
+	}
+	if runnable {
+		if err := os.WriteFile(filepath.Join(dir, ".runnable"), nil, 0o644); err != nil {
+			t.Fatalf("mark runnable: %v", err)
+		}
+	}
+	return dir
 }

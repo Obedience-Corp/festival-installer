@@ -21,6 +21,10 @@ type SessionResult struct {
 	// RecordTourStep names a getting-started tour step whose completion should
 	// be recorded if the child exits cleanly. Empty for ordinary launches.
 	RecordTourStep app.TourStepKey
+	// ThenLaunch is a second child to run after Launch exits cleanly, before
+	// the hub comes back. The tour step is recorded from its result, not the
+	// first child's.
+	ThenLaunch *launch.Spec
 	// Err is a fatal hub error (not a child exit code).
 	Err error
 	// Banner is an optional soft message to show after returning from a child.

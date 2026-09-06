@@ -94,9 +94,9 @@ func TourSteps() []TourStep {
 		},
 		{
 			Key:   TourStepFestNext,
-			Title: "Run fest next inside a festival",
-			Detail: "done when fest next is launched from here inside a festival the hub found " +
-				"in your camp, and the hub offers to create one when the camp has none",
+			Title: "Run fest next",
+			Detail: "runs fest next in a festival or workflow you already have, " +
+				"or scaffolds a getting started workflow in your camp and runs it there",
 			State: TourStepTodo,
 		},
 	}
