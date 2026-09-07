@@ -184,6 +184,22 @@ internal/cli/          # cobra wrappers + human/JSON rendering
 internal/tui/          # bubbletea manager (theme, anim, screens)
 ```
 
+## Releasing
+
+```bash
+just release current              # newest tag on each channel
+just release tags                 # every release tag, newest first
+just release stable patch dry-run # print the tag that would be cut, then stop
+just release stable patch         # guard, gate, annotated tag, push (also: minor, major)
+```
+
+`just release stable` refuses unless `main` is checked out, clean, and level
+with `origin/main`, then runs `just ci` as the gate before it creates the tag.
+It stops at the tag push: `.github/workflows/release.yml` fires on the `v*` tag
+and publishes the binaries, checksums, and release notes. This repo cuts stable
+tags only; see `.justfiles/build.just` for why there is no `rc` or `dev`
+channel.
+
 ## What works under the hood
 
 | Package                   | Surface                                                   |
