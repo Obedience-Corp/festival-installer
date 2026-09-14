@@ -155,7 +155,7 @@ func TestHomeDigitZeroQuits(t *testing.T) {
 }
 
 // TestLaunchpadHasNoDigit records a consequence of putting Getting started
-// first: the home menu now has eleven entries, digits 1 through 9 address the
+// first: the home menu now has twelve entries, digits 1 through 9 address the
 // first nine, 0 stays Quit, and Launchpad is reached with the arrow keys. The
 // alternative was leaving the tour off the home screen entirely.
 func TestLaunchpadHasNoDigit(t *testing.T) {

@@ -113,21 +113,21 @@ func TestHome_UnknownSignalsShowADiagnosticNotTheChecklist(t *testing.T) {
 			setup:        app.SetupState{},
 			action:       "absent",
 			wantCard:     true,
-			wantMenuRows: 11,
+			wantMenuRows: 12,
 		},
 		{
 			name:         "unreadable signals get one diagnostic line",
 			setup:        app.SetupState{SignalsIncomplete: true},
 			action:       "absent",
 			wantNotice:   true,
-			wantMenuRows: 11,
+			wantMenuRows: 12,
 		},
 		{
 			name:         "unreadable signals on a home that did read as installed",
 			setup:        app.SetupState{SignalsIncomplete: true, HasReceipts: true},
 			action:       "managed",
 			wantNotice:   true,
-			wantMenuRows: 11,
+			wantMenuRows: 12,
 		},
 		{
 			// The card is hidden for package installs because its advice does
@@ -136,13 +136,13 @@ func TestHome_UnknownSignalsShowADiagnosticNotTheChecklist(t *testing.T) {
 			setup:        app.SetupState{SignalsIncomplete: true},
 			action:       "package",
 			wantNotice:   true,
-			wantMenuRows: 11,
+			wantMenuRows: 12,
 		},
 		{
 			name:         "a readable package install gets neither",
 			setup:        app.SetupState{HasReceipts: true},
 			action:       "package",
-			wantMenuRows: 11,
+			wantMenuRows: 12,
 		},
 	}
 

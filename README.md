@@ -29,6 +29,16 @@ Recorded against a real `./bin/festival` binary (VHS + PTY).
   <img src="docs/demos/festival-channels.gif" alt="festival TUI: install channel picker, shell/PATH guidance, and the installed packages list" width="900">
 </p>
 
+**Community: run festival, select Join our Discord, and open the invite**
+
+<p align="center">
+  <img src="docs/demos/festival-discord.gif" alt="Running festival, selecting Join our Discord, and opening the Obedience Corp invite" width="900">
+</p>
+
+Record with `just vhs record docs/demos/festival-discord.tape` on a desktop
+with a browser. This tape opens the real invite using `open` on macOS or
+`xdg-open` on Linux; VHS captures the terminal portion of the handoff.
+
 **Launchpad: open camp as a child tool, quit back to the hub**
 
 <p align="center">
@@ -113,6 +123,9 @@ The TUI home screen lets you:
 - Uninstall receipt-owned packages
 - Manage marketplaces
 - Run doctor and PATH / shell-init guidance
+- **Join our Discord**: open the [Obedience Corp invite](https://discord.gg/Rt7dDY6VqD)
+  in your browser for help and project discussions. If no browser is available,
+  the TUI shows the invite to open manually.
 - **Launchpad**: open camp/fest tools (`camp wi`, `fest watch`, …) as real
   subprocesses; quit the tool to return to the hub without relaunching `festival`
   (suspend → child → resume)

@@ -28,6 +28,7 @@ record tape:
 
 # The self-contained tapes. festival-launchpad.tape is excluded on purpose:
 # it needs a real camp and fest on PATH, which not every machine has.
+# festival-discord.tape is also opt-in: it opens the real invite in a desktop browser.
 all:
     #!/usr/bin/env bash
     set -euo pipefail
