@@ -36,6 +36,7 @@ const (
 	screenChildOutput
 	// screenTour is appended last so no existing screen constant renumbers.
 	screenTour
+	screenDiscord
 )
 
 type tickMsg time.Time
@@ -498,6 +499,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case discordOpenedMsg:
+		// Ignore an opener that finished after the user left this screen.
+		if m.screen != screenDiscord || msg.ctx.Err() != nil {
+			return m, nil
+		}
+		m.busy = false
+		m.err = msg.err
+		if m.opCancel != nil {
+			m.opCancel()
+			m.opCancel = nil
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -682,6 +695,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // answering it, and a return target left behind would misroute whichever
 // confirmation the user opens next.
 func (m model) leaveForHome() (tea.Model, tea.Cmd) {
+	if m.screen == screenDiscord {
+		if m.opCancel != nil {
+			m.opCancel()
+			m.opCancel = nil
+		}
+		m.busy = false
+	}
 	m.screen = screenHome
 	m.cursor = 0
 	m.err = nil

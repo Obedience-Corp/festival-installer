@@ -140,6 +140,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.screen = screenHome
 		m.err = nil
 		return m, nil
+	case screenDiscord:
+		return m.leaveForHome()
 	case screenDoctor, screenShell:
 		m.screen = screenHome
 		return m, nil
@@ -228,6 +230,8 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		return m, nil
 	case homeQuit:
 		return m, tea.Quit
+	case homeDiscord:
+		return m.joinDiscord()
 	}
 	return m, nil
 }

@@ -81,6 +81,10 @@ func (m model) View() string {
 		title = "getting started"
 		body = m.viewTour()
 		footer = "↑↓ steps  enter do this step  s skip  d dismiss  esc back"
+	case screenDiscord:
+		title = "community"
+		body = m.viewDiscord()
+		footer = "enter / esc home"
 	case screenConfirm:
 		title = "confirm"
 		body = components.ConfirmBox(m.confirmMsg, m.confirmYes, s)
@@ -109,7 +113,7 @@ func (m model) View() string {
 		parts = append(parts, s.FireTip.Render("◆ "+m.banner))
 	}
 	parts = append(parts, body)
-	if m.err != nil && m.screen != screenResult {
+	if m.err != nil && m.screen != screenResult && m.screen != screenDiscord {
 		parts = append(parts, components.ErrorBox(m.err, s))
 	}
 	parts = append(parts, foot)

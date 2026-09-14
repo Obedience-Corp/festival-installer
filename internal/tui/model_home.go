@@ -23,6 +23,7 @@ const (
 	homeDoctor      homeItemID = "doctor"
 	homeShell       homeItemID = "shell"
 	homeLaunchpad   homeItemID = "launchpad"
+	homeDiscord     homeItemID = "discord"
 	homeQuit        homeItemID = "quit"
 )
 
@@ -48,6 +49,7 @@ func (m model) homeMenu() []homeItem {
 		{id: homeDoctor, label: "Doctor", booth: 3},
 		{id: homeShell, label: "Shell / PATH setup", booth: 4},
 		{id: homeLaunchpad, label: "Launchpad (camp / fest tools)", booth: 0},
+		{id: homeDiscord, label: "Join our Discord", booth: 0},
 		{id: homeQuit, label: "Quit", booth: 0},
 	}
 	if m.status.Action == "package" || m.status.Dual {

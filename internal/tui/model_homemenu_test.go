@@ -22,6 +22,7 @@ var homeEntryScreens = map[homeItemID]screen{
 	homeDoctor:      screenDoctor,
 	homeShell:       screenShell,
 	homeLaunchpad:   screenLaunchpad,
+	homeDiscord:     screenDiscord,
 }
 
 // TestOpenHomeItem_EveryEntryReachesItsScreen is the regression test for menu
