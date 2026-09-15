@@ -14,8 +14,8 @@ import (
 func NewUninstallCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "uninstall <festival|camp|fest>",
-		Short: "Remove the installer-managed festival suite (receipt-owned files only)",
+		Use:   "uninstall <festival|camp|fest|obey>",
+		Short: "Remove an installer-managed package (receipt-owned files only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			res, err := app.UninstallTarget(cmd.Context(), args[0])

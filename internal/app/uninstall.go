@@ -36,8 +36,10 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, error
 	} else {
 		switch target {
 		case "festival", "camp", "fest":
+		case "obey":
+			packageID = ObeyPackageID
 		default:
-			return UninstallResult{}, errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, or a camp-*/fest-* plugin)")
+			return UninstallResult{}, errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
 		}
 	}
 	return UninstallPackage(ctx, packageID)

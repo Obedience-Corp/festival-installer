@@ -232,7 +232,9 @@ func InstallTarget(ctx context.Context, target string, opts InstallOptions) (Ins
 	switch target {
 	case "festival", "camp", "fest":
 		return InstallFestival(ctx, opts)
+	case "obey":
+		return InstallObey(ctx, opts)
 	default:
-		return InstallResult{}, errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, fest, or a camp-*/fest-* plugin)")
+		return InstallResult{}, errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
 	}
 }

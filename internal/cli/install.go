@@ -18,12 +18,13 @@ func NewInstallCommand() *cobra.Command {
 	var allowUnverified bool
 	var force bool
 	cmd := &cobra.Command{
-		Use:   "install <festival|camp|fest>",
+		Use:   "install <festival|camp|fest|obey>",
 		Short: "Install the festival suite (camp, fest, and festival)",
 		Long: "install installs the festival suite (camp, fest, and festival).\n\n" +
 			"The target is required. festival, camp, and fest all install the suite bundle;\n" +
 			"camp and fest are not published independently, so passing either one still installs\n" +
-			"the whole suite and prints a notice saying so.",
+			"the whole suite and prints a notice saying so.\n\n" +
+			"obey installs the obey daemon and the ob developer CLI as their own package.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]

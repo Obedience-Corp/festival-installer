@@ -34,26 +34,28 @@ func NewUpdateCommand() *cobra.Command {
 			"When a newer suite exists and stdout is a TTY, update runs the package-manager command\n" +
 			"(for example `yay -Syu festival-bin`) so camp, fest, and this hub upgrade together.\n" +
 			"--json and non-TTY invocations print the command instead of running it.",
-		ValidArgs: []string{"festival", "camp", "fest"},
+		ValidArgs: []string{"festival", "camp", "fest", "obey"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := "festival"
 			if len(args) == 1 {
 				target = args[0]
 			}
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			switch target {
 			case "festival":
 			case "camp", "fest":
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s is part of the festival suite; updating the suite\n", target)
+			case "obey":
+				return runUpdateObey(cmd, channel, vo, asJSON)
 			default:
-				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, or fest)")
+				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, fest, or obey)")
 			}
 			if channel != "" {
 				if err := app.ValidateChannel(channel); err != nil {
 					return err
 				}
 			}
-			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			res, warning, err := app.UpdateFestival(cmd.Context(), app.UpdateOptions{
 				ChannelOverride: channel,
 				Verify:          vo,
@@ -81,6 +83,33 @@ func NewUpdateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow updating from unsigned content without prompting")
 	cmd.Flags().BoolVar(&force, "force", false, "update/install a hub copy even when a package-manager suite is already on PATH")
 	return cmd
+}
+
+// runUpdateObey is the obey sibling of the suite update body. It never calls
+// maybeRunPackageUpgrade: no package manager ships the daemon, so there is no
+// package-manager upgrade to hand off to.
+func runUpdateObey(cmd *cobra.Command, channel string, vo source.VerifyOptions, asJSON bool) error {
+	if channel != "" {
+		if err := app.ValidateChannel(channel); err != nil {
+			return err
+		}
+	}
+	res, warning, err := app.UpdateObey(cmd.Context(), app.UpdateOptions{
+		ChannelOverride: channel,
+		Verify:          vo,
+	})
+	if err != nil {
+		return err
+	}
+	var warnings []string
+	if warning != "" {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: "+warning)
+		warnings = []string{warning}
+	}
+	if asJSON {
+		return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
+	}
+	return renderUpdateResult(cmd.OutOrStdout(), res)
 }
 
 func renderUpdateResult(w io.Writer, res app.UpdateResult) error {

@@ -58,6 +58,58 @@ func TestParseMarketplace_PluginTargetsRoundTrip(t *testing.T) {
 	}
 }
 
+const productReleaseSourceWithBinaries = `{
+  "id": "obedience-corp/official",
+  "name": "Official",
+  "schema_version": "1",
+  "packages": [
+    {
+      "id": "obedience-corp/obey",
+      "display_name": "Obey Daemon",
+      "class": "product",
+      "host_runtimes": ["obey"],
+      "channels": ["stable"],
+      "release_source": {
+        "type": "git",
+        "repo": "https://github.com/Obedience-Corp/obey-releases.git",
+        "asset_url": "https://example.test/{tag}/obey-{version}-{os}-{arch}.tar.gz",
+        "checksums_url": "https://example.test/{tag}/checksums.txt",
+        "binaries": ["obey", "ob"]
+      }
+    }
+  ]
+}
+`
+
+func TestParseMarketplace_ReleaseSourceBinariesRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	m, err := source.ParseMarketplace(ctx, []byte(productReleaseSourceWithBinaries))
+	if err != nil {
+		t.Fatalf("ParseMarketplace with release_source.binaries: %v", err)
+	}
+	if len(m.Packages) != 1 {
+		t.Fatalf("packages: got %d want 1", len(m.Packages))
+	}
+	rs := m.Packages[0].ReleaseSource
+	if rs == nil {
+		t.Fatalf("release_source did not decode: %+v", m.Packages[0])
+	}
+	if len(rs.Binaries) != 2 || rs.Binaries[0] != "obey" || rs.Binaries[1] != "ob" {
+		t.Fatalf("binaries did not round-trip: %+v", rs.Binaries)
+	}
+	if rs.Binary != "" {
+		t.Fatalf("singular binary should stay empty when only binaries is declared: %q", rs.Binary)
+	}
+}
+
+func TestParseMarketplace_ReleaseSourceBinariesRejectsEmptyName(t *testing.T) {
+	ctx := context.Background()
+	raw := strings.Replace(productReleaseSourceWithBinaries, `["obey", "ob"]`, `["obey", ""]`, 1)
+	if _, err := source.ParseMarketplace(ctx, []byte(raw)); !errors.Is(err, source.ErrManifestInvalid) {
+		t.Fatalf("expected ErrManifestInvalid for an empty binary name, got %v", err)
+	}
+}
+
 func TestParseMarketplace_InvalidVariants(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {

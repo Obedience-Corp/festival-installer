@@ -132,8 +132,10 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}, warning, nil
 }
 
-// ReadFestivalReceipt loads the suite receipt if present.
-func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
+// readReceipt loads a receipt by package id if state.db already exists. A
+// missing home or a missing row is (zero, false, nil), never an error, so
+// read-only callers never create the database.
+func readReceipt(ctx context.Context, packageID string) (receipts.Receipt, bool, error) {
 	home, err := state.Home(ctx)
 	if err != nil {
 		return receipts.Receipt{}, false, err
@@ -146,7 +148,7 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 		return receipts.Receipt{}, false, nil
 	}
 	defer func() { _ = db.Close(ctx) }()
-	rec, err := receipts.Get(ctx, db.Raw(), FestivalPackageID)
+	rec, err := receipts.Get(ctx, db.Raw(), packageID)
 	if errors.Is(err, receipts.ErrNotFound) {
 		return receipts.Receipt{}, false, nil
 	}
@@ -154,6 +156,11 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 		return receipts.Receipt{}, false, err
 	}
 	return rec, true, nil
+}
+
+// ReadFestivalReceipt loads the suite receipt if present.
+func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
+	return readReceipt(ctx, FestivalPackageID)
 }
 
 func packageUpdateResult(ctx context.Context, opts UpdateOptions, origin SuiteOrigin, selfPlacement SelfPlacement, selfPath string) (UpdateResult, string, error) {
