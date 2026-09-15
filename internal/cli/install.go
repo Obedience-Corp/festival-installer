@@ -55,7 +55,11 @@ func NewInstallCommand() *cobra.Command {
 			if res.SelfSkipped {
 				note := app.SelfSkippedNote(res.SelfPlacement, res.SelfPath)
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "install: "+note)
-				warnings = []string{note}
+				warnings = append(warnings, note)
+			}
+			if note := app.ServiceNoteFor(res); note != "" {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "install: "+note)
+				warnings = append(warnings, note)
 			}
 			if asJSON {
 				return jsonout.Success(cmd.OutOrStdout(), "install", res, warnings)

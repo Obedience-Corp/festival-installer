@@ -28,6 +28,10 @@ type UpdateOptions struct {
 	Verify          source.VerifyOptions
 	Progress        ProgressFunc
 	Force           bool
+	// NoRestart suppresses the obey service restart an upgraded update would
+	// otherwise run. It is a no-op for the suite: nothing supervises camp,
+	// fest, or festival.
+	NoRestart bool
 }
 
 // UpdateFestival upgrades the festival suite to channel-latest when needed.
@@ -107,12 +111,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 	selfReplaced := false
 	if selfPlacement != SelfManaged {
-		note := SelfSkippedNote(selfPlacement, selfPath)
-		if warning == "" {
-			warning = note
-		} else {
-			warning = warning + "; " + note
-		}
+		warning = appendWarning(warning, SelfSkippedNote(selfPlacement, selfPath))
 	} else {
 		for _, f := range res.Files {
 			if filepath.Base(f) == selfBinaryName {

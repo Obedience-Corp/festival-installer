@@ -38,6 +38,14 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, error
 		case "festival", "camp", "fest":
 		case "obey":
 			packageID = ObeyPackageID
+			// Unregister before the binaries go, or the supervisor is left
+			// pointing at a path that no longer exists. The error is dropped
+			// rather than reported: UninstallResult has no service field, and a
+			// failed unregister of a service whose binary is about to vanish is
+			// not actionable by the caller.
+			if obeyPath, perr := obeyServicePath(ctx); perr == nil {
+				_ = runServiceVerb(ctx, obeyPath, serviceVerbUninstall)
+			}
 		default:
 			return UninstallResult{}, errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
 		}

@@ -15,6 +15,9 @@ type InstallResult struct {
 	// SelfSkipped is true when the manifest named the hub itself but it was
 	// left in place because the running hub is not the managed binary.
 	SelfSkipped bool `json:"self_skipped,omitempty"`
+	// Service reports the obey user service step. Nil for every package except
+	// obedience-corp/obey, so existing payloads are unchanged.
+	Service *ServiceResult `json:"service,omitempty"`
 }
 
 // UpdateResult is returned by update operations.
@@ -30,6 +33,9 @@ type UpdateResult struct {
 	// SelfReplaced is true when this update replaced the running hub binary,
 	// which means the process printing this message is the previous version.
 	SelfReplaced bool `json:"self_replaced"`
+	// Service reports the obey user service step. Nil for every package except
+	// obedience-corp/obey, so existing payloads are unchanged.
+	Service *ServiceResult `json:"service,omitempty"`
 }
 
 // UninstallResult is returned by uninstall operations.

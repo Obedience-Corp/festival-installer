@@ -193,6 +193,8 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 		return InstallResult{}, err
 	}
 
+	svc := serviceStep(ctx, serviceVerbInstall)
+
 	report(progress, ProgressEvent{Stage: "done", Package: ObeyPackageID, Percent: 1, Message: "obey ready"})
 	return InstallResult{
 		Package: ObeyPackageID,
@@ -200,6 +202,7 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 		Channel: channel,
 		Source:  sourceName,
 		Files:   files,
+		Service: &svc,
 	}, nil
 }
 
@@ -331,11 +334,20 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 	if _, err := placeProduct(ctx, home, ObeyPackageID, rec.Source, channel, resolved, opts.Progress); err != nil {
 		return UpdateResult{}, warning, err
 	}
+
+	svc := ServiceResult{}
+	if opts.NoRestart {
+		svc.Deferred = true
+	} else {
+		svc = serviceStep(ctx, serviceVerbRestart)
+	}
+	warning = appendWarning(warning, serviceNote(&svc, resolved.version))
 	return UpdateResult{
 		Package: ObeyPackageID,
 		Action:  "upgraded",
 		Version: resolved.version,
 		From:    installedVersion,
+		Service: &svc,
 	}, warning, nil
 }
 
