@@ -252,13 +252,20 @@ func TestInstallObey_MissingDeclaredBinaryRollsBack(t *testing.T) {
 
 // packageOriginPrefix builds a fake package-manager suite prefix: camp, fest,
 // and festival beside a share/festival/shell helper, which is what
-// classifyPath keys on to report OriginPackage.
-func packageOriginPrefix(t *testing.T) string {
+// classifyPath keys on to report OriginPackage. Each fake binary reports the
+// given version in the shape its real counterpart does, so DetectSuite reads
+// the version it would read on a real package machine.
+func packageOriginPrefix(t *testing.T, version string) string {
 	t.Helper()
 	prefix := t.TempDir()
 	binDir := filepath.Join(prefix, "bin")
-	for _, tool := range []string{"camp", "fest", "festival"} {
-		writeFile(t, filepath.Join(binDir, tool), "#!/bin/sh\necho "+tool+" 0.3.10\n")
+	for tool, line := range map[string]string{
+		"camp": "camp " + version,
+		"fest": "fest " + version,
+		// The hub prints a bare version, not a prefixed one.
+		"festival": version,
+	} {
+		writeFile(t, filepath.Join(binDir, tool), "#!/bin/sh\necho "+line+"\n")
 		if err := os.Chmod(filepath.Join(binDir, tool), 0o755); err != nil {
 			t.Fatalf("chmod fake %s: %v", tool, err)
 		}
@@ -271,7 +278,7 @@ func TestInstallObey_NotRefusedOnPackageOriginMachine(t *testing.T) {
 	ctx := context.Background()
 	home, _, _ := obeyFixture(t, "0.2.0")
 
-	pkgBin := packageOriginPrefix(t)
+	pkgBin := packageOriginPrefix(t, "0.3.10")
 	t.Setenv("PATH", pkgBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	origin, err := app.DetectSuite(ctx)

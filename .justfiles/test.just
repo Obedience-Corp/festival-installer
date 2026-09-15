@@ -26,3 +26,7 @@ verbose:
 # Run benchmarks (single iteration; use -count=N for more)
 bench:
     go test -bench=. -benchtime=1x -run=^$ ./...
+
+# Run the no-TTY integration lane (builds the binary and drives it headless)
+notty:
+    go test -tags notty -run 'NoTTY' -count=1 -v ./internal/cli/
