@@ -54,6 +54,10 @@ func ResolveTool(ctx context.Context, tool string) (string, error) {
 		tool+" not found in managed bin or PATH (install the suite or fix PATH from the hub)")
 }
 
+// ManagedToolPath is <bin-dir>/<tool> when that file exists, and "" otherwise.
+// It is the managed half of what ResolveTool decides between.
+func ManagedToolPath(ctx context.Context, tool string) string { return managedToolPath(ctx, tool) }
+
 func managedToolPath(ctx context.Context, tool string) string {
 	binDir, err := state.BinDir(ctx)
 	if err != nil {

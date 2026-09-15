@@ -148,6 +148,8 @@ festival browse --product fest --kind plugin
 festival marketplace list
 festival doctor
 festival shell-init zsh
+festival status --json
+festival resolve camp
 festival which camp --show-all
 festival version
 ```

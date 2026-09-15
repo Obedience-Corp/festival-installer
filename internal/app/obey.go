@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -364,25 +363,13 @@ func unmanagedObey(ctx context.Context) (UpdateResult, string, error) {
 			"Refusing to modify an external install. Run `festival resolve obey` or `festival doctor` to inspect.", nil
 }
 
-// detectObeyVersion reads the managed obey's own version. It tries the
-// subcommand first and the root flag second, because obey gains
-// `obey version --short` in FA0027 phase 001 and today only answers
-// `obey --version`, printing "obey version X.Y.Z". Delete the fallback once the
-// version floor guarantees the subcommand.
+// detectObeyVersion reads the managed obey's own version through the one probe
+// table status and update share, so the subcommand-then-flag fallback is
+// defined in exactly one place (internal/app/statusreport.go).
 func detectObeyVersion(ctx context.Context) (string, error) {
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(binDir, obeyBinary)
-	if out, err := exec.CommandContext(ctx, path, "version", "--short").Output(); err == nil { //nolint:gosec // path is the managed bin dir, args fixed
-		if v := strings.TrimSpace(string(out)); v != "" {
-			return v, nil
-		}
-	}
-	out, err := exec.CommandContext(ctx, path, "--version").Output() //nolint:gosec // path is the managed bin dir, args fixed
-	if err != nil {
-		return "", errpkg.Wrap("E_VERSION_PROBE", err, "read obey version at "+path)
-	}
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "obey version ")), nil
+	return probeToolVersion(ctx, obeyBinary, filepath.Join(binDir, obeyBinary))
 }

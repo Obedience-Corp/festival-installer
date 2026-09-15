@@ -239,6 +239,8 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewBrowseCommand())
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewResolveCommand())
+	root.AddCommand(cli.NewStatusCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
 	root.AddCommand(cli.NewGendocsCommand())

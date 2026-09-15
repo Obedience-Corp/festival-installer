@@ -118,6 +118,13 @@ type WhichResult struct {
 	All      []ToolLocation `json:"all,omitempty"`
 }
 
+// ResolveResult is the absolute path a tool runs from, using ResolveTool
+// semantics: the managed bin dir first, PATH only for a package-manager origin.
+type ResolveResult struct {
+	Tool string `json:"tool"`
+	Path string `json:"path"`
+}
+
 // StatusSummary powers the TUI home status strip.
 type StatusSummary struct {
 	Installed        bool           `json:"installed"`

@@ -60,6 +60,8 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewMarketplaceCommand())
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewResolveCommand())
+	root.AddCommand(cli.NewStatusCommand())
 	root.AddCommand(cli.NewVersionCommand(version))
 	root.AddCommand(cli.NewGendocsCommand())
 
