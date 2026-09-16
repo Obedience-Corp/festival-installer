@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
