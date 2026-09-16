@@ -697,11 +697,11 @@ func TestUninstallObey_ServiceFailureIsReported(t *testing.T) {
 	_ = f
 }
 
-// An obey whose service family predates the supervised contract gets no verb
-// at all. Driving it would report a restart that obey's own install had
-// already performed, or call a verb that command does not have, and the user
-// would be told the daemon was handled either way.
-func TestInstallObey_ObeyWithoutTheSupervisedContractRunsNoServiceVerb(t *testing.T) {
+// A fresh machine has no daemon to protect, and `obey service install` means
+// the same thing in every obey: it writes the unit and brings the daemon up.
+// Withholding it from an obey below the contract would leave that machine with
+// no unit at all, so the install verb runs and the step is an ordinary one.
+func TestInstallObey_ObeyWithoutTheSupervisedContractRegistersOnAStoppedDaemon(t *testing.T) {
 	f := obeyLegacyServiceFixture(t, "0.2.0")
 
 	out, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json")
@@ -714,17 +714,50 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractRunsNoServiceVerb(t *testin
 		Service *obeyServicePayload `json:"service"`
 	}
 	dataOf(t, out, &res)
+	if res.Service == nil || !res.Service.Installed || !res.Service.Started {
+		t.Fatalf("expected data.service.installed and started true, got %+v\n%s", res.Service, out)
+	}
+	if res.Service.Unsupported || res.Service.Deferred || res.Service.Restarted {
+		t.Fatalf("a stopped daemon needs nothing the contract adds, got %+v", res.Service)
+	}
+	if len(res.Files) != 2 {
+		t.Fatalf("the binaries must still land, got %v", res.Files)
+	}
+	if env := envelopeOf(t, out); !env.OK || len(env.Warnings) != 0 {
+		t.Fatalf("a fresh install has nothing pending to warn about, got ok=%v warnings=%v", env.OK, env.Warnings)
+	}
+
+	wantVerbs(t, f.verbs(t), []string{"service install"})
+}
+
+// Over a daemon that is serving, that same obey gets no verb at all. Driving
+// it would report a restart that obey's own install had already performed, or
+// call a verb that command does not have, and the user would be told the
+// daemon was handled either way.
+func TestInstallObey_ObeyWithoutTheSupervisedContractSkipsOverARunningDaemon(t *testing.T) {
+	f := obeyLegacyServiceFixture(t, "0.2.0")
+	if _, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json"); err != nil {
+		t.Fatalf("first install: %v\n%s", err, errOut)
+	}
+	f.markDaemonRunning(t)
+
+	out, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("second install: %v\n%s", err, errOut)
+	}
+
+	var res struct {
+		Service *obeyServicePayload `json:"service"`
+	}
+	dataOf(t, out, &res)
 	if res.Service == nil || !res.Service.Unsupported {
 		t.Fatalf("expected data.service.unsupported true, got %+v\n%s", res.Service, out)
 	}
 	if res.Service.Installed || res.Service.Restarted || res.Service.Deferred || res.Service.Started {
-		t.Fatalf("an obey below the contract must carry no claim about the daemon, got %+v", res.Service)
+		t.Fatalf("an obey below the contract must carry no claim about a live daemon, got %+v", res.Service)
 	}
 	if !strings.Contains(res.Service.ContractReason, "obey service restart") {
 		t.Fatalf("contract_reason = %q, want it to name the missing verb", res.Service.ContractReason)
-	}
-	if len(res.Files) != 2 {
-		t.Fatalf("the binaries must still land, got %v", res.Files)
 	}
 
 	env := envelopeOf(t, out)
@@ -741,9 +774,36 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractRunsNoServiceVerb(t *testin
 		t.Fatalf("the human path must carry the same sentence on stderr, got %q", errOut)
 	}
 
-	if got := f.verbs(t); len(got) != 0 {
-		t.Fatalf("no service verb may run against an obey below the contract, log = %v", got)
+	// Only the first install's verb is in the log; the second ran none.
+	wantVerbs(t, f.verbs(t), []string{"service install"})
+}
+
+// A daemon whose state could not be read may be serving, so the same obey is
+// held back there too.
+func TestInstallObey_ObeyWithoutTheSupervisedContractSkipsOnAnUnknownDaemon(t *testing.T) {
+	f := obeyLegacyServiceFixture(t, "0.2.0")
+	if _, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json"); err != nil {
+		t.Fatalf("first install: %v\n%s", err, errOut)
 	}
+	f.breakDaemonProbe(t)
+
+	out, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("second install: %v\n%s", err, errOut)
+	}
+
+	var res struct {
+		Service *obeyServicePayload `json:"service"`
+	}
+	dataOf(t, out, &res)
+	if res.Service == nil || !res.Service.Unsupported {
+		t.Fatalf("expected data.service.unsupported true, got %+v\n%s", res.Service, out)
+	}
+	if res.Service.Installed || res.Service.Started {
+		t.Fatalf("an unknown daemon and no contract must claim nothing, got %+v", res.Service)
+	}
+
+	wantVerbs(t, f.verbs(t), []string{"service install"})
 }
 
 // --no-restart against that obey must not report a deferred restart: the
@@ -780,9 +840,7 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractNeverClaimsDeferred(t *test
 		t.Fatalf("warning = %q, want the command this obey actually has", env.Warnings[0])
 	}
 
-	if got := f.verbs(t); len(got) != 0 {
-		t.Fatalf("no service verb may run against an obey below the contract, log = %v", got)
-	}
+	wantVerbs(t, f.verbs(t), []string{"service install"})
 }
 
 func TestUpdateObey_ObeyWithoutTheSupervisedContractRunsNoServiceVerb(t *testing.T) {
@@ -810,13 +868,12 @@ func TestUpdateObey_ObeyWithoutTheSupervisedContractRunsNoServiceVerb(t *testing
 	if res.Service == nil || !res.Service.Unsupported {
 		t.Fatalf("expected data.service.unsupported true, got %+v\n%s", res.Service, out)
 	}
-	if res.Service.Restarted || res.Service.Deferred || res.Service.Started {
-		t.Fatalf("an obey below the contract must carry no claim about the daemon, got %+v", res.Service)
+	if res.Service.Installed || res.Service.Restarted || res.Service.Deferred || res.Service.Started {
+		t.Fatalf("an obey below the contract must carry no claim about a live daemon, got %+v", res.Service)
 	}
 
-	if got := f.verbs(t); len(got) != 0 {
-		t.Fatalf("no service verb may run against an obey below the contract, log = %v", got)
-	}
+	// Only the install that preceded it, on a machine with no daemon up.
+	wantVerbs(t, f.verbs(t), []string{"service install"})
 }
 
 // A daemon whose state could not be read is not a daemon that was not running.

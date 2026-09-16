@@ -73,7 +73,7 @@ func TestObeyServiceSwap_EveryDaemonStateOnInstallAndUpdate(t *testing.T) {
 			updateSay:  []string{"could not be determined", "obey service status"},
 		},
 		{
-			name:      "an obey without the contract gets no verb and no claim",
+			name:      "an obey without the contract gets no verb over a running daemon",
 			daemon:    daemonStateRunning,
 			wantVerbs: nil,
 			want: ServiceResult{
@@ -94,6 +94,32 @@ func TestObeyServiceSwap_EveryDaemonStateOnInstallAndUpdate(t *testing.T) {
 			},
 			installSay: []string{"predates the supervised daemon service"},
 			updateSay:  []string{"predates the supervised daemon service"},
+		},
+		{
+			name:      "an obey without the contract gets no verb on an unknown daemon either",
+			daemon:    daemonStateUnknown,
+			wantVerbs: nil,
+			want: ServiceResult{
+				Unsupported:    true,
+				ContractReason: "it has no obey service restart",
+			},
+			installSay: []string{"predates the supervised daemon service"},
+			updateSay:  []string{"predates the supervised daemon service"},
+		},
+		{
+			name:      "an obey without the contract still registers its unit on a stopped daemon",
+			daemon:    daemonStateStopped,
+			wantVerbs: []string{"install"},
+			want:      ServiceResult{Installed: true, Started: true},
+			updateSay: []string{"started on the new version"},
+		},
+		{
+			name:      "a stopped daemon and no contract is not held back by --no-restart",
+			daemon:    daemonStateStopped,
+			noRestart: true,
+			wantVerbs: []string{"install"},
+			want:      ServiceResult{Installed: true, Started: true},
+			updateSay: []string{"started on the new version"},
 		},
 	}
 

@@ -109,7 +109,10 @@ type ServiceResult struct {
 	// --no-restart defers and says the state could not be read.
 	DaemonStateUnknown bool `json:"daemon_state_unknown,omitempty"`
 	// Unsupported is true when the staged obey predates the supervised daemon
-	// contract, so no service verb ran at all.
+	// contract and the daemon was serving or could not be read, so no service
+	// verb ran. An obey below the contract still registers its unit on a
+	// daemon the probe definitely found stopped, and that is an ordinary
+	// install rather than this.
 	Unsupported bool `json:"unsupported,omitempty"`
 	// ContractReason names what was missing when Unsupported is true.
 	ContractReason string `json:"contract_reason,omitempty"`
@@ -261,13 +264,14 @@ type serviceContract struct {
 // are written for: `obey service restart` exists, and `obey service install`
 // leaves a live daemon alone unless it is asked to replace it (obey #381).
 //
-// Against an obey without them every sentence this step prints is wrong.
-// --no-restart would report a deferred restart that obey's own install had
-// already performed, losing the live sessions the flag exists to keep; the
-// default path would call a verb that command does not have, and a cobra
-// parent with no run function answers an unknown subcommand by printing its
-// help and exiting 0, so even the failure would be silent. An obey below the
-// contract therefore gets no service verb at all.
+// Against an obey without them every sentence this step prints about a live
+// daemon is wrong. --no-restart would report a deferred restart that obey's
+// own install had already performed, losing the live sessions the flag exists
+// to keep; the default path would call a verb that command does not have, and
+// a cobra parent with no run function answers an unknown subcommand by
+// printing its help and exiting 0, so even the failure would be silent. The
+// caller therefore withholds the verbs from an obey below the contract
+// wherever a daemon may be serving (internal/app/obey.go).
 func obeyServiceContract(ctx context.Context) serviceContract {
 	obeyPath, err := obeyServicePath(ctx)
 	if err != nil {

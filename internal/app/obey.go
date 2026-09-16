@@ -266,14 +266,24 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 
 // obeyServiceSwap drives the whole service step for the obey that was just
 // staged: verify the contract, register the unit, then settle the process that
-// is serving. An obey whose service family predates the contract gets no verb
-// at all, because every sentence this step would print about that obey is
-// wrong; the warning says so and names the command to run by hand.
+// is serving.
+//
+// An obey whose service family predates the contract is only held back where
+// the contract is what the step depends on, which is a daemon that is serving
+// or one whose state could not be read: there the step would either report a
+// deferred restart obey's own install had already performed, or call a verb
+// that command does not have, so no verb runs and the warning names the
+// command to run by hand. A daemon the probe definitely found stopped has
+// nothing to lose. `obey service install` exists in every obey and means the
+// same thing on a machine with nothing serving, and withholding it there would
+// leave a fresh machine with no unit at all to buy honesty it already has.
 func obeyServiceSwap(ctx context.Context, daemon daemonState, noRestart bool) ServiceResult {
-	if contract := obeyServiceContract(ctx); !contract.Supported {
+	if contract := obeyServiceContract(ctx); !contract.Supported && daemon != daemonStateStopped {
 		return ServiceResult{Unsupported: true, ContractReason: contract.Reason}
 	}
 	svc := serviceStep(ctx, serviceVerbInstall)
+	// With a stopped daemon finishServiceSwap settles on the install verb
+	// alone, so the restart verb the contract is about is unreachable here.
 	return finishServiceSwap(ctx, svc, daemon, noRestart)
 }
 
