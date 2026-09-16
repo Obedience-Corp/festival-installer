@@ -11,22 +11,36 @@ import (
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
-// obeyDrainBudget is obey's own worst case for a restart: a bounded 10s SIGTERM
-// drain, a graceful gRPC stop, then a wait for the replacement process to
-// answer. The installer's budget has to clear it, or a restart that worked is
-// killed halfway and reported as a failure.
-const obeyDrainBudget = 60 * time.Second
+// obeyRestartBudget is obey's own bounded worst case for a supervised restart:
+// launchd releasing the label after the bootout, which is the unit's ExitTimeOut
+// of 30s plus a 5s margin, and then the wait for the replacement process to
+// exist and answer, which is 30s. The installer's budget has to clear it, or a
+// restart still inside obey's own contract is killed halfway and reported as a
+// failure.
+const obeyRestartBudget = 65 * time.Second
 
-func TestVerbTimeout_RestartClearsObeyOwnBudget(t *testing.T) {
-	if got := verbTimeout(serviceVerbRestart); got < obeyDrainBudget {
-		t.Fatalf("restart budget = %s, want at least %s", got, obeyDrainBudget)
+// obeyRestartMargin is the headroom the cap keeps over that sequence. It pins a
+// decision rather than a measurement: the cap is meant to fire only once obey
+// has blown its own contract, and a margin thin enough to be eaten by slow
+// launchctl calls or a later bump to obey's budgets would instead kill a
+// legitimate swap.
+const obeyRestartMargin = 30 * time.Second
+
+func TestVerbTimeout_RestartClearsObeyOwnReloadSequence(t *testing.T) {
+	restart := verbTimeout(serviceVerbRestart)
+	if restart < obeyRestartBudget {
+		t.Fatalf("restart budget = %s, want at least obey's own %s", restart, obeyRestartBudget)
+	}
+	if margin := restart - obeyRestartBudget; margin < obeyRestartMargin {
+		t.Fatalf("restart budget = %s leaves %s over obey's own %s, want at least %s",
+			restart, margin, obeyRestartBudget, obeyRestartMargin)
 	}
 	for _, verb := range []string{serviceVerbInstall, serviceVerbUninstall, serviceVerbStatus} {
 		got := verbTimeout(verb)
 		if got != serviceTimeout {
 			t.Fatalf("%s budget = %s, want the supervisor budget %s", verb, got, serviceTimeout)
 		}
-		if got >= verbTimeout(serviceVerbRestart) {
+		if got >= restart {
 			t.Fatalf("%s budget = %s, want it shorter than the restart budget", verb, got)
 		}
 	}
@@ -40,6 +54,18 @@ func TestRunServiceVerb_TimeoutSaysTheVerbTimedOut(t *testing.T) {
 	slow := filepath.Join(dir, "obey")
 	if err := os.WriteFile(slow, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatalf("write fake obey: %v", err)
+	}
+
+	// The real pair is a 65s swap inside a 120s cap and a swap that outlives
+	// it, scaled down here because the budget is a parameter and the suite is
+	// not going to wait out a real one. A verb that finishes inside its budget
+	// is not cut short.
+	quick := filepath.Join(dir, "obey-quick")
+	if err := os.WriteFile(quick, []byte("#!/bin/sh\nsleep 0.2\n"), 0o755); err != nil {
+		t.Fatalf("write quick fake obey: %v", err)
+	}
+	if err := runServiceVerbWithin(context.Background(), quick, serviceVerbRestart, 10*time.Second); err != nil {
+		t.Fatalf("a verb that finishes inside its budget must succeed: %v", err)
 	}
 
 	started := time.Now()
