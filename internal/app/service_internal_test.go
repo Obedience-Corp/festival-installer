@@ -59,7 +59,7 @@ func TestRunServiceVerb_TimeoutSaysTheVerbTimedOut(t *testing.T) {
 		t.Fatalf("error = %q, want it to name the verb that timed out", err)
 	}
 
-	note := serviceNote(&ServiceResult{Error: err.Error(), TimedOut: true}, "0.2.1")
+	note := serviceNote(&ServiceResult{Error: err.Error(), TimedOut: true}, "0.2.1", true)
 	if !strings.Contains(note, "timed out") {
 		t.Fatalf("note = %q, want it to say the verb timed out", note)
 	}
@@ -112,7 +112,7 @@ func TestServiceNote_DeferredErrorAndQuiet(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := serviceNote(tc.svc, tc.version)
+			got := serviceNote(tc.svc, tc.version, true)
 			if len(tc.wantContain) == 0 {
 				if got != tc.want {
 					t.Fatalf("serviceNote = %q, want %q", got, tc.want)
