@@ -27,7 +27,7 @@ const (
 
 // ServiceResult reports what the installer did with the obey user service.
 // It is advisory: a false Installed or Restarted with a non-empty Error means
-// the binaries landed and the supervisor did not take them (D5).
+// the binaries landed and the supervisor did not take them.
 type ServiceResult struct {
 	// Installed is true when obey service install succeeded on this run.
 	Installed bool `json:"installed"`
@@ -41,7 +41,7 @@ type ServiceResult struct {
 
 // serviceStep runs one obey service verb with the freshly staged binary.
 // Errors are reported, never returned: a daemon that did not register is a
-// degraded install, not a failed one (D5).
+// degraded install, not a failed one.
 func serviceStep(ctx context.Context, verb string) ServiceResult {
 	var res ServiceResult
 	obeyPath, err := obeyServicePath(ctx)
