@@ -193,12 +193,9 @@ func probeToolVersion(ctx context.Context, tool, path string) (string, error) {
 	if !ok {
 		return "", errpkg.New("E_VERSION_PROBE", "no version probe defined for "+tool)
 	}
-	runCtx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
-
 	var lastErr error
 	for _, args := range argSets {
-		out, err := runProbe(runCtx, path, args...)
+		out, err := probeOnce(ctx, path, args)
 		if err != nil {
 			lastErr = err
 			continue
@@ -212,6 +209,17 @@ func probeToolVersion(ctx context.Context, tool, path string) (string, error) {
 		lastErr = errpkg.New("E_VERSION_PROBE", "no version probe succeeded for "+tool)
 	}
 	return "", errpkg.Wrap("E_VERSION_PROBE", lastErr, "read "+tool+" version at "+path)
+}
+
+// probeOnce gives one argument set the full probe budget. The budget is per
+// attempt rather than shared across the table, because a fallback exists
+// precisely for binaries that reject the first argument set, and a shared
+// budget lets a slow or cold first attempt consume the whole of it and leave
+// the fallback no time to answer.
+func probeOnce(ctx context.Context, path string, args []string) ([]byte, error) {
+	runCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	return runProbe(runCtx, path, args...)
 }
 
 // readStatusReceipts loads the receipts for every package a reported tool

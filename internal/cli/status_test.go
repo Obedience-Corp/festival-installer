@@ -85,6 +85,18 @@ func festivalVersionScript(version string) string {
 	return "#!/bin/sh\nif [ \"$1\" = version ]; then echo '" + version + "'; exit 0; fi\nexit 1\n"
 }
 
+// festivalPreShortVersionScript is the released hub a user machine can still be
+// running. Measured against the installed public binary on 2026-09-16:
+// `festival version --short` answers "unknown flag: --short" and exits 1, while
+// plain `festival version` prints the bare stamp. The probe's second argument
+// set is the only thing that reports a version on such a machine.
+func festivalPreShortVersionScript(version string) string {
+	return "#!/bin/sh\n" +
+		"if [ \"$1\" = version ] && [ \"$2\" = --short ]; then echo 'unknown flag: --short' >&2; exit 1; fi\n" +
+		"if [ \"$1\" = version ]; then echo '" + version + "'; exit 0; fi\n" +
+		"exit 1\n"
+}
+
 // obeyVersionScript is the post-floor daemon: `version --short` answers the
 // bare number and `--version` still answers cobra's default template.
 func obeyVersionScript(version string) string {
@@ -486,5 +498,42 @@ func TestStatusAndWhichAgreeOnTheSameBinary(t *testing.T) {
 	}
 	if byTool["camp"] != "0.10.1-4-gd1fb37c7" {
 		t.Fatalf("camp version = %q, want the normalized git describe stamp", byTool["camp"])
+	}
+}
+
+// A released festival rejects `version --short`, so the hub must read its own
+// version out of plain `version` the way it reads obey's out of `--version`.
+func TestStatus_FestivalProbeFallsBackWhenShortIsRejected(t *testing.T) {
+	cases := map[string]struct {
+		script string
+		want   string
+	}{
+		"the released hub, which has no --short flag": {
+			script: festivalPreShortVersionScript("0.0.0-dev"),
+			want:   "0.0.0-dev",
+		},
+		"a released hub on a tag": {
+			script: festivalPreShortVersionScript("v0.2.2"),
+			want:   "0.2.2",
+		},
+		"the current hub, where --short answers first": {
+			script: festivalVersionScript("v0.2.2"),
+			want:   "0.2.2",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			isolatedStatusEnv(t, home)
+			writeFakeTool(t, filepath.Join(home, "bin"), "festival", tc.script)
+
+			got := toolNamed(t, statusReport(t, "status", "--json"), "festival")
+			if got.Version != tc.want {
+				t.Fatalf("festival version = %q, want %q (error %q)", got.Version, tc.want, got.Error)
+			}
+			if got.Error != "" {
+				t.Fatalf("festival must report no error when a probe succeeded: %q", got.Error)
+			}
+		})
 	}
 }

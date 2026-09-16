@@ -82,6 +82,12 @@ func TestProbeToolVersion_ReadsRealOutputAndRejectsGarbage(t *testing.T) {
 			want:   "0.2.2",
 		},
 		{
+			name:   "a released festival rejects --short and answers plain version",
+			tool:   selfBinaryName,
+			script: "#!/bin/sh\nif [ \"$2\" = --short ]; then echo 'unknown flag: --short' >&2; exit 1; fi\necho 0.0.0-dev\n",
+			want:   "0.0.0-dev",
+		},
+		{
 			name:   "obey falls back to the root flag",
 			tool:   obeyBinary,
 			script: "#!/bin/sh\ncase \"$1\" in\n  --version) echo \"obey version 0.1.0\" ;;\n  *) exit 1 ;;\nesac\n",
@@ -208,33 +214,64 @@ func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
 	}
 }
 
+// backgroundingProbeScript exits immediately but leaves a child holding the
+// stdout it inherited, which is the shape that defeats a bare context timeout.
+// The fixture needs /bin/sh to background a child, which is the whole point; it
+// writes nothing outside the test's own temp dir.
+func backgroundingProbeScript(t *testing.T) string {
+	t.Helper()
+	return writeProbeScript(t, t.TempDir(), "camp", "#!/bin/sh\nsleep 30 &\necho v0.9.9\n")
+}
+
+// probeBound is comfortably above probeTimeout plus probeWaitDelay and far
+// below the 30 seconds the grandchild holds the pipe.
+const probeBound = 5 * time.Second
+
+// TestRunProbe_FoldsWaitDelayAndKeepsTheOutput is the deterministic half of the
+// WaitDelay claim: given room to exit normally, the probe still returns the
+// version the tool printed even though a grandchild holds stdout open.
+func TestRunProbe_FoldsWaitDelayAndKeepsTheOutput(t *testing.T) {
+	path := backgroundingProbeScript(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	out, err := runProbe(ctx, path, "version", "--short")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("runProbe after %s: %v", elapsed, err)
+	}
+	if got := ParseToolVersion("camp", string(out)); got != "0.9.9" {
+		t.Fatalf("version = %q after %s, want 0.9.9: a leftover grandchild must not cost the version", got, elapsed)
+	}
+	if elapsed > probeBound {
+		t.Fatalf("runProbe took %s, want under %s: WaitDelay did not close the pipes", elapsed, probeBound)
+	}
+}
+
 // TestProbes_BoundedWhenAChildHoldsStdout is the reason both probe sites set
 // cmd.WaitDelay. exec kills the direct child when the context expires, but
-// Output waits for stdout to reach EOF, and the backgrounded sleep below holds
-// the inherited pipe open long past the probe's two second budget. Measured
-// without WaitDelay: a 2s context returned after 1m0.15s.
+// Output waits for stdout to reach EOF, and the backgrounded sleep holds the
+// inherited pipe open long past the probe's budget. Measured without WaitDelay:
+// a 2s context returned after 30s, the full lifetime of the grandchild.
+//
+// Only the bound is asserted here. Whether the probe comes back with the
+// version or with a deadline error depends on whether the fixture shell got to
+// exit inside the budget, which on a loaded machine it may not; both outcomes
+// are correct and neither takes 30 seconds. The version itself is pinned by
+// TestRunProbe_FoldsWaitDelayAndKeepsTheOutput, which has no deadline pressure.
 func TestProbes_BoundedWhenAChildHoldsStdout(t *testing.T) {
-	// The fixture needs /bin/sh to background a child, which is the whole
-	// point; it writes nothing outside the test's own temp dir.
-	dir := t.TempDir()
-	path := writeProbeScript(t, dir, "camp", "#!/bin/sh\nsleep 30 &\necho v0.9.9\n")
-
-	// Comfortably above probeTimeout plus probeWaitDelay and far below the
-	// 30 seconds the grandchild holds the pipe.
-	const budget = 5 * time.Second
+	path := backgroundingProbeScript(t)
 
 	t.Run("probeToolVersion", func(t *testing.T) {
 		start := time.Now()
 		got, err := probeToolVersion(context.Background(), "camp", path)
 		elapsed := time.Since(start)
-		if err != nil {
-			t.Fatalf("probeToolVersion after %s: %v", elapsed, err)
+		if elapsed > probeBound {
+			t.Fatalf("probeToolVersion took %s, want under %s: the timeout does not bound the read", elapsed, probeBound)
 		}
-		if got != "0.9.9" {
+		if err == nil && got != "0.9.9" {
 			t.Fatalf("version = %q after %s, want 0.9.9", got, elapsed)
-		}
-		if elapsed > budget {
-			t.Fatalf("probeToolVersion took %s, want under %s: the timeout does not bound the read", elapsed, budget)
 		}
 	})
 
@@ -242,11 +279,11 @@ func TestProbes_BoundedWhenAChildHoldsStdout(t *testing.T) {
 		start := time.Now()
 		got, _, _ := probeBinary(context.Background(), path, "camp")
 		elapsed := time.Since(start)
-		if got != "0.9.9" {
-			t.Fatalf("version = %q after %s, want 0.9.9", got, elapsed)
+		if elapsed > probeBound {
+			t.Fatalf("probeBinary took %s, want under %s: the timeout does not bound the read", elapsed, probeBound)
 		}
-		if elapsed > budget {
-			t.Fatalf("probeBinary took %s, want under %s: the timeout does not bound the read", elapsed, budget)
+		if got != "" && got != "0.9.9" {
+			t.Fatalf("version = %q after %s, want 0.9.9 or none", got, elapsed)
 		}
 	})
 }
