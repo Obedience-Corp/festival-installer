@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -79,7 +78,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 
 	installedVersion := rec.Version
 	warning := ""
-	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && LooksLikeVersion(live) && live != installedVersion {
+	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && live != "" && live != installedVersion {
 		warning = "receipt reports " + installedVersion + " but the managed camp reports " + live + "; comparing against the live version"
 		installedVersion = live
 	}
@@ -238,21 +237,26 @@ func handleUnmanaged(ctx context.Context) (UpdateResult, string, error) {
 	return UpdateResult{Package: FestivalPackageID, Action: "unmanaged"}, warning, nil
 }
 
+// detectLiveVersion reads the managed tool's own `version --short` through the
+// shared parser, so a git-describe stamp such as "v0.10.1-4-gd1fb37c7" is
+// recognised as the version it is. An empty return means the tool answered
+// something that is not a version.
 func detectLiveVersion(ctx context.Context, tool string) (string, error) {
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		return "", err
 	}
-	out, err := exec.CommandContext(ctx, filepath.Join(binDir, tool), "version", "--short").Output()
+	out, err := runProbe(ctx, filepath.Join(binDir, tool), "version", "--short")
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return ParseToolVersion(tool, string(out)), nil
 }
 
-// LooksLikeVersion reports whether s starts with a plausible dotted version
-// number, the same check the live-skew probe uses to trust a tool's own
-// `version --short` output.
+// LooksLikeVersion reports whether s is a plausible dotted version number: at
+// least three dot-separated parts with an all-numeric first part. It judges the
+// normalized form ParseToolVersion produces, not raw probe output, so a leading
+// v is a parser concern and not an acceptance rule.
 func LooksLikeVersion(s string) bool {
 	parts := strings.SplitN(s, ".", 3)
 	if len(parts) < 3 {

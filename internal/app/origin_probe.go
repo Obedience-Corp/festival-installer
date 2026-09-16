@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,11 +14,18 @@ import (
 )
 
 const (
-	probeTimeout  = 2 * time.Second
-	flavorTimeout = 200 * time.Millisecond
-	releasesURL   = "https://github.com/Obedience-Corp/festival/releases/latest"
-	docsInstall   = "https://docs.fest.build/getting-started/installation/"
-	installShURL  = "https://raw.githubusercontent.com/Obedience-Corp/festival/main/install.sh"
+	probeTimeout = 2 * time.Second
+	// probeWaitDelay bounds the wait for a probe's stdout to reach EOF after
+	// its deadline. exec kills the direct child when the context expires, but
+	// Output then waits for the pipe, and a grandchild that inherited stdout
+	// holds it open for as long as it lives: without this, a 2s context
+	// returned after 30s against the fixture in
+	// TestProbes_BoundedWhenAChildHoldsStdout.
+	probeWaitDelay = 250 * time.Millisecond
+	flavorTimeout  = 200 * time.Millisecond
+	releasesURL    = "https://github.com/Obedience-Corp/festival/releases/latest"
+	docsInstall    = "https://docs.fest.build/getting-started/installation/"
+	installShURL   = "https://raw.githubusercontent.com/Obedience-Corp/festival/main/install.sh"
 )
 
 func flavorFromPackageManager(ctx context.Context, path string) (PackageFlavor, string) {
@@ -66,6 +74,7 @@ func runTimed(ctx context.Context, d time.Duration, name string, args ...string)
 	ctx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = probeWaitDelay
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
@@ -106,42 +115,49 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 	if tool != selfBinaryName {
-		if raw, err := exec.CommandContext(ctx, path, "version", "--json").Output(); err == nil {
+		if raw, err := runProbe(ctx, path, "version", "--json"); err == nil {
 			var parsed struct {
 				Version string `json:"version"`
 				Bundle  string `json:"bundle"`
 				Profile string `json:"profile"`
 			}
+			// camp and fest stamp the git tag verbatim, so the JSON version
+			// carries the same leading v the text output does.
 			if json.Unmarshal(raw, &parsed) == nil {
-				return parsed.Version, parsed.Bundle, parsed.Profile
+				if v := ParseToolVersion(tool, parsed.Version); v != "" {
+					return v, parsed.Bundle, parsed.Profile
+				}
 			}
 		}
 	}
-	raw, err := exec.CommandContext(ctx, path, "version").Output()
+	raw, err := runProbe(ctx, path, "version")
 	if err != nil {
 		return "", "", ""
 	}
 	return parseVersionText(tool, string(raw))
 }
 
+// runProbe runs one version probe and returns its stdout. WaitDelay is what
+// makes the caller's timeout real, and a grandchild still holding stdout is not
+// a probe failure: the tool's own output was already written, so ErrWaitDelay
+// is folded into success and parsed like any other.
+func runProbe(ctx context.Context, path string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // path from ResolveTool or the managed bin dir, args from a fixed table
+	cmd.Stdin = nil
+	cmd.WaitDelay = probeWaitDelay
+	out, err := cmd.Output()
+	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
+		return nil, err
+	}
+	return out, nil
+}
+
+// parseVersionText reads a tool's `version` output: the version from the first
+// line, and the bundle and profile rows when the tool prints them.
 func parseVersionText(tool, text string) (version, bundle, profile string) {
+	version = ParseToolVersion(tool, text)
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if version == "" {
-			switch {
-			case strings.HasPrefix(line, "camp "):
-				version = strings.TrimSpace(strings.TrimPrefix(line, "camp"))
-			case strings.HasPrefix(line, "fest "):
-				version = strings.TrimSpace(strings.TrimPrefix(line, "fest"))
-			case tool == selfBinaryName:
-				version = line
-			default:
-				version = line
-			}
-		}
 		if rest, ok := strings.CutPrefix(line, "bundle:"); ok {
 			rest = strings.TrimSpace(rest)
 			rest = strings.TrimPrefix(rest, "festival")
@@ -152,6 +168,43 @@ func parseVersionText(tool, text string) (version, bundle, profile string) {
 		}
 	}
 	return version, bundle, profile
+}
+
+// ParseToolVersion reads what a suite tool printed for its version and returns
+// the one shape every festival command reports: the bare semver core plus any
+// pre-release or git-describe suffix, with no leading v and no tool name.
+//
+// Every form the shipped binaries print normalizes here. camp and fest stamp
+// `git describe --tags` against vX.Y.Z tags, so `version --short` prints
+// "v0.10.1-4-gd1fb37c7" and `version` prints that line prefixed with the tool
+// name; festival prints the bare "v0.2.2"; cobra's default version template
+// prints "obey version 0.1.0". Output that is not a version, a help banner for
+// instance, returns "": a wrong version is worse for a floor check than an
+// absent one.
+func ParseToolVersion(tool, output string) string {
+	v := firstLine(output)
+	if rest, ok := strings.CutPrefix(v, tool+" "); ok {
+		v = strings.TrimSpace(rest)
+	}
+	if rest, ok := strings.CutPrefix(v, "version "); ok {
+		v = strings.TrimSpace(rest)
+	}
+	v = strings.TrimPrefix(v, "v")
+	if !LooksLikeVersion(v) {
+		return ""
+	}
+	return v
+}
+
+// firstLine is the first non-blank line, which keeps a multi-page help dump out
+// of a reported version or error.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func applyGuidance(origin *SuiteOrigin) {

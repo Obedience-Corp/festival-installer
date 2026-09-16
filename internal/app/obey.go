@@ -298,7 +298,7 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 
 	installedVersion := rec.Version
 	warning := ""
-	if live, derr := detectObeyVersion(ctx); derr == nil && LooksLikeVersion(live) && live != installedVersion {
+	if live, derr := detectObeyVersion(ctx); derr == nil && live != "" && live != installedVersion {
 		warning = "receipt reports " + installedVersion + " but the managed obey reports " + live + "; comparing against the live version"
 		installedVersion = live
 	}

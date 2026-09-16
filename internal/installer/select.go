@@ -59,6 +59,16 @@ func lessSemver(a, b string) bool {
 	if preA == "" && preB == "" {
 		return false
 	}
+	aheadA, describeA := describeAhead(preA)
+	aheadB, describeB := describeAhead(preB)
+	switch {
+	case describeA && describeB:
+		return aheadA < aheadB
+	case describeA:
+		return false
+	case describeB:
+		return true
+	}
 	if preA == "" {
 		return false
 	}
@@ -66,6 +76,38 @@ func lessSemver(a, b string) bool {
 		return true
 	}
 	return lessPrerelease(preA, preB)
+}
+
+// describeAhead reads the commit count out of a `git describe --tags` suffix
+// such as "4-gd1fb37c7" or "4-gd1fb37c7-dirty". camp, fest, and festival stamp
+// their version from git describe, so a build cut after a tag carries one.
+// Semver would sort it below the tag as a pre-release; git describe means the
+// opposite, and treating it as older is what makes an up-to-date machine look
+// like it is below the floor.
+func describeAhead(pre string) (int, bool) {
+	fields := strings.Split(pre, "-")
+	if len(fields) < 2 || !isHexAfterG(fields[1]) {
+		return 0, false
+	}
+	commits, err := strconv.Atoi(fields[0])
+	if err != nil || commits < 0 {
+		return 0, false
+	}
+	return commits, true
+}
+
+func isHexAfterG(field string) bool {
+	rest, ok := strings.CutPrefix(field, "g")
+	if !ok || rest == "" {
+		return false
+	}
+	for _, r := range rest {
+		isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+		if !isHex {
+			return false
+		}
+	}
+	return true
 }
 
 func splitVersion(v string) ([3]int, string) {

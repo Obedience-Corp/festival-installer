@@ -59,7 +59,45 @@ func writeFakeTool(t *testing.T, binDir, name, script string) {
 	}
 }
 
-func versionScript(out string) string { return "#!/bin/sh\necho '" + out + "'\n" }
+// suiteVersionScript is what a released camp or fest prints. Both stamp
+// `git describe --tags` against vX.Y.Z tags, so `version --short` answers the
+// bare stamp and `version` answers a block whose first line carries the tool
+// name. A fixture that prints a bare unprefixed number tests a shape no release
+// build produces.
+func suiteVersionScript(tool, version string) string {
+	return "#!/bin/sh\n" +
+		"if [ \"$1\" = version ] && [ \"$2\" = --short ]; then echo '" + version + "'; exit 0; fi\n" +
+		"if [ \"$1\" = version ]; then\n" +
+		"  echo '" + tool + " " + version + "'\n" +
+		"  echo 'commit: d1fb37c7'\n" +
+		"  echo 'built: 2026-09-16T07:22:45Z'\n" +
+		"  echo 'go: go1.26.7'\n" +
+		"  echo 'platform: darwin/arm64'\n" +
+		"  echo 'profile: stable'\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 1\n"
+}
+
+// festivalVersionScript is the hub's own shape: the ldflags stamp, printed bare
+// by both `version` and `version --short`.
+func festivalVersionScript(version string) string {
+	return "#!/bin/sh\nif [ \"$1\" = version ]; then echo '" + version + "'; exit 0; fi\nexit 1\n"
+}
+
+// obeyVersionScript is the post-floor daemon: `version --short` answers the
+// bare number and `--version` still answers cobra's default template.
+func obeyVersionScript(version string) string {
+	return "#!/bin/sh\n" +
+		"if [ \"$1\" = version ] && [ \"$2\" = --short ]; then echo '" + version + "'; exit 0; fi\n" +
+		"if [ \"$1\" = --version ]; then echo 'obey version " + version + "'; exit 0; fi\n" +
+		"exit 1\n"
+}
+
+// obVersionScript is the developer CLI, which has only the root flag form.
+func obVersionScript(version string) string {
+	return "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'ob version " + version + "'; exit 0; fi\nexit 1\n"
+}
 
 // isolatedStatusEnv points the installer at home, isolates $HOME, and reduces
 // PATH to a toolbox holding only the general-purpose binaries the fixtures need.
@@ -208,11 +246,11 @@ func writeObeyReceipt(t *testing.T, ctx context.Context, home, binDir string) {
 func TestStatus_ReportsVersionsAndReceipts(t *testing.T) {
 	_, binDir := installedSuiteHome(t)
 
-	writeFakeTool(t, binDir, "camp", versionScript("0.6.0"))
-	writeFakeTool(t, binDir, "fest", versionScript("0.6.6"))
-	writeFakeTool(t, binDir, "festival", versionScript("0.2.2"))
-	writeFakeTool(t, binDir, "obey", versionScript("obey version 0.2.0"))
-	writeFakeTool(t, binDir, "ob", versionScript("ob version 0.2.0"))
+	writeFakeTool(t, binDir, "camp", suiteVersionScript("camp", "v0.10.1-4-gd1fb37c7"))
+	writeFakeTool(t, binDir, "fest", suiteVersionScript("fest", "v0.8.0"))
+	writeFakeTool(t, binDir, "festival", festivalVersionScript("v0.2.2"))
+	writeFakeTool(t, binDir, "obey", obeyVersionScript("0.2.0"))
+	writeFakeTool(t, binDir, "ob", obVersionScript("0.2.0"))
 
 	data := statusReport(t, "status", "--json")
 
@@ -226,8 +264,8 @@ func TestStatus_ReportsVersionsAndReceipts(t *testing.T) {
 	want := map[string]struct {
 		version, pkg, receiptVersion string
 	}{
-		"camp":     {"0.6.0", "obedience-corp/festival", "0.2.10"},
-		"fest":     {"0.6.6", "obedience-corp/festival", "0.2.10"},
+		"camp":     {"0.10.1-4-gd1fb37c7", "obedience-corp/festival", "0.2.10"},
+		"fest":     {"0.8.0", "obedience-corp/festival", "0.2.10"},
 		"festival": {"0.2.2", "obedience-corp/festival", "0.2.10"},
 		"obey":     {"0.2.0", app.ObeyPackageID, "0.2.0"},
 		"ob":       {"0.2.0", app.ObeyPackageID, "0.2.0"},
@@ -263,13 +301,13 @@ func TestStatus_ObeyProbeFallsBackToVersionFlag(t *testing.T) {
 		script string
 		want   string
 	}{
-		"root flag only": {
-			script: "#!/bin/sh\ncase \"$1\" in\n  --version) echo \"obey version 0.2.0\" ;;\n  *) exit 1 ;;\nesac\n",
-			want:   "0.2.0",
+		"root flag only, the shape obey ships today": {
+			script: "#!/bin/sh\ncase \"$1\" in\n  --version) echo \"obey version 0.1.0\" ;;\n  *) exit 1 ;;\nesac\n",
+			want:   "0.1.0",
 		},
 		"subcommand wins when both answer": {
-			script: "#!/bin/sh\ncase \"$1\" in\n  version) echo 0.3.0 ;;\n  *) echo \"obey version 0.2.0\" ;;\nesac\n",
-			want:   "0.3.0",
+			script: "#!/bin/sh\ncase \"$1\" in\n  version) echo 0.2.0 ;;\n  *) echo \"obey version 0.1.0\" ;;\nesac\n",
+			want:   "0.2.0",
 		},
 	}
 	for name, tc := range cases {
@@ -322,7 +360,7 @@ func TestStatus_StdoutIsExactlyOneJSONObject(t *testing.T) {
 	home := t.TempDir()
 	isolatedStatusEnv(t, home)
 	binDir := filepath.Join(home, "bin")
-	writeFakeTool(t, binDir, "camp", versionScript("0.6.0"))
+	writeFakeTool(t, binDir, "camp", suiteVersionScript("camp", "v0.10.1-4-gd1fb37c7"))
 
 	out, _, err := runInstaller(t, "status", "--json")
 	if err != nil {
@@ -343,7 +381,7 @@ func TestResolve_ManagedToolAndMissingTool(t *testing.T) {
 	home := t.TempDir()
 	isolatedStatusEnv(t, home)
 	binDir := filepath.Join(home, "bin")
-	writeFakeTool(t, binDir, "camp", versionScript("0.6.0"))
+	writeFakeTool(t, binDir, "camp", suiteVersionScript("camp", "v0.10.1-4-gd1fb37c7"))
 
 	out, errOut, err := runInstaller(t, "resolve", "camp", "--json")
 	if err != nil {
@@ -395,7 +433,7 @@ func TestResolve_BarePathWithoutJSON(t *testing.T) {
 	home := t.TempDir()
 	isolatedStatusEnv(t, home)
 	binDir := filepath.Join(home, "bin")
-	writeFakeTool(t, binDir, "camp", versionScript("0.6.0"))
+	writeFakeTool(t, binDir, "camp", suiteVersionScript("camp", "v0.10.1-4-gd1fb37c7"))
 
 	out, errOut, err := runInstaller(t, "resolve", "camp")
 	if err != nil {
@@ -406,5 +444,47 @@ func TestResolve_BarePathWithoutJSON(t *testing.T) {
 	}
 	if errOut != "" {
 		t.Fatalf("stderr = %q, want nothing", errOut)
+	}
+}
+
+// Two commands in the same binary must not disagree about the same binary.
+// `status` and `which --show-all` read different probes, and before the shared
+// parser `which` reported camp's version while `status` reported none.
+func TestStatusAndWhichAgreeOnTheSameBinary(t *testing.T) {
+	home := t.TempDir()
+	isolatedStatusEnv(t, home)
+	binDir := filepath.Join(home, "bin")
+	writeFakeTool(t, binDir, "camp", suiteVersionScript("camp", "v0.10.1-4-gd1fb37c7"))
+	writeFakeTool(t, binDir, "fest", suiteVersionScript("fest", "v0.8.0"))
+	writeFakeTool(t, binDir, "festival", festivalVersionScript("v0.2.2"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	status := statusReport(t, "status", "--json")
+
+	out, errOut, err := runInstaller(t, "which", "camp", "--show-all", "--json")
+	if err != nil {
+		t.Fatalf("which camp --show-all: %v\n%s", err, errOut)
+	}
+	var which app.WhichResult
+	if jerr := json.Unmarshal([]byte(out), &which); jerr != nil {
+		t.Fatalf("decode which: %v\n%s", jerr, out)
+	}
+
+	byTool := map[string]string{}
+	for _, loc := range which.All {
+		byTool[loc.Tool] = loc.Version
+	}
+	for _, tool := range []string{"camp", "fest", "festival"} {
+		fromStatus := toolNamed(t, status, tool).Version
+		if fromStatus == "" {
+			t.Fatalf("status reports no version for %s", tool)
+		}
+		if byTool[tool] != fromStatus {
+			t.Fatalf("%s: which reports %q, status reports %q; both read the same binary",
+				tool, byTool[tool], fromStatus)
+		}
+	}
+	if byTool["camp"] != "0.10.1-4-gd1fb37c7" {
+		t.Fatalf("camp version = %q, want the normalized git describe stamp", byTool["camp"])
 	}
 }

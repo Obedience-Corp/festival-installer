@@ -218,9 +218,9 @@ func buildHeadlessFixture(t *testing.T, packageOrigin bool) headlessFixture {
 	festivalHome := filepath.Join(t.TempDir(), "installer")
 
 	suite := buildSuiteTarGz(t, map[string]string{
-		"camp":     "#!/bin/sh\necho camp 0.2.11\n",
-		"fest":     "#!/bin/sh\necho fest 0.4.5\n",
-		"festival": "#!/bin/sh\necho 0.2.10\n",
+		"camp":     suiteVersionScript("camp", "v0.2.11"),
+		"fest":     suiteVersionScript("fest", "v0.4.5"),
+		"festival": festivalVersionScript("v0.2.10"),
 	})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(suite)

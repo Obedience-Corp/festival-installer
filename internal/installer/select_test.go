@@ -104,3 +104,34 @@ func TestSelectArtifact_NotFound(t *testing.T) {
 		t.Fatalf("expected ErrNoArtifactForPlatform, got %v", err)
 	}
 }
+
+// A git describe stamp is the tag plus commits, not a pre-release below it.
+// camp, fest, and festival all stamp `git describe --tags`, so ordering
+// "0.10.1-4-gd1fb37c7" below "0.10.1" is what makes an up-to-date machine look
+// like it is behind the floor and reinstall on every launch.
+func TestVersionLess_GitDescribeStampRanksAboveItsTag(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"0.10.1-4-gd1fb37c7", "0.10.1", false},
+		{"0.10.1", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7", "0.10.2", true},
+		{"0.10.2", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-12-gaaaaaaa", true},
+		{"0.10.1-12-gaaaaaaa", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1", false},
+		{"0.10.1-rc.1", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-rc.1", false},
+		// A real pre-release still sorts below its release.
+		{"0.3.0-rc.1", "0.3.0", true},
+		{"0.3.0", "0.3.0-rc.1", false},
+		{"0.3.0-rc.1", "0.3.0-rc.2", true},
+	}
+	for _, tc := range cases {
+		if got := installer.VersionLess(tc.a, tc.b); got != tc.want {
+			t.Errorf("VersionLess(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

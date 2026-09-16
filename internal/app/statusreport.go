@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"sync"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -58,7 +57,7 @@ type StatusReport struct {
 // statusTools is the reporting order. It is fixed because festival-app indexes
 // the array positionally in its tests, and because a stable order makes two
 // status payloads diffable.
-var statusTools = []string{"camp", "fest", selfBinaryName, obeyBinary, "ob"}
+var statusTools = []string{"camp", "fest", selfBinaryName, obeyBinary, obeyDevCLIBinary}
 
 // toolPackage maps a binary to the marketplace package that ships it. It is a
 // static map rather than a receipt scan because a tool must report its owning
@@ -75,23 +74,17 @@ var toolPackage = map[string]string{
 // daemon. It is reported but is never an install target of its own.
 const obeyDevCLIBinary = "ob"
 
-// versionProbe is how one tool reports its version. Args are tried in order and
-// the first that runs and parses wins. TrimPrefix is stripped from the output
-// before LooksLikeVersion judges it, because cobra's default version template
-// prints "<name> version <x.y.z>".
-type versionProbe struct {
-	args       [][]string
-	trimPrefix string
-}
-
-var versionProbes = map[string]versionProbe{
-	"camp":         {args: [][]string{{"version", "--short"}, {"version"}}},
-	"fest":         {args: [][]string{{"version", "--short"}, {"version"}}},
-	selfBinaryName: {args: [][]string{{"version", "--short"}, {"version"}}},
-	// obey answers --version today. `version --short` is tried first so it
-	// takes over as soon as the version floor guarantees it.
-	obeyBinary:       {args: [][]string{{"version", "--short"}, {"--version"}}, trimPrefix: "obey version "},
-	obeyDevCLIBinary: {args: [][]string{{"--version"}}, trimPrefix: "ob version "},
+// versionProbes is how each tool reports its version. The argument sets are
+// tried in order and the first that runs and parses wins. Every form they print
+// is normalized by ParseToolVersion, so no probe carries a prefix of its own.
+var versionProbes = map[string][][]string{
+	"camp":         {{"version", "--short"}, {"version"}},
+	"fest":         {{"version", "--short"}, {"version"}},
+	selfBinaryName: {{"version", "--short"}, {"version"}},
+	// obey answers --version until `version --short` is the installed floor,
+	// so the subcommand is tried first and the flag is the fallback.
+	obeyBinary:       {{"version", "--short"}, {"--version"}},
+	obeyDevCLIBinary: {{"--version"}},
 }
 
 // prerequisiteBinaries are the non-suite binaries the installer itself needs.
@@ -196,7 +189,7 @@ func fillToolEntry(ctx context.Context, e *StatusToolEntry) {
 // having no version, with the reason in the error, because a wrong version is
 // worse for the app's floor check than an absent one.
 func probeToolVersion(ctx context.Context, tool, path string) (string, error) {
-	p, ok := versionProbes[tool]
+	argSets, ok := versionProbes[tool]
 	if !ok {
 		return "", errpkg.New("E_VERSION_PROBE", "no version probe defined for "+tool)
 	}
@@ -204,35 +197,21 @@ func probeToolVersion(ctx context.Context, tool, path string) (string, error) {
 	defer cancel()
 
 	var lastErr error
-	for _, args := range p.args {
-		cmd := exec.CommandContext(runCtx, path, args...) //nolint:gosec // path from ResolveTool, args from a fixed table
-		cmd.Stdin = nil
-		out, err := cmd.Output()
+	for _, args := range argSets {
+		out, err := runProbe(runCtx, path, args...)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		v := strings.TrimSpace(string(out))
-		if p.trimPrefix != "" {
-			v = strings.TrimSpace(strings.TrimPrefix(v, p.trimPrefix))
-		}
-		if LooksLikeVersion(v) {
+		if v := ParseToolVersion(tool, string(out)); v != "" {
 			return v, nil
 		}
-		lastErr = errpkg.New("E_VERSION_PROBE", tool+" reported an unparseable version: "+firstLine(v))
+		lastErr = errpkg.New("E_VERSION_PROBE", tool+" reported an unparseable version: "+firstLine(string(out)))
 	}
 	if lastErr == nil {
 		lastErr = errpkg.New("E_VERSION_PROBE", "no version probe succeeded for "+tool)
 	}
 	return "", errpkg.Wrap("E_VERSION_PROBE", lastErr, "read "+tool+" version at "+path)
-}
-
-// firstLine keeps a multi-page help dump out of the reported error.
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return strings.TrimSpace(s[:i])
-	}
-	return s
 }
 
 // readStatusReceipts loads the receipts for every package a reported tool

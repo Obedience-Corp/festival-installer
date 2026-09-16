@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
@@ -45,7 +46,7 @@ func writeProbeScript(t *testing.T, dir, name, body string) string {
 	return path
 }
 
-func TestProbeToolVersion_TrimsPrefixAndRejectsGarbage(t *testing.T) {
+func TestProbeToolVersion_ReadsRealOutputAndRejectsGarbage(t *testing.T) {
 	dir := t.TempDir()
 
 	cases := []struct {
@@ -57,28 +58,46 @@ func TestProbeToolVersion_TrimsPrefixAndRejectsGarbage(t *testing.T) {
 		contains string
 	}{
 		{
-			name:   "bare version from the subcommand",
+			name:   "camp answers version --short with a git describe stamp",
 			tool:   "camp",
-			script: "#!/bin/sh\necho 0.6.0\n",
-			want:   "0.6.0",
+			script: "#!/bin/sh\necho v0.10.1-4-gd1fb37c7\n",
+			want:   "0.10.1-4-gd1fb37c7",
+		},
+		{
+			name:   "camp falls back to the prefixed version block",
+			tool:   "camp",
+			script: "#!/bin/sh\nif [ \"$2\" = --short ]; then exit 1; fi\necho 'camp v0.10.1-4-gd1fb37c7'\necho 'commit: d1fb37c7'\necho 'profile: dev'\n",
+			want:   "0.10.1-4-gd1fb37c7",
+		},
+		{
+			name:   "fest answers version --short",
+			tool:   "fest",
+			script: "#!/bin/sh\necho v0.8.0-4-gdfb49547\n",
+			want:   "0.8.0-4-gdfb49547",
+		},
+		{
+			name:   "festival answers the release stamp",
+			tool:   selfBinaryName,
+			script: "#!/bin/sh\necho v0.2.2\n",
+			want:   "0.2.2",
 		},
 		{
 			name:   "obey falls back to the root flag",
 			tool:   obeyBinary,
-			script: "#!/bin/sh\ncase \"$1\" in\n  --version) echo \"obey version 0.2.0\" ;;\n  *) exit 1 ;;\nesac\n",
-			want:   "0.2.0",
+			script: "#!/bin/sh\ncase \"$1\" in\n  --version) echo \"obey version 0.1.0\" ;;\n  *) exit 1 ;;\nesac\n",
+			want:   "0.1.0",
 		},
 		{
 			name:   "obey prefers the subcommand when it answers",
 			tool:   obeyBinary,
-			script: "#!/bin/sh\ncase \"$1\" in\n  version) echo 0.3.0 ;;\n  *) echo \"obey version 0.2.0\" ;;\nesac\n",
-			want:   "0.3.0",
+			script: "#!/bin/sh\ncase \"$1\" in\n  version) echo 0.2.0 ;;\n  *) echo \"obey version 0.1.0\" ;;\nesac\n",
+			want:   "0.2.0",
 		},
 		{
-			name:   "ob strips its own prefix",
+			name:   "ob answers the cobra version template",
 			tool:   obeyDevCLIBinary,
-			script: "#!/bin/sh\necho \"ob version 0.2.0\"\n",
-			want:   "0.2.0",
+			script: "#!/bin/sh\necho \"ob version 0.1.0\"\n",
+			want:   "0.1.0",
 		},
 		{
 			name:     "a help banner is not a version",
@@ -144,10 +163,10 @@ func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
 	t.Setenv("HOMEBREW_PREFIX", "")
 
 	pkgBin, _ := writePackagePrefix(t, t.TempDir())
-	writeProbeScript(t, pkgBin, "camp", "#!/bin/sh\necho 0.6.0\n")
+	writeProbeScript(t, pkgBin, "camp", "#!/bin/sh\necho 'camp v0.10.1'\n")
 
 	leftoverBin := t.TempDir()
-	writeProbeScript(t, leftoverBin, obeyBinary, "#!/bin/sh\necho \"obey version 0.2.0\"\n")
+	writeProbeScript(t, leftoverBin, obeyBinary, "#!/bin/sh\necho \"obey version 0.1.0\"\n")
 
 	t.Setenv("PATH", pkgBin+string(os.PathListSeparator)+leftoverBin)
 
@@ -187,4 +206,47 @@ func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
 	if obey.Origin != OriginLeftover {
 		t.Fatalf("obey Origin = %q from %q, want leftover: a package-manager suite must not brand an unrelated binary", obey.Origin, obey.Path)
 	}
+}
+
+// TestProbes_BoundedWhenAChildHoldsStdout is the reason both probe sites set
+// cmd.WaitDelay. exec kills the direct child when the context expires, but
+// Output waits for stdout to reach EOF, and the backgrounded sleep below holds
+// the inherited pipe open long past the probe's two second budget. Measured
+// without WaitDelay: a 2s context returned after 1m0.15s.
+func TestProbes_BoundedWhenAChildHoldsStdout(t *testing.T) {
+	// The fixture needs /bin/sh to background a child, which is the whole
+	// point; it writes nothing outside the test's own temp dir.
+	dir := t.TempDir()
+	path := writeProbeScript(t, dir, "camp", "#!/bin/sh\nsleep 30 &\necho v0.9.9\n")
+
+	// Comfortably above probeTimeout plus probeWaitDelay and far below the
+	// 30 seconds the grandchild holds the pipe.
+	const budget = 5 * time.Second
+
+	t.Run("probeToolVersion", func(t *testing.T) {
+		start := time.Now()
+		got, err := probeToolVersion(context.Background(), "camp", path)
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("probeToolVersion after %s: %v", elapsed, err)
+		}
+		if got != "0.9.9" {
+			t.Fatalf("version = %q after %s, want 0.9.9", got, elapsed)
+		}
+		if elapsed > budget {
+			t.Fatalf("probeToolVersion took %s, want under %s: the timeout does not bound the read", elapsed, budget)
+		}
+	})
+
+	t.Run("probeBinary", func(t *testing.T) {
+		start := time.Now()
+		got, _, _ := probeBinary(context.Background(), path, "camp")
+		elapsed := time.Since(start)
+		if got != "0.9.9" {
+			t.Fatalf("version = %q after %s, want 0.9.9", got, elapsed)
+		}
+		if elapsed > budget {
+			t.Fatalf("probeBinary took %s, want under %s: the timeout does not bound the read", elapsed, budget)
+		}
+	})
 }

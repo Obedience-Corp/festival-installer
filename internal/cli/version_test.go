@@ -17,7 +17,7 @@ func TestVersion_Bare(t *testing.T) {
 	}
 }
 
-func TestVersion_ShortAcceptedByLooksLikeVersion(t *testing.T) {
+func TestVersion_ShortParsesThroughTheSharedParser(t *testing.T) {
 	out, _, err := runInstaller(t, "version", "--short")
 	if err != nil {
 		t.Fatalf("version --short: %v", err)
@@ -26,8 +26,13 @@ func TestVersion_ShortAcceptedByLooksLikeVersion(t *testing.T) {
 	if got != testFestivalVersion {
 		t.Fatalf("version --short = %q, want %q", got, testFestivalVersion)
 	}
-	if !app.LooksLikeVersion(got) {
-		t.Fatalf("version --short output %q is not accepted by app.LooksLikeVersion", got)
+	parsed := app.ParseToolVersion("festival", out)
+	if parsed != strings.TrimPrefix(testFestivalVersion, "v") {
+		t.Fatalf("the probe reads %q out of the hub's own %q, want %q",
+			parsed, got, strings.TrimPrefix(testFestivalVersion, "v"))
+	}
+	if !app.LooksLikeVersion(parsed) {
+		t.Fatalf("parsed version %q is not accepted by app.LooksLikeVersion", parsed)
 	}
 }
 

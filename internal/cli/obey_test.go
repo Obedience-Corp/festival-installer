@@ -259,13 +259,13 @@ func packageOriginPrefix(t *testing.T, version string) string {
 	t.Helper()
 	prefix := t.TempDir()
 	binDir := filepath.Join(prefix, "bin")
-	for tool, line := range map[string]string{
-		"camp": "camp " + version,
-		"fest": "fest " + version,
-		// The hub prints a bare version, not a prefixed one.
-		"festival": version,
+	for tool, script := range map[string]string{
+		"camp": suiteVersionScript("camp", "v"+version),
+		"fest": suiteVersionScript("fest", "v"+version),
+		// The hub prints its bare ldflags stamp, not a prefixed line.
+		"festival": festivalVersionScript("v" + version),
 	} {
-		writeFile(t, filepath.Join(binDir, tool), "#!/bin/sh\necho "+line+"\n")
+		writeFile(t, filepath.Join(binDir, tool), script)
 		if err := os.Chmod(filepath.Join(binDir, tool), 0o755); err != nil {
 			t.Fatalf("chmod fake %s: %v", tool, err)
 		}
