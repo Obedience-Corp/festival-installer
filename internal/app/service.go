@@ -305,7 +305,7 @@ func obeyServiceContractAt(ctx context.Context, obeyPath string) serviceContract
 	if err != nil {
 		return serviceContract{Version: version, Reason: "its obey service install flags could not be read: " + err.Error()}
 	}
-	if !strings.Contains(installHelp, serviceInstallRestartFlag) {
+	if !helpListsFlag(installHelp, serviceInstallRestartFlag) {
 		return serviceContract{
 			Version: version,
 			Reason: "its obey service install has no " + serviceInstallRestartFlag +
@@ -351,6 +351,39 @@ func helpListsCommand(help, name string) bool {
 		}
 	}
 	return false
+}
+
+// helpListsFlag reports whether a help screen declares name as a flag of the
+// command it describes. Only the indented flag lines count, and only the flag
+// names on them: a cobra screen carries the command's long description above
+// the usage block, and obey's own install help names --restart in that prose,
+// so a match anywhere on the screen reads a sentence about the flag as the
+// flag itself. The description that follows a flag is cut off at the two
+// spaces cobra separates it with, so one flag documented in terms of another
+// cannot stand in for it either.
+func helpListsFlag(help, name string) bool {
+	for _, line := range strings.Split(help, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == line || !strings.HasPrefix(trimmed, "-") {
+			continue
+		}
+		names := trimmed
+		if i := strings.Index(names, "  "); i >= 0 {
+			names = names[:i]
+		}
+		for _, field := range strings.FieldsFunc(names, isFlagNameSeparator) {
+			if field == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isFlagNameSeparator splits a cobra flag line's name column into the names it
+// declares: a shorthand and a long name, and the type placeholder after them.
+func isFlagNameSeparator(r rune) bool {
+	return r == ' ' || r == '\t' || r == ',' || r == '='
 }
 
 // releaseCore drops a prerelease or build suffix before the floor comparison,
