@@ -37,8 +37,9 @@ func NewUpdateCommand() *cobra.Command {
 			"--json and non-TTY invocations print the command instead of running it.\n\n" +
 			"--no-restart applies to obey only. An obey restart marks every live session failed, so a\n" +
 			"caller with running sessions installs the new binaries and defers the restart; the result\n" +
-			"reports service.deferred and names the restart command. The flag is accepted and ignored\n" +
-			"for festival, camp, and fest.",
+			"reports service.deferred and names the restart command. A daemon that was not running is\n" +
+			"started on the new version instead of restarted, and nothing is deferred. The flag is\n" +
+			"accepted and ignored for festival, camp, and fest.",
 		ValidArgs: []string{"festival", "camp", "fest", "obey"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

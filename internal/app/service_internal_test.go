@@ -102,6 +102,12 @@ func TestServiceNote_DeferredErrorAndQuiet(t *testing.T) {
 			version: "0.2.0",
 			want:    "",
 		},
+		{
+			name:        "started says the daemon came up rather than restarted",
+			svc:         &ServiceResult{Installed: true, Started: true},
+			version:     "0.2.1",
+			wantContain: []string{"obey 0.2.1 is installed", "started on the new version"},
+		},
 	}
 
 	for _, tc := range cases {

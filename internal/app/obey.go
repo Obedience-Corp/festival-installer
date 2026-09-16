@@ -357,6 +357,12 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 
 // UpdateObey brings the installed obey product to channel-latest. It returns a
 // human warning as the second value, matching UpdateFestival.
+//
+// The service step is the install step: refreshing the unit is idempotent and
+// it starts a daemon that is not running, so an update on a machine where the
+// daemon was stopped leaves it up on the new binary. Only a daemon that was
+// already running needs the restart, because only that one keeps serving the
+// replaced image.
 func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
 	if err := ctx.Err(); err != nil {
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
@@ -407,16 +413,20 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
+
+	wasRunning := obeyDaemonRunning(ctx)
+
 	if _, err := placeProduct(ctx, home, ObeyPackageID, rec.Source, channel, resolved, opts.Progress); err != nil {
 		return UpdateResult{}, warning, err
 	}
 
-	svc := ServiceResult{}
-	if opts.NoRestart {
-		svc.Deferred = true
-	} else {
-		svc = serviceStep(ctx, serviceVerbRestart)
-	}
+	svc := serviceStep(ctx, serviceVerbInstall)
+	svc = finishServiceSwap(ctx, svc, wasRunning, opts.NoRestart)
+	// Reported only on an update. A fresh install that brings the daemon up is
+	// doing what the caller asked; an update that finds it stopped and leaves
+	// it running has changed something the caller did not ask about, and the
+	// sentence is the only place that shows.
+	svc.Started = !wasRunning && svc.Installed && svc.Error == ""
 	warning = appendWarning(warning, serviceNote(&svc, resolved.version))
 	return UpdateResult{
 		Package: ObeyPackageID,

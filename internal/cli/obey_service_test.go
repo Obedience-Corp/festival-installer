@@ -149,6 +149,7 @@ type obeyServicePayload struct {
 	Installed bool   `json:"installed"`
 	Restarted bool   `json:"restarted"`
 	Deferred  bool   `json:"deferred"`
+	Started   bool   `json:"started"`
 	Error     string `json:"error"`
 }
 
@@ -337,6 +338,7 @@ func TestUpdateObey_RestartsByDefault(t *testing.T) {
 	if _, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json"); err != nil {
 		t.Fatalf("install obey: %v\n%s", err, errOut)
 	}
+	f.markDaemonRunning(t)
 	f.publishUpgrade(t, "0.2.1")
 
 	out, errOut, err := runInstaller(t, "update", "obey", "--allow-unverified", "--json")
@@ -352,13 +354,57 @@ func TestUpdateObey_RestartsByDefault(t *testing.T) {
 	if res.Action != "upgraded" {
 		t.Fatalf("action = %q, want upgraded", res.Action)
 	}
-	if res.Service == nil || !res.Service.Restarted || res.Service.Deferred {
-		t.Fatalf("expected data.service.restarted true and deferred false, got %+v", res.Service)
+	if res.Service == nil || !res.Service.Restarted || res.Service.Deferred || res.Service.Started {
+		t.Fatalf("expected data.service.restarted true, deferred and started false, got %+v", res.Service)
 	}
 
-	verbs := f.verbs(t)
-	if len(verbs) == 0 || verbs[len(verbs)-1] != "service restart" {
-		t.Fatalf("service log = %v, want it to end with \"service restart\"", verbs)
+	wantVerbs(t, f.verbs(t), []string{"service install", "service install", "service restart"})
+}
+
+// A machine whose daemon is stopped has nothing to restart. The unit refresh is
+// what brings it up on the new binary, and the caller is told the daemon it
+// left stopped is now running.
+func TestUpdateObey_StoppedDaemonIsStartedNotRestarted(t *testing.T) {
+	f := obeyServiceFixture(t, "0.2.0")
+	if _, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json"); err != nil {
+		t.Fatalf("install obey: %v\n%s", err, errOut)
+	}
+	f.publishUpgrade(t, "0.2.1")
+
+	out, errOut, err := runInstaller(t, "update", "obey", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("update obey: %v\n%s", err, errOut)
+	}
+
+	var res struct {
+		Action  string              `json:"action"`
+		Version string              `json:"version"`
+		Service *obeyServicePayload `json:"service"`
+	}
+	dataOf(t, out, &res)
+	if res.Action != "upgraded" || res.Version != "0.2.1" {
+		t.Fatalf("expected upgraded to 0.2.1, got %+v", res)
+	}
+	if res.Service == nil || !res.Service.Installed || !res.Service.Started {
+		t.Fatalf("expected data.service.installed and started true, got %+v\n%s", res.Service, out)
+	}
+	if res.Service.Restarted || res.Service.Deferred {
+		t.Fatalf("a stopped daemon is neither restarted nor deferred, got %+v", res.Service)
+	}
+
+	for _, v := range f.verbs(t) {
+		if v == "service restart" {
+			t.Fatalf("a stopped daemon must not be restarted, log = %v", f.verbs(t))
+		}
+	}
+	wantVerbs(t, f.verbs(t), []string{"service install", "service install"})
+
+	env := envelopeOf(t, out)
+	if len(env.Warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
+	}
+	if !strings.Contains(env.Warnings[0], "started on the new version") {
+		t.Fatalf("warning = %q, want it to say the daemon was started rather than restarted", env.Warnings[0])
 	}
 }
 
@@ -367,6 +413,7 @@ func TestUpdateObey_NoRestartDefers(t *testing.T) {
 	if _, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json"); err != nil {
 		t.Fatalf("install obey: %v\n%s", err, errOut)
 	}
+	f.markDaemonRunning(t)
 	f.publishUpgrade(t, "0.2.1")
 
 	out, errOut, err := runInstaller(t, "update", "obey", "--allow-unverified", "--no-restart", "--json")
@@ -383,8 +430,8 @@ func TestUpdateObey_NoRestartDefers(t *testing.T) {
 	if res.Action != "upgraded" || res.Version != "0.2.1" {
 		t.Fatalf("expected upgraded to 0.2.1, got %+v", res)
 	}
-	if res.Service == nil || !res.Service.Deferred || res.Service.Restarted {
-		t.Fatalf("expected data.service.deferred true and restarted false, got %+v", res.Service)
+	if res.Service == nil || !res.Service.Deferred || res.Service.Restarted || res.Service.Started {
+		t.Fatalf("expected data.service.deferred true, restarted and started false, got %+v", res.Service)
 	}
 
 	verbs := f.verbs(t)

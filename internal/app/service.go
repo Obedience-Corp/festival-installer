@@ -70,6 +70,9 @@ type ServiceResult struct {
 	// The supervisor may still be finishing it, which is why this is reported
 	// apart from a refusal.
 	TimedOut bool `json:"timed_out,omitempty"`
+	// Started is true when the service step brought up a daemon that was not
+	// running before, rather than restarting one that was.
+	Started bool `json:"started,omitempty"`
 }
 
 // serviceStep runs one obey service verb with the freshly staged binary.
@@ -192,6 +195,8 @@ func serviceNote(svc *ServiceResult, version string) string {
 		return "obey service step failed: " + svc.Error + ". The binaries are installed and the service is registered; the running daemon is still the previous version."
 	case svc.Error != "":
 		return "obey service step failed: " + svc.Error + ". The binaries are installed; the daemon will not start automatically."
+	case svc.Started:
+		return "obey " + version + " is installed; no daemon was running, so it was started on the new version rather than restarted"
 	default:
 		return ""
 	}
