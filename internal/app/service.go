@@ -23,11 +23,29 @@ import (
 const serviceTimeout = 30 * time.Second
 
 // serviceRestartTimeout bounds the restart verb, which is not a supervisor call
-// but a process swap. obey drains for up to 10s on SIGTERM, stops its gRPC
-// server gracefully, then waits up to 20s for the replacement to answer, so a
-// budget sized for install reports a legitimate restart as a failure and kills
-// obey in the middle of it.
-const serviceRestartTimeout = 90 * time.Second
+// but a supervised process swap, so this cap has to sit above obey's own
+// bounded sequence rather than beside it.
+//
+// `obey service restart` boots the launchd job out, waits for launchd to
+// release the label before it bootstraps the rewritten unit (the unit's own
+// ExitTimeOut, 30s, plus a 5s margin), bootstraps, then waits for the
+// replacement process to exist and answer a Ping (30s). The outgoing daemon's
+// exit wait is subsumed by the label wait, because launchd holds the label
+// until that process is gone. So 65s of bounded waiting, and the launchctl
+// calls around it are the only unbounded part, sub-second on a healthy machine.
+// The numbers are obey's, from its shutdown budget package: a 10s drain, a 5s
+// graceful gRPC stop and a 5s teardown make a 20s shutdown, the unit adds a 10s
+// supervisor margin on top of it, and the replacement gets 30s to boot.
+//
+// The cap is 120s rather than a tighter fit over those 65s. What it protects
+// against is a wedged supervisor holding the install; what it costs when it
+// fires early is worse than waiting, because the installer then kills obey in
+// the middle of a swap it was still performing and reports a failure for a
+// restart that was inside obey's own contract. At 120s it fires only once obey
+// has blown that contract, and by then obey's own error is the one the user
+// should be reading. It also survives a modest growth in obey's budgets, which
+// a 25s margin would not.
+const serviceRestartTimeout = 120 * time.Second
 
 // codeServiceTimeout marks a verb the installer cut short rather than one the
 // supervisor refused. The two need different words: a refusal means the daemon
