@@ -69,3 +69,30 @@ func TestInstallFestival_PayloadHasNoServiceKey(t *testing.T) {
 		t.Fatalf("the suite install payload must carry no service key:\n%s", out)
 	}
 }
+
+// The human (non-JSON) absent path must name the obey install command. The
+// suite default (`festival install festival`) would send a user with no daemon
+// to reinstall camp and fest instead.
+func TestUpdateObey_AbsentHumanOutput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("FESTIVAL_HOME", "")
+	t.Setenv("HOME", t.TempDir())
+	// An empty PATH entry keeps a host-installed obey out of ResolveTool, so
+	// "absent" is measured against the fixture and not the developer machine.
+	t.Setenv("PATH", t.TempDir())
+
+	out, errOut, err := runInstaller(t, "update", "obey")
+	if err != nil {
+		t.Fatalf("update obey with nothing installed: %v\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "run `festival install obey`") {
+		t.Fatalf("expected stdout to name `festival install obey`, got %q", out)
+	}
+	if strings.Contains(out, "festival install festival") {
+		t.Fatalf("an absent obey must not point at the suite install, got %q", out)
+	}
+	if !strings.Contains(errOut, "festival install obey") {
+		t.Fatalf("expected the absent warning on stderr, got %q", errOut)
+	}
+}

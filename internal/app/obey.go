@@ -115,9 +115,9 @@ func resolveProduct(ctx context.Context, bp source.BrowsePackage, channel string
 }
 
 // declaredBinaries reads the executables a release_source product places:
-// Binaries when set, then the singular Binary, then the package id's last path
-// segment. A product that declares none of the three is a marketplace bug, not
-// a guess to make.
+// Binaries when set, then the singular Binary. A product that declares neither
+// is a marketplace bug, not a guess to make, so nothing is inferred from the
+// package id.
 func declaredBinaries(rs *release.Source, packageID string) ([]string, error) {
 	if len(rs.Binaries) > 0 {
 		return rs.Binaries, nil
@@ -125,15 +125,8 @@ func declaredBinaries(rs *release.Source, packageID string) ([]string, error) {
 	if rs.Binary != "" {
 		return []string{rs.Binary}, nil
 	}
-	seg := packageID
-	if i := strings.LastIndex(seg, "/"); i >= 0 {
-		seg = seg[i+1:]
-	}
-	if seg == "" {
-		return nil, errpkg.New("E_PRODUCT_NO_BINARIES",
-			"release_source for "+packageID+" declares no binaries")
-	}
-	return []string{seg}, nil
+	return nil, errpkg.New("E_PRODUCT_NO_BINARIES",
+		"release_source for "+packageID+" declares no binaries")
 }
 
 // InstallObey installs the obey product: every binary its marketplace entry
@@ -360,7 +353,7 @@ func unmanagedObey(ctx context.Context) (UpdateResult, string, error) {
 	}
 	return UpdateResult{Package: ObeyPackageID, Action: "unmanaged"},
 		"obey is installed but not managed by festival (found at " + path + "). " +
-			"Refusing to modify an external install. Run `festival resolve obey` or `festival doctor` to inspect.", nil
+			"Refusing to modify an external install. Run `festival which obey --show-all` or `festival doctor` to inspect.", nil
 }
 
 // detectObeyVersion reads the managed obey's own version through the one probe

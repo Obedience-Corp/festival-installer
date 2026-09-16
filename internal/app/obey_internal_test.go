@@ -7,7 +7,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/release"
 )
 
-func TestDeclaredBinaries_PrefersPluralThenSingularThenSegment(t *testing.T) {
+func TestDeclaredBinaries_PrefersPluralThenSingular(t *testing.T) {
 	cases := []struct {
 		name      string
 		src       release.Source
@@ -25,18 +25,6 @@ func TestDeclaredBinaries_PrefersPluralThenSingularThenSegment(t *testing.T) {
 			src:       release.Source{Binary: "fest-demo"},
 			packageID: "acme/fest-demo",
 			want:      []string{"fest-demo"},
-		},
-		{
-			name:      "package id last segment when neither is declared",
-			src:       release.Source{},
-			packageID: "obedience-corp/obey",
-			want:      []string{"obey"},
-		},
-		{
-			name:      "unqualified package id is its own segment",
-			src:       release.Source{},
-			packageID: "obey",
-			want:      []string{"obey"},
 		},
 	}
 	for _, tc := range cases {
@@ -57,8 +45,13 @@ func TestDeclaredBinaries_PrefersPluralThenSingularThenSegment(t *testing.T) {
 	}
 }
 
-func TestDeclaredBinaries_ErrorsWhenNothingIsDeclarable(t *testing.T) {
+// A release_source that declares no executable is a marketplace bug. The
+// package id is never mined for a binary name, so even an id that reads like
+// one errors instead of being installed.
+func TestDeclaredBinaries_ErrorsWhenNothingIsDeclared(t *testing.T) {
 	cases := map[string]string{
+		"qualified package id":   "obedience-corp/obey",
+		"unqualified package id": "obey",
 		"empty package id":       "",
 		"package id ends in sep": "obedience-corp/",
 	}

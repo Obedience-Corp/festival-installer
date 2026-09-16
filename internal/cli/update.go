@@ -148,7 +148,11 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 		_, err := fmt.Fprintf(w, "%s is a package-manager install; festival update will not replace it\n", pkg)
 		return err
 	default:
-		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", pkg)
+		target := "festival"
+		if res.Package == app.ObeyPackageID {
+			target = "obey"
+		}
+		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install %s`\n", pkg, target)
 		return err
 	}
 }
