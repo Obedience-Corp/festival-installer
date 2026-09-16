@@ -122,6 +122,21 @@ func TestVersionLess_GitDescribeStampRanksAboveItsTag(t *testing.T) {
 		{"0.10.1-12-gaaaaaaa", "0.10.1-4-gd1fb37c7", false},
 		{"0.10.1-4-gd1fb37c7", "0.10.1-4-gd1fb37c7", false},
 		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1", false},
+		// A dirty tree is not a version. At a tag exactly `git describe
+		// --dirty` prints "0.10.1-dirty" with no commit count, so the
+		// identifier has to be dropped rather than read as a pre-release:
+		// otherwise a locally built tool at the tag ranks below its own tag and
+		// the app reads it as under the floor. festival-app strips the same
+		// identifier (src-tauri/src/setup/versions.rs), so both sides agree.
+		{"0.10.1-dirty", "0.10.1", false},
+		{"0.10.1", "0.10.1-dirty", false},
+		{"0.10.1-dirty", "0.10.2", true},
+		{"0.10.2", "0.10.1-dirty", false},
+		{"0.10.1-dirty", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1-dirty", false},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1-4-gd1fb37c7", false},
+		// A real pre-release still ranks below its release with a dirty tree.
+		{"0.10.1-rc.1-dirty", "0.10.1", true},
 		{"0.10.1-rc.1", "0.10.1-4-gd1fb37c7", true},
 		{"0.10.1-4-gd1fb37c7", "0.10.1-rc.1", false},
 		// A real pre-release still sorts below its release.

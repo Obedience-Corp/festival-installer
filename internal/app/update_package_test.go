@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func stubLatestSuite(t *testing.T, version string, err error) {
@@ -164,5 +165,57 @@ func TestPackageUpdateWarning(t *testing.T) {
 	got = packageUpdateWarning("0.3.3", "0.3.3", "yay -Syu festival-bin")
 	if strings.Contains(got, "update available") {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// TestDetectLiveVersion_BoundedWhenTheToolHangs is why this probe goes through
+// probeOnce rather than calling runProbe with the caller's context. The root
+// command runs on context.Background (cmd/festival/main.go), so the caller's
+// context carries no deadline, and WaitDelay only bounds a grandchild holding
+// stdout, not a direct child that never exits. Without the per attempt budget a
+// managed camp that hangs inside `version --short` hangs `festival update` for
+// as long as it hangs: this fixture sleeps 30s, ten times the bound asserted
+// here, and the probe used to wait all of it.
+func TestDetectLiveVersion_BoundedWhenTheToolHangs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed bin: %v", err)
+	}
+	writeProbeScript(t, binDir, "camp", "#!/bin/sh\nsleep 30\n")
+
+	start := time.Now()
+	got, err := detectLiveVersion(context.Background(), "camp")
+	elapsed := time.Since(start)
+	if elapsed > probeBound {
+		t.Fatalf("detectLiveVersion took %s, want under %s: the probe has no deadline of its own", elapsed, probeBound)
+	}
+	if err == nil {
+		t.Fatalf("expected the budget to end the probe, got version %q after %s", got, elapsed)
+	}
+	if got != "" {
+		t.Fatalf("version = %q, want none from a probe that never answered", got)
+	}
+}
+
+// TestDetectLiveVersion_ReadsTheManagedStamp is the same call against a tool
+// that answers, so the bound above is not passing because the probe stopped
+// working.
+func TestDetectLiveVersion_ReadsTheManagedStamp(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed bin: %v", err)
+	}
+	writeProbeScript(t, binDir, "camp", "#!/bin/sh\necho v0.10.1-4-gd1fb37c7\n")
+
+	got, err := detectLiveVersion(context.Background(), "camp")
+	if err != nil {
+		t.Fatalf("detectLiveVersion: %v", err)
+	}
+	if got != "0.10.1-4-gd1fb37c7" {
+		t.Fatalf("version = %q, want 0.10.1-4-gd1fb37c7", got)
 	}
 }

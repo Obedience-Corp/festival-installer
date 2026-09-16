@@ -129,12 +129,16 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 		Origin:            origin.Kind,
 		Flavor:            origin.Flavor,
 		Setup:             setup,
-		Tools:             resolveStatusTools(ctx),
+		Tools:             resolveStatusTools(ctx, origin.Kind),
 		Prerequisites:     resolvePrerequisites(),
 	}, nil
 }
 
-func resolveStatusTools(ctx context.Context) []StatusToolEntry {
+// resolveStatusTools fills every reported tool from one suite detection. The
+// origin kind comes from the caller because DetectSuite re-execs every camp,
+// fest, and festival on PATH: detecting per tool made one launch probe spawn
+// 23 processes where 8 do, and this is the path the app runs on every launch.
+func resolveStatusTools(ctx context.Context, kind OriginKind) []StatusToolEntry {
 	recs := readStatusReceipts(ctx)
 	out := make([]StatusToolEntry, len(statusTools))
 	var wg sync.WaitGroup
@@ -152,7 +156,7 @@ func resolveStatusTools(ctx context.Context) []StatusToolEntry {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			fillToolEntry(ctx, &out[i])
+			fillToolEntry(ctx, &out[i], kind)
 		}(i)
 	}
 	wg.Wait()
@@ -162,9 +166,12 @@ func resolveStatusTools(ctx context.Context) []StatusToolEntry {
 // fillToolEntry resolves one tool and probes its version. Origin is classified
 // from the path this tool resolved to rather than from the suite origin,
 // because a machine can have a package-manager camp and a managed or leftover
-// obey at the same time. The suite origin stays on the report's Origin field.
-func fillToolEntry(ctx context.Context, e *StatusToolEntry) {
-	path, err := ResolveTool(ctx, e.Tool)
+// obey at the same time. The suite origin stays on the report's Origin field,
+// and the kind argument is the one the report already detected: it only picks
+// between the managed bin and PATH, so re-detecting it per tool would buy
+// nothing and cost a probe of every suite copy on PATH.
+func fillToolEntry(ctx context.Context, e *StatusToolEntry, kind OriginKind) {
+	path, err := resolveToolFrom(ctx, e.Tool, kind)
 	if err != nil {
 		e.Error = err.Error()
 		return

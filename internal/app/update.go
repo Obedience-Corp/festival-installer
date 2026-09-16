@@ -241,12 +241,18 @@ func handleUnmanaged(ctx context.Context) (UpdateResult, string, error) {
 // shared parser, so a git-describe stamp such as "v0.10.1-4-gd1fb37c7" is
 // recognised as the version it is. An empty return means the tool answered
 // something that is not a version.
+//
+// It goes through probeOnce for the same reason every other probe site does:
+// the root command runs on context.Background (cmd/festival/main.go), so
+// without the per attempt budget a managed tool that hangs inside
+// `version --short` hangs `festival update` with nothing to stop it. WaitDelay
+// alone does not bound the direct child, only a grandchild holding its stdout.
 func detectLiveVersion(ctx context.Context, tool string) (string, error) {
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		return "", err
 	}
-	out, err := runProbe(ctx, filepath.Join(binDir, tool), "version", "--short")
+	out, err := probeOnce(ctx, filepath.Join(binDir, tool), "version", "--short")
 	if err != nil {
 		return "", err
 	}

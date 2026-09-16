@@ -20,7 +20,53 @@ import (
 //
 // The error codes are E_LAUNCH_TOOL and E_LAUNCH_NOT_FOUND, unchanged from when
 // this lived in the launch package, because callers match on them.
+//
+// This is the single-tool entry point and it detects the suite itself. A caller
+// resolving several tools in one pass should detect once and use
+// resolveToolFrom, because DetectSuite re-execs every camp, fest, and festival
+// on PATH each time it runs.
 func ResolveTool(ctx context.Context, tool string) (string, error) {
+	name, err := checkToolName(ctx, tool)
+	if err != nil {
+		return "", err
+	}
+	origin, _ := DetectSuite(ctx)
+	return resolveToolFrom(ctx, name, origin.Kind)
+}
+
+// resolveToolFrom is ResolveTool's decision with the suite origin already in
+// hand. Only the origin kind is read, so one DetectSuite serves every tool in a
+// report instead of one per tool.
+func resolveToolFrom(ctx context.Context, tool string, kind OriginKind) (string, error) {
+	name, err := checkToolName(ctx, tool)
+	if err != nil {
+		return "", err
+	}
+
+	managed := managedToolPath(ctx, name)
+	if kind == OriginPackage {
+		if path, lerr := exec.LookPath(name); lerr == nil {
+			return path, nil
+		}
+		if managed != "" {
+			return managed, nil
+		}
+	} else {
+		if managed != "" {
+			return managed, nil
+		}
+		if path, lerr := exec.LookPath(name); lerr == nil {
+			return path, nil
+		}
+	}
+
+	return "", errpkg.New("E_LAUNCH_NOT_FOUND",
+		name+" not found in managed bin or PATH (install the suite or fix PATH from the hub)")
+}
+
+// checkToolName rejects a cancelled context and anything that is not a bare
+// binary name. It runs before detection so an invalid name costs no execs.
+func checkToolName(ctx context.Context, tool string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -31,27 +77,7 @@ func ResolveTool(ctx context.Context, tool string) (string, error) {
 	if strings.Contains(tool, string(os.PathSeparator)) || strings.Contains(tool, "/") {
 		return "", errpkg.New("E_LAUNCH_TOOL", "tool must be a bare binary name")
 	}
-
-	managed := managedToolPath(ctx, tool)
-	origin, _ := DetectSuite(ctx)
-	if origin.Kind == OriginPackage {
-		if path, err := exec.LookPath(tool); err == nil {
-			return path, nil
-		}
-		if managed != "" {
-			return managed, nil
-		}
-	} else {
-		if managed != "" {
-			return managed, nil
-		}
-		if path, err := exec.LookPath(tool); err == nil {
-			return path, nil
-		}
-	}
-
-	return "", errpkg.New("E_LAUNCH_NOT_FOUND",
-		tool+" not found in managed bin or PATH (install the suite or fix PATH from the hub)")
+	return tool, nil
 }
 
 // ManagedToolPath is <bin-dir>/<tool> when that file exists, and "" otherwise.

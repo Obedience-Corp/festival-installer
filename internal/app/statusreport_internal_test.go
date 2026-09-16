@@ -314,3 +314,105 @@ func TestProbeToolVersion_FallbackGetsItsOwnBudget(t *testing.T) {
 		t.Fatalf("took %s, want under %s: the fallback did not start promptly after the first attempt timed out", elapsed, ceiling)
 	}
 }
+
+// loggingProbeScript answers every version probe in the table and appends the
+// argv of each run to log, so a test can count what one call actually spawned.
+func loggingProbeScript(log string) string {
+	return "#!/bin/sh\n" +
+		"echo \"$0 $*\" >> " + log + "\n" +
+		"case \"$1 $2\" in\n" +
+		"  \"version --short\") echo v0.10.1-4-gd1fb37c7; exit 0;;\n" +
+		"  \"version --json\") echo '{\"version\":\"v0.10.1-4-gd1fb37c7\"}'; exit 0;;\n" +
+		"  \"version \") echo \"$(basename \"$0\") v0.10.1-4-gd1fb37c7\"; exit 0;;\n" +
+		"  \"--version \") echo \"$(basename \"$0\") version 0.1.0\"; exit 0;;\n" +
+		"esac\n" +
+		"exit 1\n"
+}
+
+func probeLogLines(t *testing.T, log string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(log) //nolint:gosec // the path is this test's own temp dir
+	if err != nil {
+		t.Fatalf("read probe log: %v", err)
+	}
+	var out []string
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// TestStatusReport_ProbesEachBinaryOncePerCall pins the exec count of the path
+// festival-app runs on every launch. Detection used to happen inside
+// ResolveTool, so one report ran DetectSuite six times, once for the report and
+// once per reported tool, and DetectSuite probes every camp, fest, and festival
+// it finds on PATH. Against this fixture that was 23 execs for the 8 distinct
+// answers the report reads: the three PATH copies DetectSuite classifies, and
+// the five resolved binaries the report asks for a version.
+func TestStatusReport_ProbesEachBinaryOncePerCall(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("HOMEBREW_PREFIX", "")
+
+	log := filepath.Join(t.TempDir(), "calls.log")
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir managed bin: %v", err)
+	}
+	for _, tool := range statusTools {
+		writeProbeScript(t, binDir, tool, loggingProbeScript(log))
+	}
+	pathDir := t.TempDir()
+	for _, tool := range suiteTools {
+		writeProbeScript(t, pathDir, tool, loggingProbeScript(log))
+	}
+	t.Setenv("PATH", pathDir)
+
+	rep, err := StatusReportFor(ctx)
+	if err != nil {
+		t.Fatalf("StatusReportFor: %v", err)
+	}
+	for _, e := range rep.Tools {
+		if e.Version == "" {
+			t.Fatalf("%s reported no version (%s): the fixture did not answer its probe", e.Tool, e.Error)
+		}
+	}
+
+	runs := map[string]int{}
+	for _, line := range probeLogLines(t, log) {
+		runs[line]++
+	}
+	for line, n := range runs {
+		if n != 1 {
+			t.Errorf("%q ran %d times, want 1: a repeated suite detection is back", line, n)
+		}
+	}
+	for _, tool := range statusTools {
+		want := filepath.Join(binDir, tool) + " "
+		if n := countWithPrefix(runs, want); n != 1 {
+			t.Errorf("managed %s ran %d times, want 1", tool, n)
+		}
+	}
+	for _, tool := range suiteTools {
+		want := filepath.Join(pathDir, tool) + " "
+		if n := countWithPrefix(runs, want); n != 1 {
+			t.Errorf("PATH %s ran %d times, want 1", tool, n)
+		}
+	}
+	if total := len(probeLogLines(t, log)); total != len(statusTools)+len(suiteTools) {
+		t.Errorf("one status call spawned %d processes, want %d", total, len(statusTools)+len(suiteTools))
+	}
+}
+
+func countWithPrefix(runs map[string]int, prefix string) int {
+	total := 0
+	for line, n := range runs {
+		if strings.HasPrefix(line, prefix) {
+			total += n
+		}
+	}
+	return total
+}

@@ -9,6 +9,10 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
+// dirtyIdentifier is the marker `git describe --dirty` appends for a modified
+// working tree.
+const dirtyIdentifier = "dirty"
+
 var (
 	ErrNoReleaseInChannel    = errpkg.New("E_NO_RELEASE_IN_CHANNEL", "no release found for the requested channel")
 	ErrNoArtifactForPlatform = errpkg.New("E_NO_ARTIFACT_FOR_PLATFORM", "no artifact found for the requested os/arch")
@@ -79,7 +83,8 @@ func lessSemver(a, b string) bool {
 }
 
 // describeAhead reads the commit count out of a `git describe --tags` suffix
-// such as "4-gd1fb37c7" or "4-gd1fb37c7-dirty". camp, fest, and festival stamp
+// such as "4-gd1fb37c7", with any dirty marker already stripped by
+// stripDirty. camp, fest, and festival stamp
 // their version from git describe, so a build cut after a tag carries one.
 // Semver would sort it below the tag as a pre-release; git describe means the
 // opposite, and treating it as older is what makes an up-to-date machine look
@@ -94,6 +99,21 @@ func describeAhead(pre string) (int, bool) {
 		return 0, false
 	}
 	return commits, true
+}
+
+// stripDirty drops the identifier `git describe --dirty` appends when the tree
+// has uncommitted changes. It says nothing about which build is newer, and at a
+// tag exactly it is the only field, so a bare "0.10.1-dirty" would otherwise
+// reach lessPrerelease and rank below the very tag it was built from. Dropping
+// it leaves "0.10.1-dirty" at its tag and "0.10.1-4-gd1fb37c7-dirty" ahead of
+// it on the commit count, which is the rule festival-app applies in
+// src-tauri/src/setup/versions.rs.
+func stripDirty(pre string) string {
+	trimmed := strings.TrimSuffix(pre, "-"+dirtyIdentifier)
+	if trimmed == dirtyIdentifier {
+		return ""
+	}
+	return trimmed
 }
 
 func isHexAfterG(field string) bool {
@@ -117,7 +137,7 @@ func splitVersion(v string) ([3]int, string) {
 	}
 	pre := ""
 	if i := strings.IndexByte(v, '-'); i >= 0 {
-		pre = v[i+1:]
+		pre = stripDirty(v[i+1:])
 		v = v[:i]
 	}
 	for i, part := range strings.SplitN(v, ".", 3) {
