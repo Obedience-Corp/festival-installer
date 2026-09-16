@@ -26,7 +26,10 @@ func TestNoTTY_EveryAppFacingCommandCompletes(t *testing.T) {
 		wantExit  []int
 		action    string
 		requireOK bool
-		assert    func(t *testing.T, obj map[string]any)
+		// before prepares the machine this row runs against, in the sequence
+		// the rows already run in.
+		before func(t *testing.T)
+		assert func(t *testing.T, obj map[string]any)
 	}{
 		{
 			name:     "marketplace add",
@@ -69,10 +72,24 @@ func TestNoTTY_EveryAppFacingCommandCompletes(t *testing.T) {
 			requireOK: true,
 		},
 		{
-			name:     "update obey with no restart",
-			args:     []string{"update", "obey", "--allow-unverified", "--json", "--no-restart"},
-			wantExit: []int{0},
-			action:   "update",
+			// A newer obey is published and the daemon marked running first,
+			// so this row takes the upgrade path: the contract probe, the
+			// daemon-state probe, the unit refresh, and the deferral
+			// --no-restart exists for. With one version published the update
+			// resolved the installed version against itself and returned
+			// "current" before any of them.
+			name:      "update obey with no restart",
+			args:      []string{"update", "obey", "--allow-unverified", "--json", "--no-restart"},
+			wantExit:  []int{0},
+			action:    "update",
+			requireOK: true,
+			before: func(t *testing.T) {
+				fx.markDaemonRunning(t)
+				fx.publishObeyUpgrade(t, headlessObeyUpgrade)
+			},
+			assert: func(t *testing.T, obj map[string]any) {
+				assertObeyUpgradeDeferred(t, fx, obj)
+			},
 		},
 		{
 			name:     "update suite",
@@ -101,6 +118,9 @@ func TestNoTTY_EveryAppFacingCommandCompletes(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.before != nil {
+				tc.before(t)
+			}
 			run := fx.run(ctx, t, tc.args...)
 			if !slices.Contains(tc.wantExit, run.ExitCode) {
 				t.Fatalf("exit = %d, want one of %v\nstdout:\n%s\nstderr:\n%s",
@@ -121,6 +141,42 @@ func TestNoTTY_EveryAppFacingCommandCompletes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// assertObeyUpgradeDeferred is what the update row measures. The payload has to
+// show an upgrade to the newly published obey with the restart deferred rather
+// than performed, and the staged obey has to have recorded the unit refresh and
+// no restart verb: that pair is the evidence the row drove the service step
+// through the real binary instead of returning before it.
+func assertObeyUpgradeDeferred(t *testing.T, fx headlessFixture, obj map[string]any) {
+	t.Helper()
+	data, ok := obj["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("update envelope carries no data object: %v", obj)
+	}
+	if got := data["action"]; got != "upgraded" {
+		t.Fatalf("data.action = %v, want upgraded: the row must reach the upgrade path, not return current", got)
+	}
+	if got := data["version"]; got != headlessObeyUpgrade {
+		t.Fatalf("data.version = %v, want %q", got, headlessObeyUpgrade)
+	}
+	svc, ok := data["service"].(map[string]any)
+	if !ok {
+		t.Fatalf("update payload carries no service object: %v", data)
+	}
+	if svc["unsupported"] == true {
+		t.Fatalf("service = %v, want the staged obey to carry the supervised contract", svc)
+	}
+	if svc["daemon_state_unknown"] == true {
+		t.Fatalf("service = %v, want the daemon-state probe to have answered", svc)
+	}
+	if svc["installed"] != true || svc["deferred"] != true {
+		t.Fatalf("service = %v, want installed and deferred true", svc)
+	}
+	if svc["restarted"] == true || svc["started"] == true {
+		t.Fatalf("service = %v, want restarted and started false under --no-restart", svc)
+	}
+	wantVerbs(t, fx.serviceVerbs(t), []string{"service install", "service install"})
 }
 
 func assertDoctorChecksPresent(t *testing.T, obj map[string]any) {

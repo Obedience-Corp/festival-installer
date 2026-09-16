@@ -195,6 +195,18 @@ type headlessFixture struct {
 	// BrewLog is the file the recording fake brew appends to, empty unless the
 	// fixture staged a package origin.
 	BrewLog string
+	// ReleaseRepo is the tagged repository the obey release source resolves
+	// against, and ObeyHost serves its assets. Both are kept so a row can
+	// publish a newer obey and drive the update path rather than the
+	// resolve-and-return that a single published version produces.
+	ReleaseRepo string
+	ObeyHost    *obeyReleaseHost
+	// ObeyLog is where the staged obey fake records every service verb it was
+	// called with, and DaemonMarker is the file that makes it report a live
+	// daemon.
+	ObeyLog      string
+	DaemonMarker string
+	brokenMarker string
 }
 
 func newHeadlessFixture(t *testing.T) headlessFixture {
@@ -227,15 +239,26 @@ func buildHeadlessFixture(t *testing.T, packageOrigin bool) headlessFixture {
 	}))
 	t.Cleanup(srv.Close)
 
-	releaseRepo := gitReleaseRepo(t, "v0.2.0")
+	// The obey the lane installs is the recording supervised fake the plain
+	// service tests drive, not a version echo. The lane's update row has to
+	// reach the contract probe, the daemon-state probe and the service verb,
+	// and an obey that answers every argument with its version fails the
+	// contract probe and takes none of them.
+	releaseRepo := gitReleaseRepo(t, "v"+headlessObeyVersion)
 	host := newObeyReleaseHost(t)
-	host.publish("0.2.0", obeyTarball(t, "0.2.0"))
+	scratch := t.TempDir()
 
 	fx := headlessFixture{
 		Marketplace:  fixtureCombinedMarketplace(t, srv.URL+"/festival.tar.gz", sha256Hex(suite), releaseRepo, host.url()),
 		FestivalHome: festivalHome,
 		BinDir:       filepath.Join(festivalHome, "bin"),
+		ReleaseRepo:  releaseRepo,
+		ObeyHost:     host,
+		ObeyLog:      filepath.Join(scratch, "service.log"),
+		DaemonMarker: filepath.Join(scratch, "daemon.running"),
+		brokenMarker: filepath.Join(scratch, "daemon.unreadable"),
 	}
+	host.publish(headlessObeyVersion, obeyTarballWith(t, headlessObeyVersion, fx.obeyScript(headlessObeyVersion)))
 	if !packageOrigin {
 		fx.Env = headlessEnv(t, userHome, festivalHome)
 		return fx
@@ -252,6 +275,43 @@ func buildHeadlessFixture(t *testing.T, packageOrigin bool) headlessFixture {
 		"HOMEBREW_PREFIX="+filepath.Dir(fx.PackageBin),
 	)
 	return fx
+}
+
+// headlessObeyVersion is the obey the lane installs, and headlessObeyUpgrade
+// the one it updates to. Two versions are the point: with one published, the
+// update row resolves the installed version against itself, returns "current"
+// before the daemon-state probe, and proves nothing about the update path.
+const (
+	headlessObeyVersion = "0.2.0"
+	headlessObeyUpgrade = "0.2.1"
+)
+
+// obeyScript is the staged obey for this fixture at one version: it answers the
+// version and contract probes from its own arguments, reports a daemon from
+// DaemonMarker, and appends every service verb to ObeyLog.
+func (f headlessFixture) obeyScript(version string) string {
+	return recordingObey(version, f.DaemonMarker, f.brokenMarker, f.ObeyLog, true)
+}
+
+// publishObeyUpgrade tags and publishes a newer obey carrying the same
+// recording fake, which is what gives the update row something to upgrade to.
+func (f headlessFixture) publishObeyUpgrade(t *testing.T, version string) {
+	t.Helper()
+	f.ObeyHost.publish(version, obeyTarballWith(t, version, f.obeyScript(version)))
+	git(t, f.ReleaseRepo, "tag", "v"+version)
+}
+
+// markDaemonRunning makes the staged obey report a daemon that is serving, the
+// machine on which --no-restart has a restart to defer.
+func (f headlessFixture) markDaemonRunning(t *testing.T) {
+	t.Helper()
+	writeFile(t, f.DaemonMarker, "running\n")
+}
+
+// serviceVerbs is every service verb the staged obey recorded, in order.
+func (f headlessFixture) serviceVerbs(t *testing.T) []string {
+	t.Helper()
+	return serviceVerbs(readServiceLog(t, f.ObeyLog))
 }
 
 func (f headlessFixture) run(ctx context.Context, t *testing.T, args ...string) headlessRun {
