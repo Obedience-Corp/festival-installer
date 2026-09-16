@@ -225,7 +225,7 @@ func backgroundingProbeScript(t *testing.T) string {
 
 // probeBound is comfortably above probeTimeout plus probeWaitDelay and far
 // below the 30 seconds the grandchild holds the pipe.
-const probeBound = 5 * time.Second
+const probeBound = probeTimeout + 3*time.Second
 
 // TestRunProbe_FoldsWaitDelayAndKeepsTheOutput is the deterministic half of the
 // WaitDelay claim: given room to exit normally, the probe still returns the
@@ -286,4 +286,31 @@ func TestProbes_BoundedWhenAChildHoldsStdout(t *testing.T) {
 			t.Fatalf("version = %q after %s, want 0.9.9 or none", got, elapsed)
 		}
 	})
+}
+
+// TestProbeToolVersion_FallbackGetsItsOwnBudget is why the budget is per
+// argument set. The fixture's `version --short` hangs past its deadline, the
+// shape a released festival's refusal or a cold first exec produces, and plain
+// `version` answers at once. Under one budget shared across the table the first
+// attempt spends all of it and the fallback is dead on arrival, so the tool
+// reports no version at all.
+func TestProbeToolVersion_FallbackGetsItsOwnBudget(t *testing.T) {
+	path := writeProbeScript(t, t.TempDir(), "festival",
+		"#!/bin/sh\nif [ \"$2\" = --short ]; then sleep 30; fi\necho v0.9.9\n")
+
+	start := time.Now()
+	got, err := probeToolVersion(context.Background(), selfBinaryName, path)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("probeToolVersion after %s: %v", elapsed, err)
+	}
+	if got != "0.9.9" {
+		t.Fatalf("version = %q after %s, want 0.9.9 from the fallback", got, elapsed)
+	}
+	if elapsed < probeTimeout {
+		t.Fatalf("took %s, under the %s the first attempt should have spent: the fixture did not hang as intended", elapsed, probeTimeout)
+	}
+	if ceiling := 2*probeTimeout + 3*time.Second; elapsed > ceiling {
+		t.Fatalf("took %s, want under %s: the fallback did not start promptly after the first attempt timed out", elapsed, ceiling)
+	}
 }

@@ -14,7 +14,12 @@ import (
 )
 
 const (
-	probeTimeout = 2 * time.Second
+	// probeTimeout is what one probe attempt gets. It carries headroom for a
+	// first exec on a busy machine rather than being tuned to a warm one: at
+	// load average 182 on 16 cores, a 2s attempt was exceeded repeatedly,
+	// including the first exec of a 73MB obey. A missed budget reports no
+	// version, and an absent version reads as below the app's floor.
+	probeTimeout = 5 * time.Second
 	// probeWaitDelay bounds the wait for a probe's stdout to reach EOF after
 	// its deadline. exec kills the direct child when the context expires, but
 	// Output then waits for the pipe, and a grandchild that inherited stdout
@@ -112,10 +117,8 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
-	defer cancel()
 	if tool != selfBinaryName {
-		if raw, err := runProbe(ctx, path, "version", "--json"); err == nil {
+		if raw, err := probeOnce(ctx, path, "version", "--json"); err == nil {
 			var parsed struct {
 				Version string `json:"version"`
 				Bundle  string `json:"bundle"`
@@ -130,11 +133,22 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 			}
 		}
 	}
-	raw, err := runProbe(ctx, path, "version")
+	raw, err := probeOnce(ctx, path, "version")
 	if err != nil {
 		return "", "", ""
 	}
 	return parseVersionText(tool, string(raw))
+}
+
+// probeOnce gives one argument set the full probe budget. The budget is per
+// attempt rather than shared across a tool's table, because the fallbacks exist
+// precisely for binaries that reject the first argument set: a released
+// festival rejects `version --short`, and under a shared budget its refusal,
+// or just a cold first exec, can leave the fallback no time to answer.
+func probeOnce(ctx context.Context, path string, args ...string) ([]byte, error) {
+	runCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+	defer cancel()
+	return runProbe(runCtx, path, args...)
 }
 
 // runProbe runs one version probe and returns its stdout. WaitDelay is what
