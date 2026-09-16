@@ -210,6 +210,32 @@ func AllPackages(ctx context.Context, vo VerifyOptions) ([]BrowsePackage, error)
 	return out, err
 }
 
+// SourcePackages returns the package entries of one registered source. Unlike
+// AllPackages it never loads the others, so a third-party marketplace that
+// fails to parse cannot decide whether a package this caller already resolved
+// to a named source is installable.
+func SourcePackages(ctx context.Context, sourceName string, vo VerifyOptions) ([]BrowsePackage, error) {
+	var out []BrowsePackage
+	err := withManager(ctx, func(ctx context.Context, db *state.DB) error {
+		if _, err := Get(ctx, db.Raw(), sourceName); err != nil {
+			return err
+		}
+		dest, derr := CloneDir(ctx, sourceName)
+		if derr != nil {
+			return derr
+		}
+		m, merr := LoadMarketplace(ctx, dest, voFor(sourceName, vo))
+		if merr != nil {
+			return errpkg.Wrap("E_BROWSE_LOAD", merr, "load marketplace "+sourceName)
+		}
+		for _, p := range m.Packages {
+			out = append(out, BrowsePackage{Source: sourceName, Package: p, Verified: m.Verified})
+		}
+		return nil
+	})
+	return out, err
+}
+
 // refreshTargets resolves name to the sources RefreshMarketplaces should
 // refresh: a single source when name is given, every registered source
 // otherwise.

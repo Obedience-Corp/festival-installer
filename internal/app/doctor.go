@@ -13,11 +13,14 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
-// managedBinaries are the binaries the suite places and therefore the ones
-// doctor checks for shadowing. Kept as a constant list rather than derived
-// from the receipt because the check must also work on a fresh home where no
-// receipt exists yet, which is exactly the first-run case doctor cares about.
-var managedBinaries = []string{"camp", "fest", selfBinaryName}
+// managedBinaries are the binaries the installer places and therefore the ones
+// doctor checks for shadowing: the suite, plus the obey product's obey and ob.
+// Kept as a constant list rather than derived from the receipt because the
+// check must also work on a fresh home where no receipt exists yet, which is
+// exactly the first-run case doctor cares about. A name nothing has installed
+// costs nothing here: ResolveWhich reports a shadow only when a managed copy
+// and a different PATH copy both exist.
+var managedBinaries = []string{"camp", "fest", selfBinaryName, obeyBinary, obDeveloperBinary}
 
 // Doctor runs health checks for PATH, sources, receipts, and shadowing.
 func Doctor(ctx context.Context) []DoctorCheck {

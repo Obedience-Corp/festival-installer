@@ -17,6 +17,7 @@ func NewInstallCommand() *cobra.Command {
 	var asJSON bool
 	var allowUnverified bool
 	var force bool
+	var noRestart bool
 	cmd := &cobra.Command{
 		Use:   "install <festival|camp|fest|obey>",
 		Short: "Install the festival suite (camp, fest, and festival)",
@@ -24,7 +25,11 @@ func NewInstallCommand() *cobra.Command {
 			"The target is required. festival, camp, and fest all install the suite bundle;\n" +
 			"camp and fest are not published independently, so passing either one still installs\n" +
 			"the whole suite and prints a notice saying so.\n\n" +
-			"obey installs the obey daemon and the ob developer CLI as their own package.",
+			"obey installs the obey daemon and the ob developer CLI as their own package.\n\n" +
+			"--no-restart applies to obey only. Installing over a running daemon restarts it so the\n" +
+			"supervised process is the version that was just placed, which marks every live session\n" +
+			"failed; --no-restart installs the binaries, leaves the daemon alone, and reports the\n" +
+			"restart as pending. The flag is accepted and ignored for festival, camp, and fest.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
@@ -44,9 +49,10 @@ func NewInstallCommand() *cobra.Command {
 				}
 			}
 			res, err := app.InstallTarget(cmd.Context(), target, app.InstallOptions{
-				Channel: channel,
-				Verify:  vo,
-				Force:   force,
+				Channel:   channel,
+				Verify:    vo,
+				Force:     force,
+				NoRestart: noRestart,
 			})
 			if err != nil {
 				return err
@@ -71,6 +77,8 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow installing unsigned content without prompting")
 	cmd.Flags().BoolVar(&force, "force", false, "install a hub copy even when a package-manager suite is already on PATH")
+	cmd.Flags().BoolVar(&noRestart, "no-restart", false,
+		"install the new obey binaries without restarting the running daemon")
 	return cmd
 }
 

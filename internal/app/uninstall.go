@@ -21,8 +21,9 @@ const uninstallLockTimeout = 30 * time.Second
 // ErrOutsideManagedBin is returned when a receipt file escapes the managed bin dir.
 var ErrOutsideManagedBin = errpkg.New("E_UNINSTALL_PATH", "receipt file resolves outside the managed bin dir")
 
-// UninstallTarget removes festival suite or a plugin by CLI selector.
-func UninstallTarget(ctx context.Context, target string) (UninstallResult, error) {
+// UninstallTarget removes festival suite or a plugin by CLI selector. The
+// second value is a human warning, empty when nothing needs saying.
+func UninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
 	packageID := FestivalPackageID
 	if host, name, ok := PluginHost(target); ok {
 		// Uninstall resolves the package id from local marketplace metadata
@@ -30,27 +31,53 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, error
 		// live-path default (no override) is the right, unsurprising choice.
 		id, err := ResolvePluginPackageID(ctx, host, name, source.DefaultVerifyOptions(nil, false))
 		if err != nil {
-			return UninstallResult{}, err
+			return UninstallResult{}, "", err
 		}
 		packageID = id
 	} else {
 		switch target {
 		case "festival", "camp", "fest":
 		case "obey":
-			packageID = ObeyPackageID
-			// Unregister before the binaries go, or the supervisor is left
-			// pointing at a path that no longer exists. The error is dropped
-			// rather than reported: UninstallResult has no service field, and a
-			// failed unregister of a service whose binary is about to vanish is
-			// not actionable by the caller.
-			if obeyPath, perr := obeyServicePath(ctx); perr == nil {
-				_ = runServiceVerb(ctx, obeyPath, serviceVerbUninstall)
-			}
+			return uninstallObey(ctx)
 		default:
-			return UninstallResult{}, errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
+			return UninstallResult{}, "", errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
 		}
 	}
-	return UninstallPackage(ctx, packageID)
+	res, err := UninstallPackage(ctx, packageID)
+	return res, "", err
+}
+
+// uninstallObey removes the obey product and, only for an install this hub
+// owns, unregisters its user service first.
+//
+// The receipt decides. Without one there is nothing to remove, so there is
+// nothing to unregister either: an obey that reached the managed bin dir by
+// another route, or one whose receipt was lost, still belongs to the user, and
+// stopping its daemon and deleting its unit while reporting "nothing to
+// uninstall" destroys state the caller never asked about. With a receipt the
+// order is unregister first, or the supervisor is left pointing at a path that
+// is about to vanish, and a failed unregister is reported rather than dropped:
+// the unit may outlive the binary and the user is the one who has to clear it.
+func uninstallObey(ctx context.Context) (UninstallResult, string, error) {
+	_, found, err := readReceipt(ctx, ObeyPackageID)
+	if err != nil {
+		return UninstallResult{}, "", err
+	}
+	if !found {
+		res, uerr := UninstallPackage(ctx, ObeyPackageID)
+		return res, "", uerr
+	}
+	warning := ""
+	obeyPath, perr := obeyServicePath(ctx)
+	if perr != nil {
+		warning = "could not locate the managed obey to unregister its service: " + perr.Error() +
+			". Remove the service by hand if it is still registered."
+	} else if verr := runServiceVerb(ctx, obeyPath, serviceVerbUninstall); verr != nil {
+		warning = "obey service uninstall failed: " + verr.Error() +
+			". The receipt-owned files were still removed; the service unit may remain registered."
+	}
+	res, uerr := UninstallPackage(ctx, ObeyPackageID)
+	return res, warning, uerr
 }
 
 // UninstallPackage removes only receipt-owned files for packageID.

@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
@@ -62,9 +63,10 @@ func obeyAssetName(version string) string {
 // published during a test. The handler keys on the asset name so one server can
 // answer for 0.2.0 and 0.2.1 in the same run.
 type obeyReleaseHost struct {
-	mu     sync.Mutex
-	assets map[string][]byte
-	srv    *httptest.Server
+	mu            sync.Mutex
+	assets        map[string][]byte
+	assetRequests int
+	srv           *httptest.Server
 }
 
 func newObeyReleaseHost(t *testing.T) *obeyReleaseHost {
@@ -79,6 +81,7 @@ func newObeyReleaseHost(t *testing.T) *obeyReleaseHost {
 			}
 			return
 		}
+		h.assetRequests++
 		for name, body := range h.assets {
 			if strings.HasSuffix(r.URL.Path, name) {
 				_, _ = w.Write(body)
@@ -92,9 +95,24 @@ func newObeyReleaseHost(t *testing.T) *obeyReleaseHost {
 }
 
 func (h *obeyReleaseHost) publish(version string, tarball []byte) {
+	h.publishNamed(obeyAssetName(version), tarball)
+}
+
+// publishNamed serves body under an exact asset name, for the cases where the
+// name itself is the point: an artifact that is not an archive is recognised by
+// what the release_source template resolves to.
+func (h *obeyReleaseHost) publishNamed(name string, body []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.assets[obeyAssetName(version)] = tarball
+	h.assets[name] = body
+}
+
+// assetDownloads counts requests for anything but the checksums file, which is
+// how a test proves an artifact was never fetched.
+func (h *obeyReleaseHost) assetDownloads() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.assetRequests
 }
 
 func (h *obeyReleaseHost) url() string { return h.srv.URL }
@@ -465,5 +483,137 @@ func TestUninstallObey_RemovesBothBinaries(t *testing.T) {
 	}
 	if strings.Contains(listOut, app.ObeyPackageID) {
 		t.Fatalf("list still reports the obey package after uninstall:\n%s", listOut)
+	}
+}
+
+// fixtureBareBinaryMarketplace publishes obey as a single file rather than an
+// archive, which is the shape the product install path cannot place.
+func fixtureBareBinaryMarketplace(t *testing.T, repoPath, baseURL string) string {
+	t.Helper()
+	root := fmt.Sprintf(`{
+  "id": "obedience-corp/official",
+  "name": "Official",
+  "schema_version": "1",
+  "packages": [
+    {
+      "id": "obedience-corp/obey",
+      "display_name": "Obey Daemon",
+      "class": "product",
+      "host_runtimes": ["obey"],
+      "channels": ["stable"],
+      "release_source": {
+        "type": "git",
+        "repo": %q,
+        "asset_url": "%s/dl/obey-{version}-{os}-{arch}",
+        "checksums_url": "%s/dl/checksums.txt",
+        "binaries": ["obey"]
+      }
+    }
+  ]
+}
+`, repoPath, baseURL, baseURL)
+
+	dir := t.TempDir()
+	git(t, dir, "init", "-b", "main")
+	writeFile(t, filepath.Join(dir, "obey-marketplace.json"), root)
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "init")
+	return dir
+}
+
+// obeyBareAssetName is obeyAssetName without the archive suffix.
+func obeyBareAssetName(version string) string {
+	return strings.TrimSuffix(obeyAssetName(version), ".tar.gz")
+}
+
+// A product that publishes a bare binary is refused for that, and refused
+// before the artifact is pulled and hashed: everything the refusal depends on
+// is in the release_source template.
+func TestInstallObey_BareBinaryRefusedBeforeTheDownload(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("FESTIVAL_HOME", "")
+	t.Setenv("HOME", t.TempDir())
+
+	releaseRepo := gitReleaseRepo(t, "v0.2.0")
+	host := newObeyReleaseHost(t)
+	host.publishNamed(obeyBareAssetName("0.2.0"), []byte(obeyBodyPrefix+"0.2.0\n"))
+
+	mkt := fixtureBareBinaryMarketplace(t, releaseRepo, host.url())
+	if _, errOut, err := runInstaller(t, "marketplace", "add", mkt, "--name", "official-obey", "--allow-unverified"); err != nil {
+		t.Fatalf("marketplace add: %v\n%s", err, errOut)
+	}
+
+	_, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json")
+	if err == nil {
+		t.Fatal("expected a bare-binary obey release to be refused")
+	}
+	if !hasErrorCode(err, "E_PRODUCT_NOT_ARCHIVE") && !strings.Contains(errOut, "E_PRODUCT_NOT_ARCHIVE") {
+		t.Fatalf("expected E_PRODUCT_NOT_ARCHIVE, got err=%v errOut=%s", err, errOut)
+	}
+	if strings.Contains(err.Error(), "more than one binary") {
+		t.Fatalf("the refusal must not blame the binary count: %v", err)
+	}
+	if got := host.assetDownloads(); got != 0 {
+		t.Fatalf("the artifact was fetched %d time(s) before the refusal, want 0", got)
+	}
+}
+
+// fixtureBrokenExtraMarketplace registers a second, unrelated marketplace and
+// corrupts its clone, which is the state a third-party source lands in after a
+// bad publish.
+func fixtureBrokenExtraMarketplace(t *testing.T, ctx context.Context, name string) {
+	t.Helper()
+	root := `{
+  "id": "acme/extra",
+  "name": "Extra",
+  "schema_version": "1",
+  "packages": []
+}
+`
+	dir := t.TempDir()
+	git(t, dir, "init", "-b", "main")
+	writeFile(t, filepath.Join(dir, "obey-marketplace.json"), root)
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "init")
+	if _, errOut, err := runInstaller(t, "marketplace", "add", dir, "--name", name, "--allow-unverified"); err != nil {
+		t.Fatalf("marketplace add %s: %v\n%s", name, err, errOut)
+	}
+	clone, err := source.CloneDir(ctx, name)
+	if err != nil {
+		t.Fatalf("CloneDir %s: %v", name, err)
+	}
+	writeFile(t, filepath.Join(clone, "obey-marketplace.json"), "{ this is not a marketplace")
+}
+
+// obey resolves through the source that declares it, so a third-party
+// marketplace that fails to load is that marketplace's problem. Before this,
+// any registered source that could not parse decided whether obey was
+// installable, while installing the suite from its own source still worked.
+func TestInstallObey_UnrelatedBrokenMarketplaceDoesNotBlockIt(t *testing.T) {
+	ctx := context.Background()
+	home, _, _ := obeyFixture(t, "0.2.0")
+	fixtureBrokenExtraMarketplace(t, ctx, "extra")
+
+	// The corruption has to be load-blocking, or this test proves nothing:
+	// browse still walks every source and must fail on it.
+	if _, _, err := runInstaller(t, "browse", "--allow-unverified", "--json"); err == nil {
+		t.Fatal("expected browse to fail on the broken marketplace")
+	}
+
+	out, errOut, err := runInstaller(t, "install", "obey", "--allow-unverified", "--json")
+	if err != nil {
+		t.Fatalf("a broken unrelated marketplace must not block obey: %v\n%s", err, errOut)
+	}
+	var res obeyInstallData
+	dataOf(t, out, &res)
+	if len(res.Files) != 2 {
+		t.Fatalf("expected both obey binaries, got %v", res.Files)
+	}
+	if strings.Contains(errOut, "extra") {
+		t.Fatalf("the install must not warn about a marketplace it never read: %q", errOut)
+	}
+	if _, err := receipts.Get(ctx, mustDB(t, ctx, home), app.ObeyPackageID); err != nil {
+		t.Fatalf("obey receipt: %v", err)
 	}
 }
