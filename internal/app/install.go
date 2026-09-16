@@ -43,6 +43,10 @@ type InstallOptions struct {
 	Verify   source.VerifyOptions
 	Progress ProgressFunc
 	Force    bool
+	// NoRestart suppresses the obey service restart an install over a running
+	// daemon would otherwise run. It is a no-op for the suite: nothing
+	// supervises camp, fest, or festival.
+	NoRestart bool
 	// sourceAlreadyFresh is set by UpdateFestival after it refreshes and
 	// resolves the same source, avoiding a second network pull during install.
 	sourceAlreadyFresh bool

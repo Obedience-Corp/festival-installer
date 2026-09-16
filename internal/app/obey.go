@@ -2,13 +2,16 @@ package app
 
 import (
 	"context"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/release"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
@@ -19,6 +22,9 @@ const ObeyPackageID = "obedience-corp/obey"
 
 // obeyBinary is the daemon binary, the one the service verbs run through.
 const obeyBinary = "obey"
+
+// obDeveloperBinary is the second executable the obey product places.
+const obDeveloperBinary = "ob"
 
 // productResolved is one product release ready to place: where the archive is,
 // what it hashes to, and which executables it carries.
@@ -32,7 +38,9 @@ type productResolved struct {
 
 // findProductPackage refreshes sourceName and returns the marketplace entry for
 // packageID. Refreshing first is what keeps update from reporting "current"
-// against a clone that predates the release.
+// against a clone that predates the release. Only sourceName is loaded, so an
+// unrelated marketplace that fails to parse cannot block this product the way
+// it would if every registered source had to load first.
 func findProductPackage(ctx context.Context, sourceName, packageID string, vo source.VerifyOptions) (source.BrowsePackage, error) {
 	views, err := refreshMarketplacesForLoad(ctx, sourceName, vo)
 	if err != nil {
@@ -44,12 +52,12 @@ func findProductPackage(ctx context.Context, sourceName, packageID string, vo so
 	if views[0].Err != "" {
 		return source.BrowsePackage{}, errpkg.New("E_MARKETPLACE_REFRESH", "refresh marketplace "+sourceName+": "+views[0].Err)
 	}
-	pkgs, err := source.AllPackages(ctx, vo)
+	pkgs, err := source.SourcePackages(ctx, sourceName, vo)
 	if err != nil {
 		return source.BrowsePackage{}, err
 	}
 	for _, bp := range pkgs {
-		if bp.Source == sourceName && bp.Package.ID == packageID {
+		if bp.Package.ID == packageID {
 			return bp, nil
 		}
 	}
@@ -60,7 +68,20 @@ func findProductPackage(ctx context.Context, sourceName, packageID string, vo so
 // resolveProduct turns a marketplace entry into a placeable release. A
 // release_source entry resolves through git tags and a checksums file; a
 // manifest_path entry resolves through the static per-platform artifact list.
+// Everything the placement depends on is decided here, before any bytes move,
+// so a release this path cannot install is refused without a download.
 func resolveProduct(ctx context.Context, bp source.BrowsePackage, channel string, vo source.VerifyOptions) (productResolved, error) {
+	r, err := resolveProductRelease(ctx, bp, channel, vo)
+	if err != nil {
+		return productResolved{}, err
+	}
+	if err := requireArchive(bp.Package.ID, r); err != nil {
+		return productResolved{}, err
+	}
+	return r, nil
+}
+
+func resolveProductRelease(ctx context.Context, bp source.BrowsePackage, channel string, vo source.VerifyOptions) (productResolved, error) {
 	if rs := bp.Package.ReleaseSource; rs != nil {
 		if err := gitReleaseConsentGate(bp, vo); err != nil {
 			return productResolved{}, err
@@ -94,15 +115,9 @@ func resolveProduct(ctx context.Context, bp source.BrowsePackage, channel string
 	if err != nil {
 		return productResolved{}, err
 	}
-	var names []string
-	for _, e := range rel.Install.Entries {
-		if e.Kind == "binary" {
-			names = append(names, entryExecutableName(e))
-		}
-	}
-	if len(names) == 0 {
-		return productResolved{}, errpkg.New("E_PRODUCT_NO_BINARIES",
-			"no binary install entries in "+bp.Package.ID+" release "+rel.Version)
+	names, err := manifestBinaries(rel, bp.Package.ID)
+	if err != nil {
+		return productResolved{}, err
 	}
 	return productResolved{
 		version:  rel.Version,
@@ -111,6 +126,51 @@ func resolveProduct(ctx context.Context, bp source.BrowsePackage, channel string
 		archive:  isArchiveArtifact(art.Kind),
 		binaries: names,
 	}, nil
+}
+
+// manifestBinaries reads the executables a manifest_path product places. The
+// product path places binaries and nothing else, so a skill bundle or an
+// extension entry is refused rather than skipped: dropping it would leave a
+// receipt claiming a complete install of a release that was only half placed.
+func manifestBinaries(rel metadata.Release, packageID string) ([]string, error) {
+	var names []string
+	for _, e := range rel.Install.Entries {
+		if e.Kind != "binary" {
+			return nil, errpkg.New("E_PRODUCT_UNSUPPORTED_ENTRY",
+				packageID+" release "+rel.Version+" declares a "+entryKindLabel(e)+
+					" install entry; the product install path places binaries only and will not "+
+					"write a receipt that claims the rest was installed")
+		}
+		names = append(names, entryExecutableName(e))
+	}
+	if len(names) == 0 {
+		return nil, errpkg.New("E_PRODUCT_NO_BINARIES",
+			"no binary install entries in "+packageID+" release "+rel.Version)
+	}
+	return names, nil
+}
+
+// entryKindLabel names a kind for an error message, including the unset one a
+// malformed manifest can carry.
+func entryKindLabel(e metadata.InstallEntry) string {
+	if e.Kind == "" {
+		return "kindless"
+	}
+	return e.Kind
+}
+
+// requireArchive refuses a release whose artifact is a single file. placeProduct
+// extracts named executables out of an archive, so a bare binary has nothing to
+// extract from regardless of how many binaries the entry declares. The refusal
+// reads off the resolved artifact name, and it runs before the download.
+func requireArchive(packageID string, r productResolved) error {
+	if r.archive {
+		return nil
+	}
+	return errpkg.New("E_PRODUCT_NOT_ARCHIVE",
+		packageID+" release "+r.version+" publishes a bare binary ("+path.Base(r.url)+
+			"); this install extracts "+strings.Join(r.binaries, " and ")+
+			" by name and needs an archive")
 }
 
 // declaredBinaries reads the executables a release_source product places:
@@ -179,12 +239,19 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 		return InstallResult{}, err
 	}
 
+	// Asked before the binaries change, because that is the only moment the
+	// answer is knowable: obey service install writes the unit and leaves a
+	// live daemon alone, so a daemon that was up keeps running the previous
+	// image until a restart swaps it.
+	wasRunning := obeyDaemonRunning(ctx)
+
 	files, err := placeProduct(ctx, home, ObeyPackageID, sourceName, channel, resolved, progress)
 	if err != nil {
 		return InstallResult{}, err
 	}
 
 	svc := serviceStep(ctx, serviceVerbInstall)
+	svc = finishServiceSwap(ctx, svc, wasRunning, opts.NoRestart)
 
 	report(progress, ProgressEvent{Stage: "done", Package: ObeyPackageID, Percent: 1, Message: "obey ready"})
 	return InstallResult{
@@ -195,6 +262,27 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 		Files:   files,
 		Service: &svc,
 	}, nil
+}
+
+// finishServiceSwap completes the install's service step. Installing the unit
+// is enough on a machine with no daemon up: the supervisor starts it. When one
+// was already running it keeps the replaced binary's image, so the restart is
+// what makes the install true, and --no-restart turns that into a reported
+// pending restart rather than a silent one. A failed install step is left
+// alone: there is no unit to restart through.
+func finishServiceSwap(ctx context.Context, svc ServiceResult, wasRunning, noRestart bool) ServiceResult {
+	if !wasRunning || svc.Error != "" {
+		return svc
+	}
+	if noRestart {
+		svc.Deferred = true
+		return svc
+	}
+	restart := serviceStep(ctx, serviceVerbRestart)
+	svc.Restarted = restart.Restarted
+	svc.Error = restart.Error
+	svc.TimedOut = restart.TimedOut
+	return svc
 }
 
 // placeProduct downloads, verifies, extracts, and stages every declared binary
@@ -227,10 +315,6 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 		return nil, err
 	}
 
-	if !r.archive {
-		return nil, errpkg.New("E_PRODUCT_NOT_ARCHIVE",
-			packageID+" ships more than one binary and must publish an archive, not a bare binary")
-	}
 	extractDir := filepath.Join(tx.StagingDir(), "extracted")
 	report(progress, ProgressEvent{Stage: "extract", Package: packageID, Percent: 0.7, Message: "extracting archive"})
 	if err := artifacts.ExtractTarGz(ctx, staged, extractDir); err != nil {
@@ -272,6 +356,12 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 
 // UpdateObey brings the installed obey product to channel-latest. It returns a
 // human warning as the second value, matching UpdateFestival.
+//
+// The service step is the install step: refreshing the unit is idempotent and
+// it starts a daemon that is not running, so an update on a machine where the
+// daemon was stopped leaves it up on the new binary. Only a daemon that was
+// already running needs the restart, because only that one keeps serving the
+// replaced image.
 func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
 	if err := ctx.Err(); err != nil {
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
@@ -322,16 +412,20 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
+
+	wasRunning := obeyDaemonRunning(ctx)
+
 	if _, err := placeProduct(ctx, home, ObeyPackageID, rec.Source, channel, resolved, opts.Progress); err != nil {
 		return UpdateResult{}, warning, err
 	}
 
-	svc := ServiceResult{}
-	if opts.NoRestart {
-		svc.Deferred = true
-	} else {
-		svc = serviceStep(ctx, serviceVerbRestart)
-	}
+	svc := serviceStep(ctx, serviceVerbInstall)
+	svc = finishServiceSwap(ctx, svc, wasRunning, opts.NoRestart)
+	// Reported only on an update. A fresh install that brings the daemon up is
+	// doing what the caller asked; an update that finds it stopped and leaves
+	// it running has changed something the caller did not ask about, and the
+	// sentence is the only place that shows.
+	svc.Started = !wasRunning && svc.Installed && svc.Error == ""
 	warning = appendWarning(warning, serviceNote(&svc, resolved.version))
 	return UpdateResult{
 		Package: ObeyPackageID,

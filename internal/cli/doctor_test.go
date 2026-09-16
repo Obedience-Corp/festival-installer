@@ -214,6 +214,34 @@ func TestDoctor_OrphanReceipt(t *testing.T) {
 	}
 }
 
+// The installer places obey and ob now, so they are managed binaries and an
+// unmanaged copy ahead of them on PATH is the mixed-machine case the update
+// path points doctor at. Before this, doctor reported "no managed binary is
+// shadowed" on exactly that machine.
+func TestDoctor_PathShadowing_ObeyAndOb(t *testing.T) {
+	for _, tool := range []string{"obey", "ob"} {
+		t.Run(tool, func(t *testing.T) {
+			home := t.TempDir()
+			managedBin := filepath.Join(home, "bin")
+			fakeBinary(t, managedBin, tool)
+			otherDir := t.TempDir()
+			fakeBinary(t, otherDir, tool)
+
+			t.Setenv("OBEY_INSTALLER_HOME", home)
+			t.Setenv("PATH", otherDir+string(os.PathListSeparator)+managedBin)
+
+			out, _, _ := runInstaller(t, "doctor", "--json")
+			status := doctorChecks(t, out)
+			if status["path_shadowing"] != "warn" {
+				t.Fatalf("expected path_shadowing warn for a shadowed %s, got %q\n%s", tool, status["path_shadowing"], out)
+			}
+			if !strings.Contains(out, tool) {
+				t.Fatalf("expected the shadowing message to name %s:\n%s", tool, out)
+			}
+		})
+	}
+}
+
 func TestDoctor_PathShadowing_Festival(t *testing.T) {
 	home := t.TempDir()
 	managedBin := filepath.Join(home, "bin")

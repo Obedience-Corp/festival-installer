@@ -18,12 +18,17 @@ func NewUninstallCommand() *cobra.Command {
 		Short: "Remove an installer-managed package (receipt-owned files only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			res, err := app.UninstallTarget(cmd.Context(), args[0])
+			res, warning, err := app.UninstallTarget(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
+			var warnings []string
+			if warning != "" {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "uninstall: "+warning)
+				warnings = []string{warning}
+			}
 			if asJSON {
-				return jsonout.Success(cmd.OutOrStdout(), "uninstall", res, nil)
+				return jsonout.Success(cmd.OutOrStdout(), "uninstall", res, warnings)
 			}
 			return renderUninstallResult(cmd.OutOrStdout(), res)
 		},
