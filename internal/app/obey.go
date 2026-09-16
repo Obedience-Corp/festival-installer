@@ -277,8 +277,13 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 // same thing on a machine with nothing serving, and withholding it there would
 // leave a fresh machine with no unit at all to buy honesty it already has.
 func obeyServiceSwap(ctx context.Context, daemon daemonState, noRestart bool) ServiceResult {
-	if contract := obeyServiceContract(ctx); !contract.Supported && daemon != daemonStateStopped {
-		return ServiceResult{Unsupported: true, ContractReason: contract.Reason}
+	// Asked only where the answer can change what runs. A stopped daemon takes
+	// the same install verb either way, and the probe costs two or three execs
+	// of a binary that has never been run on this machine.
+	if daemon != daemonStateStopped {
+		if contract := obeyServiceContract(ctx); !contract.Supported {
+			return ServiceResult{Unsupported: true, ContractReason: contract.Reason}
+		}
 	}
 	svc := serviceStep(ctx, serviceVerbInstall)
 	// With a stopped daemon finishServiceSwap settles on the install verb

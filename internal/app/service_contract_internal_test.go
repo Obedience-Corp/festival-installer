@@ -75,7 +75,15 @@ Flags:
   -h, --help   help for service
 `
 
-const fakeServiceInstallHelp = `Register the daemon with launchd (macOS) or systemd --user (Linux).
+// The prose paragraph is the one obey's own install help carries: it names
+// --restart in a sentence whether or not the flag exists, which is why the
+// probe reads the flag lines rather than the screen.
+const fakeServiceInstallHelp = `Register the daemon with launchd (macOS) or systemd --user (Linux) and start
+it when nothing is running yet.
+
+A daemon that is already running is left alone: the unit on disk is refreshed
+and the running process keeps serving until something restarts it. Pass
+--restart to replace it now.
 
 Usage:
   obey service install [flags]
@@ -169,25 +177,70 @@ func TestObeyServiceContract_RefusesObeyMainsServiceFamily(t *testing.T) {
 
 // The other half of the contract: an install that replaces a running daemon on
 // its own makes --no-restart a false promise, so the restart verb alone is not
-// enough to drive the step.
-func TestObeyServiceContract_RefusesAnInstallThatRestartsOnItsOwn(t *testing.T) {
+// enough to drive the step. The flag has to be declared, not merely mentioned:
+// this fake keeps the prose sentence naming --restart and drops the flag line,
+// which is what an obey whose install still restarts unconditionally looks
+// like once someone documents the flag it does not have.
+func TestObeyServiceContract_RefusesAnInstallThatOnlyMentionsTheFlagInProse(t *testing.T) {
 	fake := writeFakeObey(t, true, "0.2.0")
 	help := filepath.Join(fake.dir, "service-install-help.txt")
 	body, err := os.ReadFile(help)
 	if err != nil {
 		t.Fatalf("read install help: %v", err)
 	}
-	stripped := strings.ReplaceAll(string(body), serviceInstallRestartFlag, "")
+	var kept []string
+	for _, line := range strings.Split(string(body), "\n") {
+		trimmed := strings.TrimSpace(line)
+		// Only the declaration goes; the prose that names the flag stays,
+		// including the wrapped line that happens to begin with it.
+		if trimmed != line && strings.HasPrefix(trimmed, serviceInstallRestartFlag) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	stripped := strings.Join(kept, "\n")
+	if !strings.Contains(stripped, serviceInstallRestartFlag) {
+		t.Fatalf("the prose mention must survive, help = %q", stripped)
+	}
 	if err := os.WriteFile(help, []byte(stripped), 0o644); err != nil {
 		t.Fatalf("write install help: %v", err)
 	}
 
 	contract := obeyServiceContractAt(context.Background(), fake.path)
 	if contract.Supported {
-		t.Fatal("an install with no --restart flag restarts on its own; it is not the contract")
+		t.Fatal("a flag named only in prose is not a flag; this install restarts on its own")
 	}
 	if !strings.Contains(contract.Reason, serviceInstallRestartFlag) {
 		t.Fatalf("reason = %q, want it to name the missing flag", contract.Reason)
+	}
+}
+
+// helpListsFlag reads the flag lines and only the names on them.
+func TestHelpListsFlag_ReadsTheFlagLinesNotTheProse(t *testing.T) {
+	withFlag := strings.ReplaceAll(fakeServiceInstallHelp, "__RESTART_FLAG__",
+		`      --restart   restart a daemon that is already running`+"\n")
+	if !helpListsFlag(withFlag, serviceInstallRestartFlag) {
+		t.Fatal("a declared flag must be found")
+	}
+
+	proseOnly := strings.ReplaceAll(fakeServiceInstallHelp, "__RESTART_FLAG__", "")
+	if !strings.Contains(proseOnly, serviceInstallRestartFlag) {
+		t.Fatal("this screen is supposed to mention the flag in prose")
+	}
+	if helpListsFlag(proseOnly, serviceInstallRestartFlag) {
+		t.Fatal("a flag named in the description is not a declared flag")
+	}
+
+	// One flag documented in terms of another must not stand in for it.
+	sibling := "Flags:\n      --no-restart   the opposite of --restart\n"
+	if helpListsFlag(sibling, serviceInstallRestartFlag) {
+		t.Fatal("a flag description naming another flag must not pass for it")
+	}
+
+	// A shorthand pair and a type placeholder still resolve to the long name.
+	shorthand := "Flags:\n  -r, --restart   restart a daemon that is already running\n"
+	if !helpListsFlag(shorthand, serviceInstallRestartFlag) {
+		t.Fatal("a shorthand pair still declares the long name")
 	}
 }
 
@@ -308,5 +361,21 @@ func writeText(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+// The contract probe answers a question only a daemon that may be serving
+// needs answered, so a stopped daemon never pays for it. The fake here fails
+// every call, which would refuse the contract if it were consulted.
+func TestObeyServiceSwap_StoppedDaemonDoesNotRunTheContractProbe(t *testing.T) {
+	fake := writeFakeObey(t, false, "0.2.0")
+	writeFile(t, filepath.Join(fake.dir, "service-help.txt"), "")
+
+	got := obeyServiceSwap(context.Background(), daemonStateStopped, false)
+	if got.Unsupported {
+		t.Fatalf("a stopped daemon must not be held back by the contract, got %+v", got)
+	}
+	if !got.Installed || !got.Started {
+		t.Fatalf("service result = %+v, want the install verb to have run and started the daemon", got)
 	}
 }
