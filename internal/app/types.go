@@ -119,7 +119,8 @@ type WhichResult struct {
 }
 
 // ResolveResult is the absolute path a tool runs from, using ResolveTool
-// semantics: the managed bin dir first, PATH only for a package-manager origin.
+// semantics: the managed bin dir first, except on a package-manager origin,
+// where PATH wins and the managed bin is the fallback.
 type ResolveResult struct {
 	Tool string `json:"tool"`
 	Path string `json:"path"`

@@ -88,8 +88,8 @@ var versionProbes = map[string]versionProbe{
 	"camp":         {args: [][]string{{"version", "--short"}, {"version"}}},
 	"fest":         {args: [][]string{{"version", "--short"}, {"version"}}},
 	selfBinaryName: {args: [][]string{{"version", "--short"}, {"version"}}},
-	// obey gains `version --short` in FA0027 phase 001 sequence 02 (D15).
-	// Until the version floor guarantees it, --version is the live answer.
+	// obey answers --version today. `version --short` is tried first so it
+	// takes over as soon as the version floor guarantees it.
 	obeyBinary:       {args: [][]string{{"version", "--short"}, {"--version"}}, trimPrefix: "obey version "},
 	obeyDevCLIBinary: {args: [][]string{{"--version"}}, trimPrefix: "ob version "},
 }
@@ -98,7 +98,7 @@ var versionProbes = map[string]versionProbe{
 // git is here because the first install clones the marketplace with it
 // (internal/source/autoseed.go, internal/source/git.go), and a missing git
 // surfaces as E_MARKETPLACE_SEED from deep inside an install rather than as a
-// prerequisite the caller could have checked (D14).
+// prerequisite the caller could have checked.
 var prerequisiteBinaries = []string{"git"}
 
 // StatusReportFor builds the report festival-app reads on launch.
@@ -136,12 +136,12 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 		Origin:            origin.Kind,
 		Flavor:            origin.Flavor,
 		Setup:             setup,
-		Tools:             resolveStatusTools(ctx, origin),
+		Tools:             resolveStatusTools(ctx),
 		Prerequisites:     resolvePrerequisites(),
 	}, nil
 }
 
-func resolveStatusTools(ctx context.Context, origin SuiteOrigin) []StatusToolEntry {
+func resolveStatusTools(ctx context.Context) []StatusToolEntry {
 	recs := readStatusReceipts(ctx)
 	out := make([]StatusToolEntry, len(statusTools))
 	var wg sync.WaitGroup
@@ -159,17 +159,18 @@ func resolveStatusTools(ctx context.Context, origin SuiteOrigin) []StatusToolEnt
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			fillToolEntry(ctx, &out[i], origin)
+			fillToolEntry(ctx, &out[i])
 		}(i)
 	}
 	wg.Wait()
 	return out
 }
 
-// fillToolEntry resolves one tool and probes its version. Origin classification
-// is per tool rather than copied from the suite origin, because a machine can
-// have a package-manager camp and a managed obey at the same time.
-func fillToolEntry(ctx context.Context, e *StatusToolEntry, origin SuiteOrigin) {
+// fillToolEntry resolves one tool and probes its version. Origin is classified
+// from the path this tool resolved to rather than from the suite origin,
+// because a machine can have a package-manager camp and a managed or leftover
+// obey at the same time. The suite origin stays on the report's Origin field.
+func fillToolEntry(ctx context.Context, e *StatusToolEntry) {
 	path, err := ResolveTool(ctx, e.Tool)
 	if err != nil {
 		e.Error = err.Error()
@@ -177,13 +178,10 @@ func fillToolEntry(ctx context.Context, e *StatusToolEntry, origin SuiteOrigin) 
 	}
 	e.Path = path
 	e.Present = true
-	switch {
-	case e.Managed != "" && samePath(path, e.Managed):
+	if e.Managed != "" && samePath(path, e.Managed) {
 		e.Origin = OriginManaged
-	case origin.Kind == OriginPackage:
-		e.Origin = OriginPackage
-	default:
-		e.Origin = OriginLeftover
+	} else {
+		e.Origin, _, _ = classifyPath(ctx, path)
 	}
 	version, verr := probeToolVersion(ctx, e.Tool, path)
 	if verr != nil {

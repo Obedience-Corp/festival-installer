@@ -136,3 +136,55 @@ func TestProbeToolVersion_UnknownToolHasNoProbe(t *testing.T) {
 		t.Fatalf("unexpected message: %v", err)
 	}
 }
+
+func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("HOMEBREW_PREFIX", "")
+
+	pkgBin, _ := writePackagePrefix(t, t.TempDir())
+	writeProbeScript(t, pkgBin, "camp", "#!/bin/sh\necho 0.6.0\n")
+
+	leftoverBin := t.TempDir()
+	writeProbeScript(t, leftoverBin, obeyBinary, "#!/bin/sh\necho \"obey version 0.2.0\"\n")
+
+	t.Setenv("PATH", pkgBin+string(os.PathListSeparator)+leftoverBin)
+
+	suite, err := DetectSuite(ctx)
+	if err != nil {
+		t.Fatalf("DetectSuite: %v", err)
+	}
+	if suite.Kind != OriginPackage {
+		t.Fatalf("fixture suite origin = %q, want package", suite.Kind)
+	}
+
+	rep, err := StatusReportFor(ctx)
+	if err != nil {
+		t.Fatalf("StatusReportFor: %v", err)
+	}
+	if rep.Origin != OriginPackage {
+		t.Fatalf("report Origin = %q, want the suite origin package", rep.Origin)
+	}
+
+	entries := map[string]StatusToolEntry{}
+	for _, e := range rep.Tools {
+		entries[e.Tool] = e
+	}
+
+	camp := entries["camp"]
+	if camp.Path != filepath.Join(pkgBin, "camp") {
+		t.Fatalf("camp Path = %q, want %q", camp.Path, filepath.Join(pkgBin, "camp"))
+	}
+	if camp.Origin != OriginPackage {
+		t.Fatalf("camp Origin = %q from %q, want package", camp.Origin, camp.Path)
+	}
+
+	obey := entries[obeyBinary]
+	if obey.Path != filepath.Join(leftoverBin, obeyBinary) {
+		t.Fatalf("obey Path = %q, want %q", obey.Path, filepath.Join(leftoverBin, obeyBinary))
+	}
+	if obey.Origin != OriginLeftover {
+		t.Fatalf("obey Origin = %q from %q, want leftover: a package-manager suite must not brand an unrelated binary", obey.Origin, obey.Path)
+	}
+}

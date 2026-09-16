@@ -15,8 +15,9 @@ func NewResolveCommand() *cobra.Command {
 		Use:   "resolve <tool>",
 		Short: "Print the absolute path the hub would run a tool from",
 		Long: "resolve prints the absolute path festival itself would run <tool> from: the\n" +
-			"installer-managed bin dir first, and PATH only when a package manager owns the\n" +
-			"suite.\n\n" +
+			"installer-managed bin dir first, except when a package manager owns the suite,\n" +
+			"where PATH wins so the hub runs the binary the shell runs. In both cases the\n" +
+			"other location is the fallback.\n\n" +
 			"This differs from `festival which`, which reports whatever PATH finds first and\n" +
 			"flags shadowing. Use resolve when a program is about to run the binary and which\n" +
 			"when a person is asking what is shadowing what.",
