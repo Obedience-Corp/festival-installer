@@ -243,15 +243,14 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 	// answer is knowable: obey service install writes the unit and leaves a
 	// live daemon alone, so a daemon that was up keeps running the previous
 	// image until a restart swaps it.
-	wasRunning := obeyDaemonRunning(ctx)
+	daemon := obeyDaemonState(ctx)
 
 	files, err := placeProduct(ctx, home, ObeyPackageID, sourceName, channel, resolved, progress)
 	if err != nil {
 		return InstallResult{}, err
 	}
 
-	svc := serviceStep(ctx, serviceVerbInstall)
-	svc = finishServiceSwap(ctx, svc, wasRunning, opts.NoRestart)
+	svc := obeyServiceSwap(ctx, daemon, opts.NoRestart)
 
 	report(progress, ProgressEvent{Stage: "done", Package: ObeyPackageID, Percent: 1, Message: "obey ready"})
 	return InstallResult{
@@ -264,16 +263,48 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 	}, nil
 }
 
-// finishServiceSwap completes the install's service step. Installing the unit
-// is enough on a machine with no daemon up: the supervisor starts it. When one
-// was already running it keeps the replaced binary's image, so the restart is
-// what makes the install true, and --no-restart turns that into a reported
-// pending restart rather than a silent one. A failed install step is left
-// alone: there is no unit to restart through.
-func finishServiceSwap(ctx context.Context, svc ServiceResult, wasRunning, noRestart bool) ServiceResult {
-	if !wasRunning || svc.Error != "" {
+// obeyServiceSwap drives the whole service step for the obey that was just
+// staged: verify the contract, register the unit, then settle the process that
+// is serving.
+//
+// An obey whose service family predates the contract is only held back where
+// the contract is what the step depends on, which is a daemon that is serving
+// or one whose state could not be read: there the step would either report a
+// deferred restart obey's own install had already performed, or call a verb
+// that command does not have, so no verb runs and the warning names the
+// command to run by hand. A daemon the probe definitely found stopped has
+// nothing to lose. `obey service install` exists in every obey and means the
+// same thing on a machine with nothing serving, and withholding it there would
+// leave a fresh machine with no unit at all to buy honesty it already has.
+func obeyServiceSwap(ctx context.Context, daemon daemonState, noRestart bool) ServiceResult {
+	if contract := obeyServiceContract(ctx); !contract.Supported && daemon != daemonStateStopped {
+		return ServiceResult{Unsupported: true, ContractReason: contract.Reason}
+	}
+	svc := serviceStep(ctx, serviceVerbInstall)
+	// With a stopped daemon finishServiceSwap settles on the install verb
+	// alone, so the restart verb the contract is about is unreachable here.
+	return finishServiceSwap(ctx, svc, daemon, noRestart)
+}
+
+// finishServiceSwap completes the service step once the unit is registered.
+// Installing the unit is enough on a machine with no daemon up: the supervisor
+// starts it, and that is the one case that sets Started. A daemon that was
+// already running keeps the replaced binary's image, so the restart is what
+// makes the install true, and --no-restart turns that into a reported pending
+// restart rather than a silent one. A daemon whose state could not be read is
+// treated as one that may be running, because the cost of guessing wrong the
+// other way is a live daemon left on a replaced binary under a payload saying
+// it was started. A failed install step is left alone: there is no unit to
+// restart through.
+func finishServiceSwap(ctx context.Context, svc ServiceResult, daemon daemonState, noRestart bool) ServiceResult {
+	if svc.Error != "" {
 		return svc
 	}
+	if daemon == daemonStateStopped {
+		svc.Started = svc.Installed
+		return svc
+	}
+	svc.DaemonStateUnknown = daemon == daemonStateUnknown
 	if noRestart {
 		svc.Deferred = true
 		return svc
@@ -413,20 +444,18 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 		return UpdateResult{}, warning, err
 	}
 
-	wasRunning := obeyDaemonRunning(ctx)
+	daemon := obeyDaemonState(ctx)
 
 	if _, err := placeProduct(ctx, home, ObeyPackageID, rec.Source, channel, resolved, opts.Progress); err != nil {
 		return UpdateResult{}, warning, err
 	}
 
-	svc := serviceStep(ctx, serviceVerbInstall)
-	svc = finishServiceSwap(ctx, svc, wasRunning, opts.NoRestart)
-	// Reported only on an update. A fresh install that brings the daemon up is
-	// doing what the caller asked; an update that finds it stopped and leaves
-	// it running has changed something the caller did not ask about, and the
-	// sentence is the only place that shows.
-	svc.Started = !wasRunning && svc.Installed && svc.Error == ""
-	warning = appendWarning(warning, serviceNote(&svc, resolved.version))
+	svc := obeyServiceSwap(ctx, daemon, opts.NoRestart)
+	// The started sentence is an update's alone. A fresh install that brings
+	// the daemon up is doing what the caller asked; an update that finds it
+	// stopped and leaves it running has changed something the caller did not
+	// ask about, and this sentence is the only place that shows.
+	warning = appendWarning(warning, serviceNote(&svc, resolved.version, true))
 	return UpdateResult{
 		Package: ObeyPackageID,
 		Action:  "upgraded",
@@ -450,12 +479,13 @@ func unmanagedObey(ctx context.Context) (UpdateResult, string, error) {
 }
 
 // detectObeyVersion reads the managed obey's own version through the one probe
-// table status and update share, so the subcommand-then-flag fallback is
-// defined in exactly one place (internal/app/statusreport.go).
+// table status and update share, so the subcommand-then-flag fallback, the
+// parser and the per-attempt budget are each defined in exactly one place
+// (internal/app/statusreport.go, internal/app/origin_probe.go).
 func detectObeyVersion(ctx context.Context) (string, error) {
-	binDir, err := state.BinDir(ctx)
+	path, err := obeyServicePath(ctx)
 	if err != nil {
 		return "", err
 	}
-	return probeToolVersion(ctx, obeyBinary, filepath.Join(binDir, obeyBinary))
+	return probeToolVersion(ctx, obeyBinary, path)
 }
