@@ -292,14 +292,22 @@ func obeyServiceContract(ctx context.Context) serviceContract {
 	return obeyServiceContractAt(ctx, obeyPath)
 }
 
-// obeyServiceContractAt is obeyServiceContract asked of an explicit binary.
+// obeyServiceContractAt is obeyServiceContract asked of an explicit binary, so
+// the probe and its tests grade the obey in front of them rather than whichever
+// one the managed bin dir holds.
+//
+// The version comes from the one probe table every other reader uses
+// (internal/app/statusreport.go), so the subcommand-then-flag fallback, the
+// per-attempt budget and the parser are shared rather than restated here. An
+// unreadable version is empty, and an empty version is not a refusal: the verb
+// probes below still decide, because an obey that will not report its version
+// can still list the commands it has.
 func obeyServiceContractAt(ctx context.Context, obeyPath string) serviceContract {
-	version, verr := detectObeyVersionAt(ctx, obeyPath)
+	version, verr := probeToolVersion(ctx, obeyBinary, obeyPath)
 	if verr != nil {
 		version = ""
 	}
-	if version != "" && LooksLikeVersion(version) &&
-		installer.VersionLess(releaseCore(version), obeyServiceContractFloor) {
+	if version != "" && installer.VersionLess(releaseCore(version), obeyServiceContractFloor) {
 		return serviceContract{
 			Version: version,
 			Reason: "obey " + version + " is below " + obeyServiceContractFloor +

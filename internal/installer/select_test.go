@@ -104,3 +104,49 @@ func TestSelectArtifact_NotFound(t *testing.T) {
 		t.Fatalf("expected ErrNoArtifactForPlatform, got %v", err)
 	}
 }
+
+// A git describe stamp is the tag plus commits, not a pre-release below it.
+// camp, fest, and festival all stamp `git describe --tags`, so ordering
+// "0.10.1-4-gd1fb37c7" below "0.10.1" is what makes an up-to-date machine look
+// like it is behind the floor and reinstall on every launch.
+func TestVersionLess_GitDescribeStampRanksAboveItsTag(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"0.10.1-4-gd1fb37c7", "0.10.1", false},
+		{"0.10.1", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7", "0.10.2", true},
+		{"0.10.2", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-12-gaaaaaaa", true},
+		{"0.10.1-12-gaaaaaaa", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-4-gd1fb37c7", false},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1", false},
+		// A dirty tree is not a version. At a tag exactly `git describe
+		// --dirty` prints "0.10.1-dirty" with no commit count, so the
+		// identifier has to be dropped rather than read as a pre-release:
+		// otherwise a locally built tool at the tag ranks below its own tag and
+		// the app reads it as under the floor. festival-app strips the same
+		// identifier (src-tauri/src/setup/versions.rs), so both sides agree.
+		{"0.10.1-dirty", "0.10.1", false},
+		{"0.10.1", "0.10.1-dirty", false},
+		{"0.10.1-dirty", "0.10.2", true},
+		{"0.10.2", "0.10.1-dirty", false},
+		{"0.10.1-dirty", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1-dirty", false},
+		{"0.10.1-4-gd1fb37c7-dirty", "0.10.1-4-gd1fb37c7", false},
+		// A real pre-release still ranks below its release with a dirty tree.
+		{"0.10.1-rc.1-dirty", "0.10.1", true},
+		{"0.10.1-rc.1", "0.10.1-4-gd1fb37c7", true},
+		{"0.10.1-4-gd1fb37c7", "0.10.1-rc.1", false},
+		// A real pre-release still sorts below its release.
+		{"0.3.0-rc.1", "0.3.0", true},
+		{"0.3.0", "0.3.0-rc.1", false},
+		{"0.3.0-rc.1", "0.3.0-rc.2", true},
+	}
+	for _, tc := range cases {
+		if got := installer.VersionLess(tc.a, tc.b); got != tc.want {
+			t.Errorf("VersionLess(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

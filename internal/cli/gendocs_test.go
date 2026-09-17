@@ -16,6 +16,8 @@ func newGendocsRoot() *cobra.Command {
 	root := &cobra.Command{Use: "festival", SilenceErrors: true, SilenceUsage: true}
 	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewResolveCommand())
+	root.AddCommand(cli.NewStatusCommand())
 	root.AddCommand(cli.NewGendocsCommand())
 	return root
 }
@@ -39,7 +41,13 @@ func TestGendocs_Markdown(t *testing.T) {
 		t.Fatalf("gendocs markdown: %v", err)
 	}
 
-	wantFiles := []string{"festival.md", "festival_version.md", "festival_which.md"}
+	wantFiles := []string{
+		"festival.md",
+		"festival_version.md",
+		"festival_which.md",
+		"festival_resolve.md",
+		"festival_status.md",
+	}
 	for _, name := range wantFiles {
 		path := filepath.Join(outDir, name)
 		if _, err := os.Stat(path); err != nil {

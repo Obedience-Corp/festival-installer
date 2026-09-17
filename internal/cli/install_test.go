@@ -239,6 +239,8 @@ func runInstaller(t *testing.T, args ...string) (string, string, error) {
 	root.AddCommand(cli.NewBrowseCommand())
 	root.AddCommand(cli.NewDoctorCommand())
 	root.AddCommand(cli.NewWhichCommand())
+	root.AddCommand(cli.NewResolveCommand())
+	root.AddCommand(cli.NewStatusCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewVersionCommand(testFestivalVersion))
 	root.AddCommand(cli.NewGendocsCommand())
@@ -540,7 +542,9 @@ func TestInstall_InvalidChannelAndTarget(t *testing.T) {
 
 const festivalPackageIDForTest = "obedience-corp/festival"
 
-const testFestivalVersion = "9.9.9"
+// testFestivalVersion is the ldflags stamp shape a release build carries:
+// `git describe --tags` against this repo's vX.Y.Z tags.
+const testFestivalVersion = "v0.2.2"
 
 func mustDB(t *testing.T, ctx context.Context, home string) *sql.DB {
 	t.Helper()

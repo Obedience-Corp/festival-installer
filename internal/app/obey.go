@@ -2,13 +2,10 @@ package app
 
 import (
 	"context"
-	"errors"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -427,7 +424,7 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 
 	installedVersion := rec.Version
 	warning := ""
-	if live, derr := detectObeyVersion(ctx); derr == nil && LooksLikeVersion(live) && live != installedVersion {
+	if live, derr := detectObeyVersion(ctx); derr == nil && live != "" && live != installedVersion {
 		warning = "receipt reports " + installedVersion + " but the managed obey reports " + live + "; comparing against the live version"
 		installedVersion = live
 	}
@@ -486,67 +483,14 @@ func unmanagedObey(ctx context.Context) (UpdateResult, string, error) {
 			"Refusing to modify an external install. Run `festival which obey --show-all` or `festival doctor` to inspect.", nil
 }
 
-// detectObeyVersion reads the managed obey's own version. It tries
-// `obey version --short` first and `obey --version` second. The fallback is
-// the live path, not a legacy one: obey registers no version subcommand at
-// all, so it answers only the root flag, printing "obey version X.Y.Z". The
-// first answer wins so a later obey that grows the subcommand is read the same
-// way camp and fest are.
+// detectObeyVersion reads the managed obey's own version through the one probe
+// table status and update share, so the subcommand-then-flag fallback, the
+// parser and the per-attempt budget are each defined in exactly one place
+// (internal/app/statusreport.go, internal/app/origin_probe.go).
 func detectObeyVersion(ctx context.Context) (string, error) {
 	path, err := obeyServicePath(ctx)
 	if err != nil {
 		return "", err
 	}
-	return detectObeyVersionAt(ctx, path)
-}
-
-// detectObeyVersionAt is detectObeyVersion asked of an explicit binary, so the
-// contract probe and its tests read the version of the obey they are grading
-// rather than whichever one the managed bin dir holds.
-func detectObeyVersionAt(ctx context.Context, path string) (string, error) {
-	return detectObeyVersionWithin(ctx, path, obeyVersionProbeTimeout)
-}
-
-// obeyVersionProbeTimeout is the budget for one version attempt, and
-// obeyVersionProbeWaitDelay bounds the wait for its output pipe afterwards.
-// The service contract probe reads the version first, against a binary that
-// was just staged and has never been run on this machine, so an obey that
-// hangs printing its own version would otherwise hang the install behind it.
-const (
-	obeyVersionProbeTimeout   = 5 * time.Second
-	obeyVersionProbeWaitDelay = 250 * time.Millisecond
-)
-
-// detectObeyVersionWithin is detectObeyVersionAt with an explicit per-attempt
-// budget, so the bound can be exercised without waiting out a real one.
-func detectObeyVersionWithin(ctx context.Context, path string, budget time.Duration) (string, error) {
-	if out, err := obeyVersionProbe(ctx, path, budget, "version", "--short"); err == nil {
-		if v := strings.TrimSpace(string(out)); v != "" {
-			return v, nil
-		}
-	}
-	out, err := obeyVersionProbe(ctx, path, budget, "--version")
-	if err != nil {
-		return "", errpkg.Wrap("E_VERSION_PROBE", err, "read obey version at "+path)
-	}
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "obey version ")), nil
-}
-
-// obeyVersionProbe runs one bounded version attempt and returns its stdout.
-// WaitDelay is what makes the budget real: killing obey does not kill whatever
-// it spawned, and a grandchild holding the pipe open would return this call
-// whenever that grandchild happened to finish. Such a grandchild is not a
-// failed probe, so ErrWaitDelay is folded into success and the version obey
-// already printed is read like any other.
-func obeyVersionProbe(ctx context.Context, path string, budget time.Duration, args ...string) ([]byte, error) {
-	runCtx, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-	cmd := exec.CommandContext(runCtx, path, args...) //nolint:gosec // path is the managed bin dir, args fixed
-	cmd.Stdin = nil
-	cmd.WaitDelay = obeyVersionProbeWaitDelay
-	out, err := cmd.Output()
-	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
-		return nil, err
-	}
-	return out, nil
+	return probeToolVersion(ctx, obeyBinary, path)
 }

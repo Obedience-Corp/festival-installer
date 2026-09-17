@@ -6,9 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 )
 
 // The fake obey stands in for the two binaries this step has to tell apart: an
@@ -364,49 +361,6 @@ func writeText(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
-	}
-}
-
-// The contract probe reads the version first, from a binary that was just
-// staged and has never been run here. Without a budget an obey that hangs
-// printing its own version hangs the install behind it.
-func TestDetectObeyVersionWithin_BoundsAnObeyThatHangs(t *testing.T) {
-	dir := t.TempDir()
-	hangs := filepath.Join(dir, "obey")
-	writeFile(t, hangs, "#!/bin/sh\nsleep 60\n")
-
-	started := time.Now()
-	got, err := detectObeyVersionWithin(context.Background(), hangs, 100*time.Millisecond)
-	if err == nil {
-		t.Fatalf("expected the probe to give up, got %q", got)
-	}
-	// Two attempts of 100ms plus the pipe wait. A budget that only killed the
-	// process would still be blocked here by the sleep holding stdout.
-	if elapsed := time.Since(started); elapsed > 20*time.Second {
-		t.Fatalf("the probe took %s to give up on two 100ms budgets", elapsed)
-	}
-	if code := errpkg.Code(err); code != "E_VERSION_PROBE" {
-		t.Fatalf("code = %q, want E_VERSION_PROBE", code)
-	}
-}
-
-// A grandchild still holding the pipe open is not a failed probe: obey printed
-// its version and exited, and that output is what the floor is graded on.
-func TestDetectObeyVersionWithin_KeepsOutputWhenAGrandchildHoldsThePipe(t *testing.T) {
-	dir := t.TempDir()
-	lingers := filepath.Join(dir, "obey")
-	writeFile(t, lingers, "#!/bin/sh\nsleep 60 &\necho 0.2.0\nexit 0\n")
-
-	started := time.Now()
-	got, err := detectObeyVersionWithin(context.Background(), lingers, 10*time.Second)
-	if err != nil {
-		t.Fatalf("detectObeyVersionWithin: %v", err)
-	}
-	if got != "0.2.0" {
-		t.Fatalf("version = %q, want the version obey printed before its child outlived it", got)
-	}
-	if elapsed := time.Since(started); elapsed > 20*time.Second {
-		t.Fatalf("the probe waited %s on a grandchild that holds the pipe for a minute", elapsed)
 	}
 }
 

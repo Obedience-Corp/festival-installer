@@ -148,6 +148,8 @@ festival browse --product fest --kind plugin
 festival marketplace list
 festival doctor
 festival shell-init zsh
+festival status --json
+festival resolve camp
 festival which camp --show-all
 festival version
 ```
@@ -184,6 +186,7 @@ just build            # bin/festival
 just run version
 just check            # fmt + vet + lint + test
 just test
+just testing notty    # no-TTY integration lane: builds the binary, drives it headless
 just release all      # cross-platform festival-{os}-{arch}
 just ci                # full gate: check + all four release builds + static-link check
 ```

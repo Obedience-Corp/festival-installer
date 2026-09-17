@@ -30,9 +30,12 @@ run *ARGS:
 fmt:
     go fmt ./...
 
-# Run go vet
+# Run go vet, including the build-tagged notty lane. Tagged files are invisible
+# to a default `go vet ./...`, so without the second line a compile error inside
+# them only surfaces when somebody runs `just testing notty` by hand.
 vet:
     go vet ./...
+    go vet -tags notty ./internal/cli/...
 
 # Run linter (install with: just tools install-golangci-lint)
 lint:
