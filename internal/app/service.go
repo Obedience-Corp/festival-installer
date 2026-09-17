@@ -37,14 +37,8 @@ const serviceTimeout = 30 * time.Second
 // graceful gRPC stop and a 5s teardown make a 20s shutdown, the unit adds a 10s
 // supervisor margin on top of it, and the replacement gets 30s to boot.
 //
-// The cap is 120s rather than a tighter fit over those 65s. What it protects
-// against is a wedged supervisor holding the install; what it costs when it
-// fires early is worse than waiting, because the installer then kills obey in
-// the middle of a swap it was still performing and reports a failure for a
-// restart that was inside obey's own contract. At 120s it fires only once obey
-// has blown that contract, and by then obey's own error is the one the user
-// should be reading. It also survives a modest growth in obey's budgets, which
-// a 25s margin would not.
+// The cap clears that sequence, so it fires only once obey has run past its own
+// bounded waits.
 const serviceRestartTimeout = 120 * time.Second
 
 // codeServiceTimeout marks a verb the installer cut short rather than one the
