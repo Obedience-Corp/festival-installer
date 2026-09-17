@@ -26,13 +26,17 @@ const defaultHTTPTimeout = 30 * time.Second
 // marketplace package entry instead of a static per-platform manifest.
 // AssetURL and ChecksumsURL are templates over {tag}, {version}, {os}, {arch}.
 type Source struct {
-	Type         string            `json:"type"`
-	Repo         string            `json:"repo"`
-	AssetURL     string            `json:"asset_url"`
-	ChecksumsURL string            `json:"checksums_url"`
-	Binary       string            `json:"binary,omitempty"`
-	OS           map[string]string `json:"os,omitempty"`
-	Arch         map[string]string `json:"arch,omitempty"`
+	Type         string `json:"type"`
+	Repo         string `json:"repo"`
+	AssetURL     string `json:"asset_url"`
+	ChecksumsURL string `json:"checksums_url"`
+	Binary       string `json:"binary,omitempty"`
+	// Binaries lists every executable a product archive places. Plugins place
+	// one binary and use Binary. A product that ships more than one, such as
+	// obey shipping obey and ob, declares them all here.
+	Binaries []string          `json:"binaries,omitempty"`
+	OS       map[string]string `json:"os,omitempty"`
+	Arch     map[string]string `json:"arch,omitempty"`
 }
 
 // Resolved is the concrete artifact for one platform.

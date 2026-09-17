@@ -28,6 +28,10 @@ type UpdateOptions struct {
 	Verify          source.VerifyOptions
 	Progress        ProgressFunc
 	Force           bool
+	// NoRestart suppresses the obey service restart an upgraded update would
+	// otherwise run. It is a no-op for the suite: nothing supervises camp,
+	// fest, or festival.
+	NoRestart bool
 }
 
 // UpdateFestival upgrades the festival suite to channel-latest when needed.
@@ -107,12 +111,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 	selfReplaced := false
 	if selfPlacement != SelfManaged {
-		note := SelfSkippedNote(selfPlacement, selfPath)
-		if warning == "" {
-			warning = note
-		} else {
-			warning = warning + "; " + note
-		}
+		warning = appendWarning(warning, SelfSkippedNote(selfPlacement, selfPath))
 	} else {
 		for _, f := range res.Files {
 			if filepath.Base(f) == selfBinaryName {
@@ -132,8 +131,10 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}, warning, nil
 }
 
-// ReadFestivalReceipt loads the suite receipt if present.
-func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
+// readReceipt loads a receipt by package id if state.db already exists. A
+// missing home or a missing row is (zero, false, nil), never an error, so
+// read-only callers never create the database.
+func readReceipt(ctx context.Context, packageID string) (receipts.Receipt, bool, error) {
 	home, err := state.Home(ctx)
 	if err != nil {
 		return receipts.Receipt{}, false, err
@@ -146,7 +147,7 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 		return receipts.Receipt{}, false, nil
 	}
 	defer func() { _ = db.Close(ctx) }()
-	rec, err := receipts.Get(ctx, db.Raw(), FestivalPackageID)
+	rec, err := receipts.Get(ctx, db.Raw(), packageID)
 	if errors.Is(err, receipts.ErrNotFound) {
 		return receipts.Receipt{}, false, nil
 	}
@@ -154,6 +155,11 @@ func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
 		return receipts.Receipt{}, false, err
 	}
 	return rec, true, nil
+}
+
+// ReadFestivalReceipt loads the suite receipt if present.
+func ReadFestivalReceipt(ctx context.Context) (receipts.Receipt, bool, error) {
+	return readReceipt(ctx, FestivalPackageID)
 }
 
 func packageUpdateResult(ctx context.Context, opts UpdateOptions, origin SuiteOrigin, selfPlacement SelfPlacement, selfPath string) (UpdateResult, string, error) {

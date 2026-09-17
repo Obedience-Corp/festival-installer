@@ -598,4 +598,10 @@ func TestInstall_HelpDescribesThreeBinarySuite(t *testing.T) {
 	if !strings.Contains(out, "camp, fest, and festival") {
 		t.Fatalf("expected three-binary suite copy in help, got:\n%s", out)
 	}
+	if !strings.Contains(out, "<festival|camp|fest|obey>") {
+		t.Fatalf("expected obey in the install target list, got:\n%s", out)
+	}
+	if !strings.Contains(out, "obey installs the obey daemon and the ob developer CLI") {
+		t.Fatalf("expected the obey target described in help, got:\n%s", out)
+	}
 }

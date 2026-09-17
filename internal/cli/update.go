@@ -23,8 +23,9 @@ func NewUpdateCommand() *cobra.Command {
 	var asJSON bool
 	var allowUnverified bool
 	var force bool
+	var noRestart bool
 	cmd := &cobra.Command{
-		Use:   "update [festival|camp|fest]",
+		Use:   "update [festival|camp|fest|obey]",
 		Short: "Update the installed festival suite to the channel-latest release",
 		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
@@ -33,27 +34,34 @@ func NewUpdateCommand() *cobra.Command {
 			"A package-manager install (AUR, Homebrew, npm) is never replaced with ~/.obey/installer.\n" +
 			"When a newer suite exists and stdout is a TTY, update runs the package-manager command\n" +
 			"(for example `yay -Syu festival-bin`) so camp, fest, and this hub upgrade together.\n" +
-			"--json and non-TTY invocations print the command instead of running it.",
-		ValidArgs: []string{"festival", "camp", "fest"},
+			"--json and non-TTY invocations print the command instead of running it.\n\n" +
+			"--no-restart applies to obey only. An obey restart marks every live session failed, so a\n" +
+			"caller with running sessions installs the new binaries and defers the restart; the result\n" +
+			"reports service.deferred and names the restart command. A daemon that was not running is\n" +
+			"started on the new version instead of restarted, and nothing is deferred. The flag is\n" +
+			"accepted and ignored for festival, camp, and fest.",
+		ValidArgs: []string{"festival", "camp", "fest", "obey"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := "festival"
 			if len(args) == 1 {
 				target = args[0]
 			}
+			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			switch target {
 			case "festival":
 			case "camp", "fest":
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "%s is part of the festival suite; updating the suite\n", target)
+			case "obey":
+				return runUpdateObey(cmd, channel, vo, asJSON, noRestart)
 			default:
-				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, or fest)")
+				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, fest, or obey)")
 			}
 			if channel != "" {
 				if err := app.ValidateChannel(channel); err != nil {
 					return err
 				}
 			}
-			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
 			res, warning, err := app.UpdateFestival(cmd.Context(), app.UpdateOptions{
 				ChannelOverride: channel,
 				Verify:          vo,
@@ -80,7 +88,37 @@ func NewUpdateCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow updating from unsigned content without prompting")
 	cmd.Flags().BoolVar(&force, "force", false, "update/install a hub copy even when a package-manager suite is already on PATH")
+	cmd.Flags().BoolVar(&noRestart, "no-restart", false,
+		"install the new obey binaries without restarting the running daemon")
 	return cmd
+}
+
+// runUpdateObey is the obey sibling of the suite update body. It never calls
+// maybeRunPackageUpgrade: no package manager ships the daemon, so there is no
+// package-manager upgrade to hand off to.
+func runUpdateObey(cmd *cobra.Command, channel string, vo source.VerifyOptions, asJSON, noRestart bool) error {
+	if channel != "" {
+		if err := app.ValidateChannel(channel); err != nil {
+			return err
+		}
+	}
+	res, warning, err := app.UpdateObey(cmd.Context(), app.UpdateOptions{
+		ChannelOverride: channel,
+		Verify:          vo,
+		NoRestart:       noRestart,
+	})
+	if err != nil {
+		return err
+	}
+	var warnings []string
+	if warning != "" {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: "+warning)
+		warnings = []string{warning}
+	}
+	if asJSON {
+		return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
+	}
+	return renderUpdateResult(cmd.OutOrStdout(), res)
 }
 
 func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
@@ -111,7 +149,11 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 		_, err := fmt.Fprintf(w, "%s is a package-manager install; festival update will not replace it\n", pkg)
 		return err
 	default:
-		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install festival`\n", pkg)
+		target := "festival"
+		if res.Package == app.ObeyPackageID {
+			target = "obey"
+		}
+		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install %s`\n", pkg, target)
 		return err
 	}
 }
