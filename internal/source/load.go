@@ -93,6 +93,7 @@ func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo V
 }
 
 func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {
+	vo = voFor(sourceName, vo)
 	mp, err := LoadMarketplace(ctx, dest, vo)
 	if err != nil {
 		return metadata.PackageManifest{}, err

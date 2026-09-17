@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"context"
 	"net/http"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -104,9 +105,10 @@ func (r *Resolver) latestTag(ctx context.Context, repo, channel string) (string,
 	args := append(gitsafe.ConfigArgs(), "ls-remote", "--tags", "--refs", "--", repo)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitsafe.Env()
-	out, err := cmd.Output()
+	cmd.Dir = os.TempDir()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", "", errpkg.Wrap("E_RELEASE_LS_REMOTE", err, "git ls-remote "+repo)
+		return "", "", errpkg.Wrap("E_RELEASE_LS_REMOTE", err, "git ls-remote "+repo+": "+strings.TrimSpace(string(out)))
 	}
 	var best, bestVer string
 	for line := range strings.SplitSeq(string(out), "\n") {

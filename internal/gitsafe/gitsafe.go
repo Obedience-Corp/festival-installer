@@ -60,5 +60,14 @@ func ConfigArgs() []string {
 }
 
 func Env() []string {
-	return append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out := make([]string, 0, len(os.Environ())+1)
+	for _, e := range os.Environ() {
+		key, _, _ := strings.Cut(e, "=")
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE":
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, "GIT_TERMINAL_PROMPT=0")
 }

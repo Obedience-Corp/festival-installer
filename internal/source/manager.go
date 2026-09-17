@@ -126,6 +126,13 @@ type RefreshView struct {
 	Err       string `json:"error,omitempty"`
 }
 
+// OptionsForSource applies the official-vs-third-party trust split to vo.
+// Official unsigned content still refuses without --allow-unverified; every
+// other source warns, matching marketplace add.
+func OptionsForSource(name string, vo VerifyOptions) VerifyOptions {
+	return voFor(name, vo)
+}
+
 // voFor builds the per-source VerifyOptions for name from vo, applying
 // policyFor's official-vs-third-party split and setting the source label so
 // refusal and warning messages name the actual source.

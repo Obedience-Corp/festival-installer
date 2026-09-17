@@ -223,18 +223,19 @@ func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 	if sourceName == "" {
 		sourceName = cfg.Marketplaces.Default
 	}
+	vo := source.OptionsForSource(sourceName, opts.Verify)
 	if sourceName == state.OfficialSeedKey {
-		if err := ensureOfficialSeed(ctx, opts.Verify); err != nil {
+		if err := ensureOfficialSeed(ctx, vo); err != nil {
 			coded := errpkg.Wrap("E_MARKETPLACE_SEED", err, "ensure official marketplace")
 			return InstallResult{}, &MarketplaceSeedProblem{Err: coded, Fatal: true}
 		}
 	}
 
-	bp, err := findProductPackage(ctx, sourceName, ObeyPackageID, opts.Verify)
+	bp, err := findProductPackage(ctx, sourceName, ObeyPackageID, vo)
 	if err != nil {
 		return InstallResult{}, err
 	}
-	resolved, err := resolveProduct(ctx, bp, channel, opts.Verify)
+	resolved, err := resolveProduct(ctx, bp, channel, vo)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -431,11 +432,12 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 
 	report(opts.Progress, ProgressEvent{Stage: "resolve", Package: ObeyPackageID, Percent: 0.1, Message: "checking for updates"})
 
-	bp, err := findProductPackage(ctx, rec.Source, ObeyPackageID, opts.Verify)
+	vo := source.OptionsForSource(rec.Source, opts.Verify)
+	bp, err := findProductPackage(ctx, rec.Source, ObeyPackageID, vo)
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}
-	resolved, err := resolveProduct(ctx, bp, channel, opts.Verify)
+	resolved, err := resolveProduct(ctx, bp, channel, vo)
 	if err != nil {
 		return UpdateResult{}, warning, err
 	}

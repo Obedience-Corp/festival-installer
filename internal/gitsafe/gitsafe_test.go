@@ -3,6 +3,7 @@ package gitsafe
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -50,5 +51,23 @@ func TestConfigArgsRestrictsTransports(t *testing.T) {
 	args := ConfigArgs()
 	if !slices.Contains(args, "protocol.ext.allow=never") {
 		t.Fatalf("expected ext transport to be disabled, got %v", args)
+	}
+}
+
+func TestEnvStripsGitDir(t *testing.T) {
+	t.Setenv("GIT_DIR", "/tmp/host-worktree.git")
+	t.Setenv("GIT_WORK_TREE", "/tmp/host-worktree")
+	t.Setenv("GIT_COMMON_DIR", "/tmp/host-worktree.git")
+	t.Setenv("GIT_INDEX_FILE", "/tmp/host-worktree.git/index")
+	env := Env()
+	for _, e := range env {
+		key, _, _ := strings.Cut(e, "=")
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE":
+			t.Fatalf("Env leaked %s", e)
+		}
+	}
+	if !slices.Contains(env, "GIT_TERMINAL_PROMPT=0") {
+		t.Fatal("expected GIT_TERMINAL_PROMPT=0")
 	}
 }
