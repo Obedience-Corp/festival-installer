@@ -198,7 +198,40 @@ func TestDetectSuite_HomebrewPrefix(t *testing.T) {
 	}
 }
 
-func TestClassifyPath_HomebrewPrefixWithoutFestivalHelper(t *testing.T) {
+// TestClassifyPath_HomebrewCaskroomWithoutFestivalHelper is the copy a cask
+// installed whose shell helper is missing. Requiring festival.zsh called that
+// leftover, which is what let status prefer a stale managed bin over PATH.
+func TestClassifyPath_HomebrewCaskroomWithoutFestivalHelper(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	prefix := t.TempDir()
+	t.Setenv("HOMEBREW_PREFIX", prefix)
+	bin := filepath.Join(prefix, "bin")
+	cask := filepath.Join(prefix, "Caskroom", "festival", "0.3.10", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cask, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeStub(t, filepath.Join(cask, "camp"))
+	camp := filepath.Join(bin, "camp")
+	if err := os.Symlink(filepath.Join(cask, "camp"), camp); err != nil {
+		t.Fatal(err)
+	}
+
+	kind, flavor, pkg := classifyPath(context.Background(), camp)
+	if kind != OriginPackage || flavor != FlavorHomebrew || pkg != "festival" {
+		t.Fatalf("got Kind=%q Flavor=%q pkg=%q, want package/homebrew/festival", kind, flavor, pkg)
+	}
+}
+
+// TestClassifyPath_BrewPrefixBinaryHomebrewDoesNotOwnIsLeftover guards the
+// other side. /usr/local/bin is the brew prefix on every Intel Mac and a normal
+// place to put your own build, and calling that Homebrew would answer
+// `festival status` with `brew upgrade --cask festival` for a cask that was
+// never installed.
+func TestClassifyPath_BrewPrefixBinaryHomebrewDoesNotOwnIsLeftover(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
 	prefix := t.TempDir()
@@ -210,9 +243,9 @@ func TestClassifyPath_HomebrewPrefixWithoutFestivalHelper(t *testing.T) {
 	camp := filepath.Join(bin, "camp")
 	writeStub(t, camp)
 
-	kind, flavor, pkg := classifyPath(context.Background(), camp)
-	if kind != OriginPackage || flavor != FlavorHomebrew || pkg != "festival" {
-		t.Fatalf("got Kind=%q Flavor=%q pkg=%q, want package/homebrew/festival", kind, flavor, pkg)
+	kind, flavor, _ := classifyPath(context.Background(), camp)
+	if kind != OriginLeftover || flavor != "" {
+		t.Fatalf("got Kind=%q Flavor=%q, want leftover with no flavor", kind, flavor)
 	}
 }
 
