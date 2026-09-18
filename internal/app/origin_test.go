@@ -198,6 +198,24 @@ func TestDetectSuite_HomebrewPrefix(t *testing.T) {
 	}
 }
 
+func TestClassifyPath_HomebrewPrefixWithoutFestivalHelper(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	prefix := t.TempDir()
+	t.Setenv("HOMEBREW_PREFIX", prefix)
+	bin := filepath.Join(prefix, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	camp := filepath.Join(bin, "camp")
+	writeStub(t, camp)
+
+	kind, flavor, pkg := classifyPath(context.Background(), camp)
+	if kind != OriginPackage || flavor != FlavorHomebrew || pkg != "festival" {
+		t.Fatalf("got Kind=%q Flavor=%q pkg=%q, want package/homebrew/festival", kind, flavor, pkg)
+	}
+}
+
 func TestDetectSuite_NpmLayout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)

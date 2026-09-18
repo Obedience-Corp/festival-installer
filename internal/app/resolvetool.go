@@ -13,10 +13,11 @@ import (
 
 // ResolveTool finds the absolute path to a suite tool by name.
 //
-// Package origin (including Dual package) uses LookPath first so the hub runs
-// the suite the shell would run. Otherwise prefer the managed bin when that
-// file exists, even if PATH still has leftovers (just-installed hub copy,
-// managed bin not on PATH yet).
+// Package and leftover origins use LookPath first so the hub runs the suite
+// the shell would run. A leftover PATH plus a stale ~/.obey/installer/bin
+// must not hide the live copies. Managed origin still prefers the managed
+// bin when that file exists (just-installed hub copy, managed bin not on
+// PATH yet).
 //
 // The error codes are E_LAUNCH_TOOL and E_LAUNCH_NOT_FOUND, unchanged from when
 // this lived in the launch package, because callers match on them.
@@ -44,7 +45,8 @@ func resolveToolFrom(ctx context.Context, tool string, kind OriginKind) (string,
 	}
 
 	managed := managedToolPath(ctx, name)
-	if kind == OriginPackage {
+	preferPath := kind == OriginPackage || kind == OriginLeftover
+	if preferPath {
 		if path, lerr := exec.LookPath(name); lerr == nil {
 			return path, nil
 		}

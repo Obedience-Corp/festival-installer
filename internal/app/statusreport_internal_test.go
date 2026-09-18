@@ -214,6 +214,48 @@ func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
 	}
 }
 
+func TestStatusReport_LeftoverPathBeatsStaleManaged(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("HOMEBREW_PREFIX", "")
+
+	managed := filepath.Join(home, "bin")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeProbeScript(t, managed, "camp", "#!/bin/sh\necho 0.2.12\n")
+	writeProbeScript(t, managed, "fest", "#!/bin/sh\necho 0.2.12\n")
+
+	live := t.TempDir()
+	writeProbeScript(t, live, "camp", "#!/bin/sh\necho v0.10.1-4-gd1fb37c7\n")
+	writeProbeScript(t, live, "fest", "#!/bin/sh\necho v0.8.1-2-g5a34a64a\n")
+	t.Setenv("PATH", live)
+
+	rep, err := StatusReportFor(ctx)
+	if err != nil {
+		t.Fatalf("StatusReportFor: %v", err)
+	}
+	entries := map[string]StatusToolEntry{}
+	for _, e := range rep.Tools {
+		entries[e.Tool] = e
+	}
+	camp := entries["camp"]
+	if camp.Path != filepath.Join(live, "camp") {
+		t.Fatalf("camp Path = %q, want the leftover PATH copy %q, not the stale managed 0.2.12", camp.Path, filepath.Join(live, "camp"))
+	}
+	if camp.Version != "0.10.1-4-gd1fb37c7" {
+		t.Fatalf("camp Version = %q, want the PATH copy", camp.Version)
+	}
+	fest := entries["fest"]
+	if fest.Path != filepath.Join(live, "fest") {
+		t.Fatalf("fest Path = %q, want the leftover PATH copy", fest.Path)
+	}
+	if fest.Version != "0.8.1-2-g5a34a64a" {
+		t.Fatalf("fest Version = %q, want the PATH copy", fest.Version)
+	}
+}
+
 // backgroundingProbeScript exits immediately but leaves a child holding the
 // stdout it inherited, which is the shape that defeats a bare context timeout.
 // The fixture needs /bin/sh to background a child, which is the whole point; it
@@ -390,16 +432,20 @@ func TestStatusReport_ProbesEachBinaryOncePerCall(t *testing.T) {
 			t.Errorf("%q ran %d times, want 1: a repeated suite detection is back", line, n)
 		}
 	}
-	for _, tool := range statusTools {
-		want := filepath.Join(binDir, tool) + " "
-		if n := countWithPrefix(runs, want); n != 1 {
-			t.Errorf("managed %s ran %d times, want 1", tool, n)
+	// Leftover origin resolves camp/fest/festival from PATH, so those
+	// binaries are probed once by DetectSuite and once for the report.
+	// obey/ob are only in the managed bin and still resolve there.
+	for _, tool := range suiteTools {
+		if n := countWithPrefix(runs, filepath.Join(pathDir, tool)+" "); n != 2 {
+			t.Errorf("PATH %s ran %d times, want 2 (detect + report)", tool, n)
+		}
+		if n := countWithPrefix(runs, filepath.Join(binDir, tool)+" "); n != 0 {
+			t.Errorf("managed %s ran %d times, want 0: leftover PATH must win", tool, n)
 		}
 	}
-	for _, tool := range suiteTools {
-		want := filepath.Join(pathDir, tool) + " "
-		if n := countWithPrefix(runs, want); n != 1 {
-			t.Errorf("PATH %s ran %d times, want 1", tool, n)
+	for _, tool := range []string{obeyBinary, obeyDevCLIBinary} {
+		if n := countWithPrefix(runs, filepath.Join(binDir, tool)+" "); n != 1 {
+			t.Errorf("managed %s ran %d times, want 1", tool, n)
 		}
 	}
 	if total := len(probeLogLines(t, log)); total != len(statusTools)+len(suiteTools) {

@@ -55,10 +55,11 @@ func classifyPath(ctx context.Context, path string) (OriginKind, PackageFlavor, 
 		}
 	}
 
-	if prefix, ok := brewPrefixFor(path); ok {
-		if helperFile(filepath.Join(prefix, "share", "festival", "shell")) != "" {
-			return OriginPackage, FlavorHomebrew, "festival"
-		}
+	if _, ok := brewPrefixFor(path); ok {
+		// A brew-prefix camp/fest is Homebrew even without the festival
+		// cask helper. Requiring festival.zsh classified those copies as
+		// leftover, so status preferred a stale managed bin over PATH.
+		return OriginPackage, FlavorHomebrew, "festival"
 	}
 
 	if flavor, ok := classifyNpm(path); ok {
