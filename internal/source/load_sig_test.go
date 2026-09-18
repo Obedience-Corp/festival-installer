@@ -116,3 +116,36 @@ func TestLoadPackageManifestFromDir_UnsignedAllowedWithFlag(t *testing.T) {
 		t.Fatalf("expected loud warning, got %q", warn.String())
 	}
 }
+
+func TestLoadPackageManifestFromDir_UnsignedThirdPartyWarnsWithoutFlag(t *testing.T) {
+	dir := t.TempDir()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "metadata", "manifest", "valid.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	index := `{
+  "id": "festival-app/ci-fixture",
+  "name": "Test",
+  "schema_version": "1",
+  "namespace": "obedience-corp",
+  "packages": [{"id":"obedience-corp/festival","display_name":"F","class":"tool","channels":["stable"],"manifest_path":"package.json"}]
+}`
+	if err := os.WriteFile(filepath.Join(dir, manifestFilename), []byte(index), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var warn bytes.Buffer
+	m, err := loadPackageManifestFromDir(context.Background(), dir, "first-run-fixture", "obedience-corp/festival",
+		DefaultVerifyOptions(&warn, false))
+	if err != nil {
+		t.Fatalf("unsigned third-party source should warn, not refuse: %v", err)
+	}
+	if m.ID != "obedience-corp/festival" {
+		t.Fatalf("id %q", m.ID)
+	}
+	if !strings.Contains(warn.String(), "UNVERIFIED") {
+		t.Fatalf("expected loud warning, got %q", warn.String())
+	}
+}
