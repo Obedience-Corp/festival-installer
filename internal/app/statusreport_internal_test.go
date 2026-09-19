@@ -214,6 +214,90 @@ func TestStatusReport_ToolOriginComesFromItsOwnPath(t *testing.T) {
 	}
 }
 
+func TestStatusReport_LeftoverPathBeatsStaleManaged(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("HOMEBREW_PREFIX", "")
+
+	managed := filepath.Join(home, "bin")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeProbeScript(t, managed, "camp", "#!/bin/sh\necho 0.2.12\n")
+	writeProbeScript(t, managed, "fest", "#!/bin/sh\necho 0.2.12\n")
+
+	live := t.TempDir()
+	writeProbeScript(t, live, "camp", "#!/bin/sh\necho v0.10.1-4-gd1fb37c7\n")
+	writeProbeScript(t, live, "fest", "#!/bin/sh\necho v0.8.1-2-g5a34a64a\n")
+	t.Setenv("PATH", live)
+
+	rep, err := StatusReportFor(ctx)
+	if err != nil {
+		t.Fatalf("StatusReportFor: %v", err)
+	}
+	entries := map[string]StatusToolEntry{}
+	for _, e := range rep.Tools {
+		entries[e.Tool] = e
+	}
+	camp := entries["camp"]
+	if camp.Path != filepath.Join(live, "camp") {
+		t.Fatalf("camp Path = %q, want the leftover PATH copy %q, not the stale managed 0.2.12", camp.Path, filepath.Join(live, "camp"))
+	}
+	if camp.Version != "0.10.1-4-gd1fb37c7" {
+		t.Fatalf("camp Version = %q, want the PATH copy", camp.Version)
+	}
+	fest := entries["fest"]
+	if fest.Path != filepath.Join(live, "fest") {
+		t.Fatalf("fest Path = %q, want the leftover PATH copy", fest.Path)
+	}
+	if fest.Version != "0.8.1-2-g5a34a64a" {
+		t.Fatalf("fest Version = %q, want the PATH copy", fest.Version)
+	}
+}
+
+// TestStatusReport_FreshManagedBeatsStaleLeftoverPATH is the other half of the
+// leftover rule: the hub just installed camp and fest into its own bin and the
+// shell has not picked that directory up yet, so PATH still answers with the
+// copy the install replaced. Preferring PATH unconditionally would report the
+// version the user just upgraded away from.
+func TestStatusReport_FreshManagedBeatsStaleLeftoverPATH(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("FESTIVAL_HOME", home)
+	t.Setenv("HOMEBREW_PREFIX", "")
+
+	managed := filepath.Join(home, "bin")
+	if err := os.MkdirAll(managed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeProbeScript(t, managed, "camp", "#!/bin/sh\necho v0.10.1-4-gd1fb37c7\n")
+	writeProbeScript(t, managed, "fest", "#!/bin/sh\necho v0.8.1-2-g5a34a64a\n")
+
+	stale := t.TempDir()
+	writeProbeScript(t, stale, "camp", "#!/bin/sh\necho 0.2.12\n")
+	writeProbeScript(t, stale, "fest", "#!/bin/sh\necho 0.2.12\n")
+	t.Setenv("PATH", stale)
+
+	rep, err := StatusReportFor(ctx)
+	if err != nil {
+		t.Fatalf("StatusReportFor: %v", err)
+	}
+	entries := map[string]StatusToolEntry{}
+	for _, e := range rep.Tools {
+		entries[e.Tool] = e
+	}
+	for tool, want := range map[string]string{"camp": "0.10.1-4-gd1fb37c7", "fest": "0.8.1-2-g5a34a64a"} {
+		got := entries[tool]
+		if got.Path != filepath.Join(managed, tool) {
+			t.Errorf("%s Path = %q, want the just-installed managed copy %q", tool, got.Path, filepath.Join(managed, tool))
+		}
+		if got.Version != want {
+			t.Errorf("%s Version = %q, want %q", tool, got.Version, want)
+		}
+	}
+}
+
 // backgroundingProbeScript exits immediately but leaves a child holding the
 // stdout it inherited, which is the shape that defeats a bare context timeout.
 // The fixture needs /bin/sh to background a child, which is the whole point; it
@@ -390,12 +474,17 @@ func TestStatusReport_ProbesEachBinaryOncePerCall(t *testing.T) {
 			t.Errorf("%q ran %d times, want 1: a repeated suite detection is back", line, n)
 		}
 	}
+	// Every managed copy is probed once. For camp, fest, and festival that
+	// one probe is the leftover comparison, and the report reuses its answer
+	// rather than running the winner again.
 	for _, tool := range statusTools {
 		want := filepath.Join(binDir, tool) + " "
 		if n := countWithPrefix(runs, want); n != 1 {
 			t.Errorf("managed %s ran %d times, want 1", tool, n)
 		}
 	}
+	// Each PATH copy is probed once, by DetectSuite, and the comparison reads
+	// that version instead of spawning its own.
 	for _, tool := range suiteTools {
 		want := filepath.Join(pathDir, tool) + " "
 		if n := countWithPrefix(runs, want); n != 1 {

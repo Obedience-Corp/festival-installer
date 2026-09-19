@@ -129,16 +129,18 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 		Origin:            origin.Kind,
 		Flavor:            origin.Flavor,
 		Setup:             setup,
-		Tools:             resolveStatusTools(ctx, origin.Kind),
+		Tools:             resolveStatusTools(ctx, origin),
 		Prerequisites:     resolvePrerequisites(),
 	}, nil
 }
 
 // resolveStatusTools fills every reported tool from one suite detection. The
-// origin kind comes from the caller because DetectSuite re-execs every camp,
-// fest, and festival on PATH: detecting per tool made one launch probe spawn
-// 23 processes where 8 do, and this is the path the app runs on every launch.
-func resolveStatusTools(ctx context.Context, kind OriginKind) []StatusToolEntry {
+// origin comes from the caller because DetectSuite re-execs every camp, fest,
+// and festival on PATH: detecting per tool made one launch probe spawn 23
+// processes where 8 do, and this is the path the app runs on every launch. The
+// same detection carries the versions it already read, which is what keeps a
+// leftover suite from costing a second probe of every PATH copy.
+func resolveStatusTools(ctx context.Context, origin SuiteOrigin) []StatusToolEntry {
 	recs := readStatusReceipts(ctx)
 	out := make([]StatusToolEntry, len(statusTools))
 	var wg sync.WaitGroup
@@ -156,7 +158,7 @@ func resolveStatusTools(ctx context.Context, kind OriginKind) []StatusToolEntry 
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			fillToolEntry(ctx, &out[i], kind)
+			fillToolEntry(ctx, &out[i], origin)
 		}(i)
 	}
 	wg.Wait()
@@ -167,11 +169,13 @@ func resolveStatusTools(ctx context.Context, kind OriginKind) []StatusToolEntry 
 // from the path this tool resolved to rather than from the suite origin,
 // because a machine can have a package-manager camp and a managed or leftover
 // obey at the same time. The suite origin stays on the report's Origin field,
-// and the kind argument is the one the report already detected: it only picks
-// between the managed bin and PATH, so re-detecting it per tool would buy
-// nothing and cost a probe of every suite copy on PATH.
-func fillToolEntry(ctx context.Context, e *StatusToolEntry, kind OriginKind) {
-	path, err := resolveToolFrom(ctx, e.Tool, kind)
+// and the suite argument is the one the report already detected: re-detecting
+// it per tool would buy nothing and cost a probe of every suite copy on PATH.
+//
+// A resolution that had to read a version to choose hands it back, so the
+// report never execs the winning binary a second time for the same answer.
+func fillToolEntry(ctx context.Context, e *StatusToolEntry, suite SuiteOrigin) {
+	path, version, err := resolveToolFrom(ctx, e.Tool, suite)
 	if err != nil {
 		e.Error = err.Error()
 		return
@@ -182,6 +186,10 @@ func fillToolEntry(ctx context.Context, e *StatusToolEntry, kind OriginKind) {
 		e.Origin = OriginManaged
 	} else {
 		e.Origin, _, _ = classifyPath(ctx, path)
+	}
+	if version != "" {
+		e.Version = version
+		return
 	}
 	version, verr := probeToolVersion(ctx, e.Tool, path)
 	if verr != nil {

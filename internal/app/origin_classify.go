@@ -56,7 +56,7 @@ func classifyPath(ctx context.Context, path string) (OriginKind, PackageFlavor, 
 	}
 
 	if prefix, ok := brewPrefixFor(path); ok {
-		if helperFile(filepath.Join(prefix, "share", "festival", "shell")) != "" {
+		if brewOwns(prefix, path) || helperFile(filepath.Join(prefix, "share", "festival", "shell")) != "" {
 			return OriginPackage, FlavorHomebrew, "festival"
 		}
 	}
@@ -78,6 +78,28 @@ func classifyPath(ctx context.Context, path string) (OriginKind, PackageFlavor, 
 	}
 
 	return OriginLeftover, "", ""
+}
+
+// brewOwns reports whether Homebrew installed path, rather than someone having
+// dropped a binary into a directory Homebrew also owns. Homebrew links
+// <prefix>/bin/<tool> to the copy it unpacked under Cellar or Caskroom; a
+// hand-built or go-installed binary in /usr/local/bin is a plain file.
+//
+// The prefix alone is not enough. /usr/local/bin is the brew prefix on every
+// Intel Mac and a normal place to put your own binaries, and claiming Homebrew
+// there hands the user `brew upgrade --cask festival` for a cask they never
+// installed and a helper line that errors in every new shell.
+//
+// The festival helper is checked separately by the caller, because a cask that
+// ships the shell helper is Homebrew whatever its link layout.
+func brewOwns(prefix, path string) bool {
+	resolved := resolvePath(path)
+	for _, store := range []string{"Cellar", "Caskroom"} {
+		if pathIsUnder(resolved, filepath.Join(prefix, store)) {
+			return true
+		}
+	}
+	return false
 }
 
 func brewPrefixFor(path string) (string, bool) {
