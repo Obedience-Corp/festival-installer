@@ -5,7 +5,7 @@ and executes them on your machine. Security reports are taken seriously.
 
 ## Reporting a vulnerability
 
-Email **security@obediencecorp.com**. Please do not open a public issue for a
+Email **contact@obediencecorp.com**. Please do not open a public issue for a
 suspected vulnerability.
 
 Include what you found, the affected version or commit, and, if you have
