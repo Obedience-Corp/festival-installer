@@ -1,17 +1,16 @@
 package cli
 
 import (
-	"fmt"
 	"io"
-	"strings"
-	"text/tabwriter"
+	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/doctorui"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/jsonout"
-	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 )
 
 func NewDoctorCommand() *cobra.Command {
@@ -26,7 +25,7 @@ func NewDoctorCommand() *cobra.Command {
 			if asJSON {
 				return emitDoctorJSON(cmd.OutOrStdout(), checks, failed)
 			}
-			if err := renderDoctorTable(cmd.OutOrStdout(), checks); err != nil {
+			if err := renderDoctor(cmd.OutOrStdout(), checks); err != nil {
 				return err
 			}
 			if failed {
@@ -58,16 +57,39 @@ func emitDoctorJSON(out io.Writer, checks []app.DoctorCheck, failed bool) error 
 	return jsonAlreadyEmitted(failErr)
 }
 
-func renderDoctorTable(out io.Writer, checks []app.DoctorCheck) error {
-	var buf strings.Builder
-	tw := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "CHECK\tSTATUS\tDETAIL")
-	for _, c := range checks {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", c.ID, c.Status, textsafe.Line(c.Message))
+func renderDoctor(out io.Writer, checks []app.DoctorCheck) error {
+	view := doctorui.Render(checks, doctorui.Options{
+		Width:   doctorRenderWidth(out),
+		Color:   doctorRenderColor(out),
+		Heading: true,
+	})
+	if _, err := io.WriteString(out, view); err != nil {
+		return errpkg.Wrap("E_CLI_RENDER", err, "render doctor")
 	}
-	if err := tw.Flush(); err != nil {
-		return errpkg.Wrap("E_CLI_RENDER", err, "render doctor table")
+	return nil
+}
+
+type fdWriter interface{ Fd() uintptr }
+
+func doctorRenderColor(out io.Writer) bool {
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		return false
 	}
-	_, err := fmt.Fprint(out, buf.String())
-	return err
+	f, ok := out.(fdWriter)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
+
+func doctorRenderWidth(out io.Writer) int {
+	f, ok := out.(fdWriter)
+	if !ok {
+		return 0
+	}
+	width, _, err := term.GetSize(int(f.Fd()))
+	if err != nil || width <= 0 {
+		return 0
+	}
+	return width
 }

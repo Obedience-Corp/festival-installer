@@ -35,6 +35,29 @@ func doctorChecks(t *testing.T, out string) map[string]string {
 	return status
 }
 
+func TestDoctor_HumanBoard(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("OBEY_INSTALLER_HOME", home)
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("NO_COLOR", "1")
+
+	out, errOut, err := runInstaller(t, "doctor")
+	if err != nil {
+		t.Fatalf("a fresh home must not fail its own health check: %v\n%s", err, errOut)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("NO_COLOR doctor emitted escapes:\n%s", out)
+	}
+	for _, want := range []string{"▲ festival", "PATH", "pending", "sources", "trust", "receipts", "shadowing", "setup still pending"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("human doctor missing %q\nstdout:\n%s\nstderr:\n%s", want, out, errOut)
+		}
+	}
+	if strings.Contains(out, "CHECK") || strings.Contains(out, "managed_bin_on_path") {
+		t.Fatalf("human doctor still looks like the old table:\n%s", out)
+	}
+}
+
 func TestDoctor_FreshHomeIsPendingSetupAndExitsZero(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
