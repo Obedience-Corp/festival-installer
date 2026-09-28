@@ -8,10 +8,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	"github.com/Obedience-Corp/festival-installer/internal/doctorui"
 	"github.com/Obedience-Corp/festival-installer/internal/textsafe"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/anim"
 	"github.com/Obedience-Corp/festival-installer/internal/tui/components"
-	"github.com/Obedience-Corp/festival-installer/internal/tui/theme"
 )
 
 func (m model) View() string {
@@ -545,95 +545,15 @@ func (m model) viewMarketplace() string {
 }
 
 func (m model) viewDoctor() string {
-	s := m.styles
 	if len(m.checks) == 0 {
-		return s.Muted.Render("running checks…")
+		return m.styles.Muted.Render("running checks…")
 	}
-	var b strings.Builder
-	// multi-booth style checks; wrap long messages so failures are fully readable.
-	msgWidth := m.width - 18
-	if msgWidth < 24 {
-		msgWidth = 24
-	}
-	for i, c := range m.checks {
-		spin := "·"
-		if !m.reduced {
-			spin = []string{"·", "°", "*", "✦"}[(m.frame+i)%4]
-		}
-		label := fmt.Sprintf("[%s %s] ", spin, doctorBadgeLabel(c.Status))
-		badge := doctorBadgeStyle(c.Status, s).Render(label)
-		indent := strings.Repeat(" ", lipgloss.Width(label))
-		msg := c.ID + ": " + textsafe.Line(c.Message)
-		wrapped := wrapWords(msg, msgWidth)
-		for j, part := range wrapped {
-			if j == 0 {
-				b.WriteString(badge + s.Normal.Render(part))
-			} else {
-				b.WriteString(s.Muted.Render(indent) + s.Normal.Render(part))
-			}
-			b.WriteByte('\n')
-		}
-	}
-	return b.String()
-}
-
-// doctorBadgeLabel keeps the TUI badge word identical to the STATUS column the
-// CLI table prints. A fresh home is graded pending, and rendering that as fail
-// told the user the opposite of what "festival doctor" says and of the zero
-// exit code agents read.
-func doctorBadgeLabel(status string) string {
-	switch status {
-	case app.DoctorOK, app.DoctorWarn, app.DoctorPending:
-		return status
-	default:
-		return app.DoctorFail
-	}
-}
-
-// doctorBadgeStyle picks the colour for a check's badge. Pending is muted rather
-// than red: the word and the colour have to agree, because a reader takes in the
-// colour first and an unfinished setup is not a broken machine.
-func doctorBadgeStyle(status string, s theme.Styles) lipgloss.Style {
-	switch status {
-	case app.DoctorOK:
-		return s.OK
-	case app.DoctorWarn:
-		return s.Warn
-	case app.DoctorPending:
-		return s.Muted
-	default:
-		return s.Err
-	}
-}
-
-func wrapWords(text string, width int) []string {
-	if width < 8 || len(text) <= width {
-		return []string{text}
-	}
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return []string{text}
-	}
-	var lines []string
-	var cur strings.Builder
-	for _, w := range words {
-		if cur.Len() == 0 {
-			cur.WriteString(w)
-			continue
-		}
-		if cur.Len()+1+len(w) > width {
-			lines = append(lines, cur.String())
-			cur.Reset()
-			cur.WriteString(w)
-			continue
-		}
-		cur.WriteByte(' ')
-		cur.WriteString(w)
-	}
-	if cur.Len() > 0 {
-		lines = append(lines, cur.String())
-	}
-	return lines
+	// The hub already draws the "doctor" header, so the board itself has no
+	// second title. Colour stays on: this view only runs inside the TUI.
+	return doctorui.Render(m.checks, doctorui.Options{
+		Width: m.width,
+		Color: true,
+	})
 }
 
 func (m model) viewShell() string {

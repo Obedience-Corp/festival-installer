@@ -38,3 +38,4 @@ all:
     vhs docs/demos/festival-channels.tape
     vhs docs/demos/festival-package.tape
     vhs docs/demos/festival-shadow.tape
+    vhs docs/demos/festival-doctor.tape
