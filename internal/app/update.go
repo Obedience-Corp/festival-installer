@@ -36,6 +36,14 @@ type UpdateOptions struct {
 // UpdateFestival upgrades the festival suite to channel-latest when needed.
 // Returns a human warning (receipt/live skew or unmanaged guidance) as the second value.
 func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
+	result, warning, err := updateFestival(ctx, opts)
+	if err == nil && result.Action != "absent" && result.Starter == nil {
+		result.Starter = SetupStarter(ctx, "")
+	}
+	return result, warning, err
+}
+
+func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
 	if err := ctx.Err(); err != nil {
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
 	}
@@ -127,6 +135,7 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		SelfPlacement: selfPlacement,
 		SelfPath:      selfPath,
 		SelfReplaced:  selfReplaced,
+		Starter:       res.Starter,
 	}, warning, nil
 }
 

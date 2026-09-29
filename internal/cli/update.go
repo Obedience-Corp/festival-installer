@@ -122,6 +122,11 @@ func runUpdateObey(cmd *cobra.Command, channel string, vo source.VerifyOptions, 
 }
 
 func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
+	if notice := res.Starter.Notice(); notice != "" {
+		if _, err := fmt.Fprintln(w, textsafe.Block(notice)); err != nil {
+			return err
+		}
+	}
 	pkg := textsafe.Line(res.Package)
 	switch res.Action {
 	case "upgraded":

@@ -52,6 +52,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 	root.Flags().BoolVar(&forceTUI, "tui", false, "force the interactive TUI (requires a terminal)")
 
 	root.AddCommand(cli.NewInstallCommand())
+	root.AddCommand(cli.NewSetupCommand())
 	root.AddCommand(cli.NewUpdateCommand())
 	root.AddCommand(cli.NewUninstallCommand())
 	root.AddCommand(cli.NewListCommand())

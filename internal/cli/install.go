@@ -83,6 +83,11 @@ func NewInstallCommand() *cobra.Command {
 }
 
 func renderInstallResult(w io.Writer, res app.InstallResult) error {
+	if notice := res.Starter.Notice(); notice != "" {
+		if _, err := fmt.Fprintln(w, textsafe.Block(notice)); err != nil {
+			return err
+		}
+	}
 	if _, err := fmt.Fprintf(w, "installed %s %s (%s) from %s\n", textsafe.Line(res.Package), textsafe.Line(res.Version), textsafe.Line(res.Channel), textsafe.Line(res.Source)); err != nil {
 		return err
 	}
