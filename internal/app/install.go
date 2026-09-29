@@ -215,6 +215,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		return InstallResult{}, err
 	}
 
+	starter := SetupStarter(ctx, filepath.Join(binDir, "camp"))
 	report(progress, ProgressEvent{Stage: "done", Package: FestivalPackageID, Percent: 1, Message: "festival suite ready"})
 	return InstallResult{
 		Package:       FestivalPackageID,
@@ -225,6 +226,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		SelfPlacement: placement,
 		SelfPath:      selfPath,
 		SelfSkipped:   selfSkipped,
+		Starter:       starter,
 	}, nil
 }
 

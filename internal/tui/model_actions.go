@@ -376,6 +376,9 @@ func runInstall(ctx context.Context, channel string, allowUnverified, force bool
 		for _, f := range res.Files {
 			body += "  " + f + "\n"
 		}
+		if notice := res.Starter.Notice(); notice != "" {
+			body += "\n" + notice + "\n"
+		}
 		return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 	}
 }
@@ -448,6 +451,9 @@ func updateOpDoneMsg(ps *progressStream, res app.UpdateResult, warning string) o
 	case "absent":
 		title = "Not installed"
 		ok = false
+	}
+	if notice := res.Starter.Notice(); notice != "" {
+		body += "\n" + notice + "\n"
 	}
 	return opDoneMsg{stream: ps, title: title, body: body, success: ok, restart: res.SelfReplaced}
 }
@@ -583,6 +589,9 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
 		for _, f := range res.Files {
 			body += "  " + f + "\n"
+		}
+		if notice := res.Starter.Notice(); notice != "" {
+			body += "\n" + notice + "\n"
 		}
 		return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 	}

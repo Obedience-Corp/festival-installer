@@ -230,3 +230,17 @@ channel.
 ## License
 
 Apache License 2.0 - See [LICENSE](LICENSE) for details.
+
+### Starter camp
+
+Suite installs and updates ask Camp to create a `festival` camp when no camps
+are registered. Camp owns the shared completion record, so the desktop app and
+CLI do not create duplicates, and updates do not recreate a deleted starter.
+Existing camps are preserved. `festival setup` retries this step independently
+of binary installation and completes setup after a package-manager install.
+Run it as your regular user; root invocations defer workspace creation.
+
+The JSON install/update result includes `starter` with an action and optional
+path/message. A failed starter step leaves the successfully installed binaries
+available and reports how to retry. Older Camp versions without `setup` report
+a pending step until the suite is upgraded.
