@@ -373,9 +373,7 @@ func runInstall(ctx context.Context, channel string, allowUnverified, force bool
 			return opFailed(ps, "Install failed", err, "")
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
-		for _, f := range res.Files {
-			body += "  " + f + "\n"
-		}
+		body += installedFilesBody(res.Files)
 		if notice := res.Starter.Notice(); notice != "" {
 			body += "\n" + notice + "\n"
 		}
@@ -587,9 +585,7 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 			return opFailed(ps, "Install failed", err, "(selected "+entryID+" as "+target+")")
 		}
 		body := fmt.Sprintf("installed %s %s\n", res.Package, res.Version)
-		for _, f := range res.Files {
-			body += "  " + f + "\n"
-		}
+		body += installedFilesBody(res.Files)
 		if notice := res.Starter.Notice(); notice != "" {
 			body += "\n" + notice + "\n"
 		}
