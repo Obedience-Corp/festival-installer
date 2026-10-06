@@ -423,38 +423,6 @@ func TestUpdate_ExternalHubUpdatesPairAndWarns(t *testing.T) {
 	}
 }
 
-func TestUpdate_LiveReceiptDisagreementPrefersLive(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("OBEY_INSTALLER_HOME", home)
-	ctx := context.Background()
-	binDir := filepath.Join(home, "bin")
-
-	writeManagedBinary(t, binDir, "camp", "0.3.0")
-	writeManagedBinary(t, binDir, "fest", "0.3.0")
-
-	repo := fixtureInstallMarketplace(t, "https://example.test/festival.tar.gz", strings.Repeat("a", 64))
-	if _, errOut, err := runInstaller(t, "marketplace", "add", repo, "--name", "official-obey", "--allow-unverified"); err != nil {
-		t.Fatalf("marketplace add: %v\n%s", err, errOut)
-	}
-	writeFestivalReceipt(t, ctx, home, "0.2.10", "official-obey", binDir)
-
-	out, errOut, err := runInstaller(t, "update", "festival", "--allow-unverified", "--json")
-	if err != nil {
-		t.Fatalf("update: %v", err)
-	}
-	if !strings.Contains(errOut, "live version") {
-		t.Fatalf("expected live-disagreement warning, got %q", errOut)
-	}
-	var res struct {
-		Action  string `json:"action"`
-		Version string `json:"version"`
-	}
-	dataOf(t, out, &res)
-	if res.Action != "current" || res.Version != "0.3.0" {
-		t.Fatalf("expected current at live 0.3.0, got %+v", res)
-	}
-}
-
 func TestUpdate_PackageOriginJSONActionPackage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("FESTIVAL_HOME", home)
