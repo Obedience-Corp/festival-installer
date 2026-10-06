@@ -118,19 +118,8 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 		ctx = context.Background()
 	}
 	if tool != selfBinaryName {
-		if raw, err := probeOnce(ctx, path, "version", "--json"); err == nil {
-			var parsed struct {
-				Version string `json:"version"`
-				Bundle  string `json:"bundle"`
-				Profile string `json:"profile"`
-			}
-			// camp and fest stamp the git tag verbatim, so the JSON version
-			// carries the same leading v the text output does.
-			if json.Unmarshal(raw, &parsed) == nil {
-				if v := ParseToolVersion(tool, parsed.Version); v != "" {
-					return v, parsed.Bundle, parsed.Profile
-				}
-			}
+		if v, b, p, ok := probeVersionJSON(ctx, path, tool); ok {
+			return v, b, p
 		}
 	}
 	raw, err := probeOnce(ctx, path, "version")
@@ -138,6 +127,28 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 		return "", "", ""
 	}
 	return parseVersionText(tool, string(raw))
+}
+
+func probeVersionJSON(ctx context.Context, path, tool string) (version, bundle, profile string, ok bool) {
+	raw, err := probeOnce(ctx, path, "version", "--json")
+	if err != nil {
+		return "", "", "", false
+	}
+	var parsed struct {
+		Version string `json:"version"`
+		Bundle  string `json:"bundle"`
+		Profile string `json:"profile"`
+	}
+	if json.Unmarshal(raw, &parsed) != nil {
+		return "", "", "", false
+	}
+	// camp and fest stamp the git tag verbatim, so the JSON version
+	// carries the same leading v the text output does.
+	v := ParseToolVersion(tool, parsed.Version)
+	if v == "" {
+		return "", "", "", false
+	}
+	return v, parsed.Bundle, parsed.Profile, true
 }
 
 // probeOnce gives one argument set the full probe budget. The budget is per

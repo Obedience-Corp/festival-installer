@@ -85,11 +85,7 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	}
 
 	installedVersion := rec.Version
-	warning := ""
-	if live, derr := detectLiveVersion(ctx, "camp"); derr == nil && live != "" && live != installedVersion {
-		warning = "receipt reports " + installedVersion + " but the managed camp reports " + live + "; comparing against the live version"
-		installedVersion = live
-	}
+	warning := suiteReceiptSkew(ctx, installedVersion)
 
 	report(opts.Progress, ProgressEvent{Stage: "resolve", Package: FestivalPackageID, Percent: 0.1, Message: "checking for updates"})
 
@@ -246,26 +242,18 @@ func handleUnmanaged(ctx context.Context) (UpdateResult, string, error) {
 	return UpdateResult{Package: FestivalPackageID, Action: "unmanaged"}, warning, nil
 }
 
-// detectLiveVersion reads the managed tool's own `version --short` through the
-// shared parser, so a git-describe stamp such as "v0.10.1-4-gd1fb37c7" is
-// recognised as the version it is. An empty return means the tool answered
-// something that is not a version.
-//
-// It goes through probeOnce for the same reason every other probe site does:
-// the root command runs on context.Background (cmd/festival/main.go), so
-// without the per attempt budget a managed tool that hangs inside
-// `version --short` hangs `festival update` with nothing to stop it. WaitDelay
-// alone does not bound the direct child, only a grandchild holding its stdout.
-func detectLiveVersion(ctx context.Context, tool string) (string, error) {
+func suiteReceiptSkew(ctx context.Context, receiptVersion string) string {
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
-		return "", err
+		return ""
 	}
-	out, err := probeOnce(ctx, filepath.Join(binDir, tool), "version", "--short")
-	if err != nil {
-		return "", err
+	_, bundle, _, ok := probeVersionJSON(ctx, filepath.Join(binDir, "camp"), "camp")
+	bundle = stripVersionPrefix(bundle)
+	if !ok || !LooksLikeVersion(bundle) || bundle == stripVersionPrefix(receiptVersion) {
+		return ""
 	}
-	return ParseToolVersion(tool, string(out)), nil
+	return "receipt reports festival " + receiptVersion + " but the managed camp shipped in festival " + bundle +
+		"; comparing the receipt version against the channel"
 }
 
 // LooksLikeVersion reports whether s is a plausible dotted version number: at

@@ -17,9 +17,8 @@ import (
 )
 
 // versionedBinary is a shell-script fixture that answers `version --short`
-// with a parseable version, exercising UpdateFestival's detectLiveVersion
-// probe instead of leaving it unexercised. Any other invocation just echoes
-// a marker so tests can also assert body content changed across upgrades.
+// with a parseable version. Any other invocation just echoes a marker so tests
+// can also assert body content changed across upgrades.
 func versionedBinary(name, version string) string {
 	return fmt.Sprintf("#!/bin/sh\nif [ \"$1\" = \"version\" ] && [ \"$2\" = \"--short\" ]; then\n  echo %s\n  exit 0\nfi\necho %s-%s\n", version, name, version)
 }
