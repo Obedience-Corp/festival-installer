@@ -12,22 +12,36 @@ ldflags := "-s -w -X main.version=" + version
 
 # Build for Linux amd64
 linux:
+    mkdir -p {{bin_dir}}
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-linux-amd64 ./cmd/{{binary}}
 
 # Build for Linux arm64
 linux-arm64:
+    mkdir -p {{bin_dir}}
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-linux-arm64 ./cmd/{{binary}}
 
 # Build for macOS amd64
 darwin:
+    mkdir -p {{bin_dir}}
     CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-darwin-amd64 ./cmd/{{binary}}
 
 # Build for macOS arm64
 darwin-arm64:
+    mkdir -p {{bin_dir}}
     CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-darwin-arm64 ./cmd/{{binary}}
 
+# Build for Windows amd64
+windows:
+    mkdir -p {{bin_dir}}
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-windows-amd64.exe ./cmd/{{binary}}
+
+# Build for Windows arm64
+windows-arm64:
+    mkdir -p {{bin_dir}}
+    CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags '{{ldflags}}' -o {{bin_dir}}/{{binary}}-windows-arm64.exe ./cmd/{{binary}}
+
 # Build all platforms
-all: linux linux-arm64 darwin darwin-arm64
+all: linux linux-arm64 darwin darwin-arm64 windows windows-arm64
 
 # Verify the Linux release artifacts do not require glibc or another dynamic loader.
 verify-linux-static:
@@ -43,7 +57,7 @@ verify-linux-static:
 # --- Release tagging -------------------------------------------------------
 #
 # Division of labor with CI: .github/workflows/release.yml fires on every `v*`
-# tag, rebuilds the four portable binaries, writes checksums.txt, and runs
+# tag, rebuilds the six portable binaries, writes checksums.txt, and runs
 # `gh release create --generate-notes --verify-tag`. So the recipes below stop
 # at the tag push. Do not add local release-note generation or a `gh release
 # create` call here; it would race the workflow and publish a duplicate release.

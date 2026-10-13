@@ -144,7 +144,7 @@ func managedToolPath(ctx context.Context, tool string) string {
 	if err != nil {
 		return ""
 	}
-	p := filepath.Join(binDir, tool)
+	p := filepath.Join(binDir, executableName(tool))
 	fi, err := os.Stat(p)
 	if err != nil || fi.IsDir() {
 		return ""

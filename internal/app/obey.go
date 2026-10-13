@@ -364,7 +364,8 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 		if err := shared.ValidateSegment(name); err != nil {
 			return nil, err
 		}
-		src, err := artifacts.SafeJoin(extractDir, name)
+		fileName := executableName(name)
+		src, err := artifacts.SafeJoin(extractDir, fileName)
 		if err != nil {
 			return nil, err
 		}
@@ -372,7 +373,7 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 		if err != nil {
 			return nil, errpkg.Wrap("E_PRODUCT_BINARY_MISSING", err, "binary "+name+" not found in the "+packageID+" archive")
 		}
-		dst := filepath.Join(binDir, name)
+		dst := filepath.Join(binDir, fileName)
 		if err := tx.Stage(ctx, installer.StagedFile{StagedPath: src, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 			return nil, err
 		}

@@ -426,7 +426,7 @@ func obeyServicePath(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(binDir, obeyBinary), nil
+	return filepath.Join(binDir, executableName(obeyBinary)), nil
 }
 
 // ServiceNoteFor is the human sentence for an install's service step, exported
