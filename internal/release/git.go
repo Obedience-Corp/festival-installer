@@ -56,7 +56,7 @@ func NewResolver() *Resolver {
 	return &Resolver{Client: &http.Client{Timeout: defaultHTTPTimeout, CheckRedirect: artifacts.CheckRedirect}}
 }
 
-var defaultOS = map[string]string{"darwin": "macOS", "linux": "linux"}
+var defaultOS = map[string]string{"darwin": "macOS", "linux": "linux", "windows": "windows"}
 var defaultArch = map[string]string{"amd64": "x86_64", "arm64": "arm64"}
 
 func (r *Resolver) Resolve(ctx context.Context, src Source, channel, goos, goarch string) (Resolved, error) {

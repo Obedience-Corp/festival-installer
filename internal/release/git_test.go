@@ -50,7 +50,7 @@ func gitRepoWithTags(t *testing.T, tags ...string) string {
 }
 
 func defaultToken(goos, goarch string) (string, string) {
-	osMap := map[string]string{"darwin": "macOS", "linux": "linux"}
+	osMap := map[string]string{"darwin": "macOS", "linux": "linux", "windows": "windows"}
 	archMap := map[string]string{"amd64": "x86_64", "arm64": "arm64"}
 	return osMap[goos], archMap[goarch]
 }
@@ -94,6 +94,37 @@ func TestResolve_GitLatestStable(t *testing.T) {
 	}
 	if got.Sha256 != "deadbeef" || !got.IsArchive {
 		t.Fatalf("unexpected: %+v", got)
+	}
+}
+
+func TestResolve_WindowsObeyArchives(t *testing.T) {
+	repo := gitRepoWithTags(t, "v0.2.0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintln(w, "amd64sum  obey-0.2.0-windows-x86_64.tar.gz")
+		_, _ = fmt.Fprintln(w, "arm64sum  obey-0.2.0-windows-arm64.tar.gz")
+	}))
+	t.Cleanup(srv.Close)
+	src := release.Source{
+		Type:         "git",
+		Repo:         repo,
+		AssetURL:     srv.URL + "/obey-{version}-{os}-{arch}.tar.gz",
+		ChecksumsURL: srv.URL + "/checksums.txt",
+	}
+	for _, tc := range []struct {
+		arch, asset, sum string
+	}{
+		{"amd64", "obey-0.2.0-windows-x86_64.tar.gz", "amd64sum"},
+		{"arm64", "obey-0.2.0-windows-arm64.tar.gz", "arm64sum"},
+	} {
+		t.Run(tc.arch, func(t *testing.T) {
+			got, err := release.NewResolver().Resolve(context.Background(), src, "stable", "windows", tc.arch)
+			if err != nil {
+				t.Fatalf("Resolve: %v", err)
+			}
+			if got.URL != srv.URL+"/"+tc.asset || got.Sha256 != tc.sum || !got.IsArchive {
+				t.Fatalf("resolved Windows archive = %+v, want %s with %s", got, tc.asset, tc.sum)
+			}
+		})
 	}
 }
 
