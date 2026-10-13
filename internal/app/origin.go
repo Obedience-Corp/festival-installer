@@ -147,7 +147,7 @@ func enumerateSuiteCopies() ([]ToolLocation, error) {
 			continue
 		}
 		for _, tool := range suiteTools {
-			p := filepath.Join(dir, tool)
+			p := filepath.Join(dir, executableName(tool))
 			st, err := os.Stat(p)
 			if err != nil {
 				if os.IsNotExist(err) || isNotDir(err) {
@@ -228,7 +228,7 @@ func isNotDir(err error) bool {
 
 func binDirHasSuite(binDir string) bool {
 	for _, tool := range suiteTools {
-		st, err := os.Stat(filepath.Join(binDir, tool))
+		st, err := os.Stat(filepath.Join(binDir, executableName(tool)))
 		if err == nil && !st.IsDir() {
 			return true
 		}

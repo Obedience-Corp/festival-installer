@@ -27,7 +27,7 @@ func ResolveWhich(ctx context.Context, tool string) (WhichResult, error) {
 		return r, err
 	}
 	{
-		managed := filepath.Join(binDir, tool)
+		managed := filepath.Join(binDir, executableName(tool))
 		switch fi, statErr := os.Stat(managed); {
 		case statErr == nil:
 			if !fi.IsDir() {
