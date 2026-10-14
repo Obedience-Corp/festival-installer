@@ -189,13 +189,14 @@ func ManagedBinOnPath(ctx context.Context) (binDir string, onPath bool, err erro
 	return binDir, dirOnPath(binDir), nil
 }
 
-// ShellFromEnv resolves the user's shell from $SHELL, which is the pragmatic
-// source for this. Anything unset or unrecognized falls back to zsh, matching
-// what shell-init defaults to. Supported shells are zsh, bash and fish.
+// ShellFromEnv resolves the user's shell from $SHELL. On Windows an unset or
+// unrecognized name uses Windows PowerShell, whose command syntax also works in
+// PowerShell 7. An explicit pwsh name selects the PowerShell 7 profile.
 func ShellFromEnv() string {
-	name := filepath.Base(strings.TrimSpace(os.Getenv("SHELL")))
+	name := strings.ToLower(filepath.Base(strings.TrimSpace(os.Getenv("SHELL"))))
+	name = strings.TrimSuffix(name, ".exe")
 	switch name {
-	case "zsh", "bash", "fish":
+	case "zsh", "bash", "fish", "powershell", "pwsh":
 		return name
 	default:
 		if runtime.GOOS == "windows" {

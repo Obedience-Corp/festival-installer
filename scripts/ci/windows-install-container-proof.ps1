@@ -13,6 +13,8 @@ $Suites = @(
     @{ Package = './internal/state/lock'; Exe = 'lock.test.exe'; Pattern = '^Test(AcquireRelease_HappyPath|SecondAcquireBlocksUntilRelease|Acquire_ContextCancel|CrashRecovery_KernelReleasesLock)$' },
     @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|BeginPrunesCompletedWindowsImageBackup|WindowsSuiteUpgradeRollbackOnLockedExecutable|WindowsRunningExecutableReplacedAndOldProcessCompletes)$' },
     @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions|WindowsScoopShimOriginAndGuidance|WindowsScoopShimRejectsUnownedPaths)$' },
+    @{ Package = './internal/cli'; Exe = 'cli.test.exe'; Pattern = '^TestWindowsFirstRunPowerShellCommand$' },
+    @{ Package = './internal/tui'; Exe = 'tui.test.exe'; Pattern = '^TestWindowsTourPathConsentProfileAndReadback$' },
     @{ Package = './internal/metadata'; Exe = 'metadata.test.exe'; Pattern = '^TestParseManifestWindowsSuiteArtifact$' }
 )
 
@@ -23,6 +25,9 @@ try {
         & go test -c -tags container_fs -o $output $suite.Package
         if ($LASTEXITCODE -ne 0) { throw "compile $($suite.Package) failed ($LASTEXITCODE)" }
     }
+    $main = Join-Path $OutDir 'festival.exe'
+    & go build -o $main ./cmd/festival
+    if ($LASTEXITCODE -ne 0) { throw "compile festival.exe failed ($LASTEXITCODE)" }
 } finally {
     Pop-Location
 }

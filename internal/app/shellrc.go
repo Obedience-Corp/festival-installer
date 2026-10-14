@@ -41,6 +41,9 @@ type ShellRCPlan struct {
 
 // ShellRCFile returns the rc file festival would append to for shell.
 func ShellRCFile(shell string) (string, error) {
+	if shell == "powershell" || shell == "pwsh" {
+		return powerShellProfile(shell)
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", errpkg.Wrap("E_SHELL_RC_HOME", err, "cannot resolve $HOME")
@@ -53,7 +56,7 @@ func ShellRCFile(shell string) (string, error) {
 	case "fish":
 		return filepath.Join(home, ".config", "fish", "config.fish"), nil
 	default:
-		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish)")
+		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish, powershell, pwsh)")
 	}
 }
 
