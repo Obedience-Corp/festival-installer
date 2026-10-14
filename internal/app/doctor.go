@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
@@ -62,8 +63,12 @@ func checkManagedBinOnPath(ctx context.Context, setup SetupState) DoctorCheck {
 // pendingSetupMessage names both remaining steps rather than only the PATH one,
 // because on a home this fresh there is nothing installed for PATH to find yet.
 func pendingSetupMessage(binDir string) string {
+	pathHint := `eval "$(festival shell-init zsh)"`
+	if runtime.GOOS == "windows" {
+		pathHint = `festival shell-init powershell | Invoke-Expression`
+	}
 	msg := `setup not finished: install the suite with "festival install festival", ` +
-		`then put the managed bin dir on PATH with eval "$(festival shell-init zsh)"`
+		"then put the managed bin dir on PATH with " + pathHint
 	if binDir != "" {
 		msg += " (dir: " + binDir + ")"
 	}

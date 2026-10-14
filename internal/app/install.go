@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -25,13 +26,36 @@ func orderEntriesSelfLast(entries []metadata.InstallEntry) []metadata.InstallEnt
 	ordered := make([]metadata.InstallEntry, 0, len(entries))
 	var deferred []metadata.InstallEntry
 	for _, e := range entries {
-		if entryExecutableName(e) == selfBinaryName {
+		if isSelfEntry(e) {
 			deferred = append(deferred, e)
 			continue
 		}
 		ordered = append(ordered, e)
 	}
 	return append(ordered, deferred...)
+}
+
+func isSelfEntry(entry metadata.InstallEntry) bool {
+	name := entryExecutableName(entry)
+	return name == selfBinaryName || strings.EqualFold(name, selfBinaryName+".exe")
+}
+
+// Windows suite releases are ZIP archives; Unix suite releases are tarballs.
+// SelectArtifact has already chosen the artifact for the running platform.
+func extractSuiteArchive(ctx context.Context, archivePath, extractDir, goos string) error {
+	if goos == "windows" {
+		return artifacts.ExtractZip(ctx, archivePath, extractDir)
+	}
+	return artifacts.ExtractTarGz(ctx, archivePath, extractDir)
+}
+
+func suiteBinaryNames(entry metadata.InstallEntry, goos string) (source, destination string) {
+	source = executableNameForOS(entry.Source, goos)
+	destination = entry.ExecutableName
+	if destination == "" {
+		destination = entry.Source
+	}
+	return source, executableNameForOS(destination, goos)
 }
 
 // InstallOptions configure a suite or plugin install.
@@ -162,7 +186,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 	}
 	extractDir := filepath.Join(stageDir, "extracted")
 	report(progress, ProgressEvent{Stage: "extract", Package: FestivalPackageID, Percent: 0.7, Message: "extracting archive"})
-	if err := artifacts.ExtractTarGz(ctx, archivePath, extractDir); err != nil {
+	if err := extractSuiteArchive(ctx, archivePath, extractDir, art.OS); err != nil {
 		return InstallResult{}, err
 	}
 
@@ -178,15 +202,11 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		if entry.Kind != "binary" {
 			continue
 		}
-		if entryExecutableName(entry) == selfBinaryName && placement != SelfManaged {
+		if isSelfEntry(entry) && placement != SelfManaged {
 			selfSkipped = true
 			continue
 		}
-		srcName := entry.Source
-		destName := entry.ExecutableName
-		if destName == "" {
-			destName = srcName
-		}
+		srcName, destName := suiteBinaryNames(entry, runtime.GOOS)
 		if err := shared.ValidateSegment(destName); err != nil {
 			return InstallResult{}, err
 		}
@@ -215,7 +235,7 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 		return InstallResult{}, err
 	}
 
-	starter := SetupStarter(ctx, filepath.Join(binDir, "camp"))
+	starter := SetupStarter(ctx, filepath.Join(binDir, executableName("camp")))
 	report(progress, ProgressEvent{Stage: "done", Package: FestivalPackageID, Percent: 1, Message: "festival suite ready"})
 	return InstallResult{
 		Package:       FestivalPackageID,

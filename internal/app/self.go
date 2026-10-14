@@ -44,7 +44,7 @@ func ResolveSelf(ctx context.Context) (SelfPlacement, string, error) {
 	if err != nil {
 		return SelfUnknown, exe, err
 	}
-	managed := filepath.Join(binDir, selfBinaryName)
+	managed := filepath.Join(binDir, executableName(selfBinaryName))
 
 	resolvedExe, err := filepath.EvalSymlinks(exe)
 	if err != nil {
@@ -59,6 +59,13 @@ func ResolveSelf(ctx context.Context) (SelfPlacement, string, error) {
 	}
 	if resolvedExe == resolvedManaged {
 		return SelfManaged, managed, nil
+	}
+	// Windows paths can differ only by case, and a managed hard link may have
+	// a different spelling while still naming the running executable.
+	if runningInfo, runErr := os.Stat(exe); runErr == nil {
+		if managedInfo, managedErr := os.Stat(managed); managedErr == nil && os.SameFile(runningInfo, managedInfo) {
+			return SelfManaged, managed, nil
+		}
 	}
 	return SelfExternal, exe, nil
 }

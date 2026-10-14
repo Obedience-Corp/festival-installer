@@ -117,7 +117,7 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		warning = appendWarning(warning, SelfSkippedNote(selfPlacement, selfPath))
 	} else {
 		for _, f := range res.Files {
-			if filepath.Base(f) == selfBinaryName {
+			if filepath.Base(f) == executableName(selfBinaryName) {
 				selfReplaced = true
 				break
 			}
@@ -247,7 +247,7 @@ func suiteReceiptSkew(ctx context.Context, receiptVersion string) string {
 	if err != nil {
 		return ""
 	}
-	_, bundle, _, ok := probeVersionJSON(ctx, filepath.Join(binDir, "camp"), "camp")
+	_, bundle, _, ok := probeVersionJSON(ctx, filepath.Join(binDir, executableName("camp")), "camp")
 	bundle = stripVersionPrefix(bundle)
 	if !ok || !LooksLikeVersion(bundle) || bundle == stripVersionPrefix(receiptVersion) {
 		return ""

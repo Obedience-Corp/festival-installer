@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -26,7 +27,11 @@ func (r *StarterResult) Notice() string {
 		return ""
 	}
 	if r.Action == "created" || r.Action == "registered" {
-		notice := fmt.Sprintf("Your festival camp is ready at %s. Enter it with: cd %s", r.Path, "'"+strings.ReplaceAll(r.Path, "'", "'\"'\"'")+"'")
+		command := "cd " + shellSingleQuote(r.Path)
+		if runtime.GOOS == "windows" {
+			command = "Set-Location " + powershellSingleQuote(r.Path)
+		}
+		notice := fmt.Sprintf("Your festival camp is ready at %s. Enter it with: %s", r.Path, command)
 		if r.Message != "" {
 			notice += "\n" + r.Message
 		}

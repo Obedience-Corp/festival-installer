@@ -19,7 +19,7 @@ func NewShellInitCommand() *cobra.Command {
 	var appendRC bool
 	var assumeYes bool
 	cmd := &cobra.Command{
-		Use:   "shell-init <zsh|bash|fish>",
+		Use:   "shell-init <zsh|bash|fish|powershell>",
 		Short: "Print shell code to put the installer-managed bin dir on PATH",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

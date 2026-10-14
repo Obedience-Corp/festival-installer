@@ -5,8 +5,22 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestParseManifestWindowsSuiteArtifact(t *testing.T) {
+	raw := read(t, "..", "..", "testdata", "metadata", "manifest", "valid.json")
+	text := strings.ReplaceAll(string(raw), `"darwin", "linux"`, `"windows"`)
+	text = strings.ReplaceAll(text, `"os": "darwin"`, `"os": "windows"`)
+	m, err := ParseManifest(context.Background(), []byte(text))
+	if err != nil {
+		t.Fatalf("Windows suite manifest rejected: %v", err)
+	}
+	if len(m.Releases) != 1 || m.Releases[0].Artifacts[0].OS != "windows" {
+		t.Fatalf("wrong Windows artifact: %+v", m.Releases)
+	}
+}
 
 func read(t *testing.T, parts ...string) []byte {
 	t.Helper()

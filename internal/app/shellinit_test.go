@@ -86,7 +86,18 @@ func TestShellInit_PackageOriginSourcesHelper(t *testing.T) {
 }
 
 func TestShellInitSnippet_Unsupported(t *testing.T) {
-	if _, err := ShellInitSnippet("powershell", "/tmp/bin"); err == nil {
+	if _, err := ShellInitSnippet("unknown", "/tmp/bin"); err == nil {
 		t.Fatal("expected unsupported shell error")
+	}
+}
+
+func TestShellInitSnippet_PowerShellQuotesBinDir(t *testing.T) {
+	binDir := `C:\Users\O'Brien\Festival bin`
+	got, err := ShellInitSnippet("powershell", binDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `$env:PATH = 'C:\Users\O''Brien\Festival bin' + ';' + $env:PATH`) {
+		t.Fatalf("PowerShell PATH snippet escaped incorrectly: %s", got)
 	}
 }
