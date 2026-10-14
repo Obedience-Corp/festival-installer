@@ -11,10 +11,12 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/sys/windows/registry"
+
 	"github.com/Obedience-Corp/festival-installer/internal/app"
 )
 
-func TestWindowsTourPathConsentProfileAndReadback(t *testing.T) {
+func TestWindowsTourPathConsentUserPathAndReadback(t *testing.T) {
 	ctx := context.Background()
 	t.Setenv("FESTIVAL_HOME", t.TempDir())
 	t.Setenv("OBEY_INSTALLER_HOME", "")
@@ -31,87 +33,108 @@ func TestWindowsTourPathConsentProfileAndReadback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ps := `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
-	profileCmd := exec.Command(ps, "-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.Write($PROFILE.CurrentUserAllHosts)")
-	actualProfile, err := profileCmd.CombinedOutput()
+	profileBefore, profileErr := os.ReadFile(profile)
+	if profileErr != nil && !errors.Is(profileErr, os.ErrNotExist) {
+		t.Fatal(profileErr)
+	}
+	assertProfileUnchanged := func(stage string) {
+		t.Helper()
+		body, err := os.ReadFile(profile)
+		if errors.Is(profileErr, os.ErrNotExist) {
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s created a PowerShell profile: %v", stage, err)
+			}
+		} else if err != nil || string(body) != string(profileBefore) {
+			t.Fatalf("%s changed PowerShell profile: %v", stage, err)
+		}
+	}
+
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, `Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
 	if err != nil {
-		t.Fatalf("query PowerShell profile: %v\n%s", err, actualProfile)
+		t.Fatal(err)
 	}
-	if !strings.EqualFold(filepath.Clean(profile), filepath.Clean(strings.TrimSpace(string(actualProfile)))) {
-		t.Fatalf("append target %q differs from PowerShell profile %q", profile, actualProfile)
-	}
-	original, readErr := os.ReadFile(profile)
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+	t.Cleanup(func() { _ = key.Close() })
+	before, kind, readErr := key.GetStringValue("Path")
+	if readErr != nil && !errors.Is(readErr, registry.ErrNotExist) {
 		t.Fatal(readErr)
 	}
 	t.Cleanup(func() {
-		if errors.Is(readErr, os.ErrNotExist) {
-			_ = os.Remove(profile)
+		if errors.Is(readErr, registry.ErrNotExist) {
+			_ = key.DeleteValue("Path")
+		} else if kind == registry.EXPAND_SZ {
+			_ = key.SetExpandStringValue("Path", before)
 		} else {
-			_ = os.WriteFile(profile, original, 0o644)
+			_ = key.SetStringValue("Path", before)
 		}
 	})
-	assertUnchanged := func(stage string) {
-		t.Helper()
-		body, err := os.ReadFile(profile)
-		if errors.Is(readErr, os.ErrNotExist) {
-			if !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("%s created or changed profile: %v", stage, err)
-			}
-			return
-		}
-		if err != nil || string(body) != string(original) {
-			t.Fatalf("%s changed profile: %v", stage, err)
-		}
+	if strings.Contains(strings.ToLower(before), strings.ToLower(binDir)) {
+		t.Fatalf("test user Path already contains managed bin: %q", before)
 	}
 
 	m := tourAt(t, app.TourStepPath)
 	next, _ := m.handleEnter()
 	confirm := next.(model)
-	if confirm.screen != screenConfirm || confirm.confirmArg != "powershell" || !strings.Contains(confirm.confirmMsg, profile) {
-		t.Fatalf("tour confirmation did not identify PowerShell profile: %+v", confirm)
+	if confirm.screen != screenConfirm || confirm.confirmArg != "powershell" || !strings.Contains(confirm.confirmMsg, `HKEY_CURRENT_USER\Environment\Path`) {
+		t.Fatalf("tour confirmation did not identify the user Path: %+v", confirm)
 	}
-	if !strings.Contains(confirm.confirmMsg, "$env:PATH = ") {
-		t.Fatalf("tour confirmation omitted executable PowerShell PATH line: %q", confirm.confirmMsg)
+	if !strings.Contains(confirm.confirmMsg, binDir) {
+		t.Fatalf("tour confirmation omitted managed bin %q: %q", binDir, confirm.confirmMsg)
 	}
-	assertUnchanged("showing confirmation")
+	assertProfileUnchanged("showing confirmation")
 	confirm.confirmYes = false
 	_, noCmd := confirm.handleEnter()
 	if noCmd != nil {
-		t.Fatal("declining PowerShell profile append returned a write command")
+		t.Fatal("declining user Path change returned a write command")
 	}
-	assertUnchanged("declining")
+	if got, _, err := key.GetStringValue("Path"); err != readErr || got != before {
+		t.Fatalf("declining changed user Path: %q, %v", got, err)
+	}
 
 	next, _ = m.handleEnter()
 	confirm = next.(model)
 	confirm.confirmYes = true
 	_, command := confirm.handleEnter()
 	if command == nil {
-		t.Fatal("accepting PowerShell profile append returned no command")
+		t.Fatal("accepting user Path change returned no command")
 	}
 	message, ok := command().(tourMsg)
 	if !ok || message.err != nil {
-		t.Fatalf("PowerShell profile append failed: %#v", message)
+		t.Fatalf("user Path change failed: %#v", message)
 	}
-	body, err := os.ReadFile(profile)
+	value, valueKind, err := key.GetStringValue("Path")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(body), ">>> festival shell integration >>>") != 1 {
-		t.Fatalf("profile did not contain exactly one appended block:\n%s", body)
+	if valueKind != kind && !errors.Is(readErr, registry.ErrNotExist) {
+		t.Fatalf("user Path registry type changed from %d to %d", kind, valueKind)
 	}
+	first, rest, _ := strings.Cut(value, ";")
+	if !strings.EqualFold(first, binDir) || rest != before {
+		t.Fatalf("user Path = %q, want managed bin before prior value %q", value, before)
+	}
+	assertProfileUnchanged("accepting")
 	step, _ := message.tour.Step(app.TourStepPath)
 	if step.State != app.TourStepPending {
-		t.Fatalf("tour PATH readback before new shell = %q, want pending", step.State)
+		t.Fatalf("tour PATH readback before new session = %q, want pending", step.State)
 	}
-	load := exec.Command(ps, "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "[Console]::Out.Write($env:PATH)")
+	plan, err := app.PlanShellRCAppend(ctx, "powershell")
+	if err != nil || !plan.Present {
+		t.Fatalf("second plan must see the persisted Path: %+v, %v", plan, err)
+	}
+	if err := app.ApplyShellRCAppend(ctx, plan); err != nil {
+		t.Fatalf("second apply: %v", err)
+	}
+	if again, _, err := key.GetStringValue("Path"); err != nil || again != value {
+		t.Fatalf("second apply duplicated user Path: %q, %v", again, err)
+	}
+	ps := `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
+	load := exec.Command(ps, "-NonInteractive", "-Command", "[Console]::Out.Write([Environment]::GetEnvironmentVariable('Path','User'))")
 	loadedPath, err := load.CombinedOutput()
 	if err != nil {
-		t.Fatalf("new PowerShell could not load appended profile: %v\n%s", err, loadedPath)
+		t.Fatalf("fresh PowerShell could not read user Path: %v\n%s", err, loadedPath)
 	}
-	first, _, _ := strings.Cut(strings.TrimSpace(string(loadedPath)), ";")
-	if !strings.EqualFold(filepath.Clean(first), filepath.Clean(binDir)) {
-		t.Fatalf("new PowerShell did not load managed bin %q from profile: %q", binDir, loadedPath)
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(string(loadedPath))), strings.ToLower(binDir)) {
+		t.Fatalf("fresh PowerShell user Path omitted managed bin: %q", loadedPath)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+basePath)
 	afterRestart, err := app.LoadTour(ctx)
@@ -120,6 +143,6 @@ func TestWindowsTourPathConsentProfileAndReadback(t *testing.T) {
 	}
 	step, _ = afterRestart.Step(app.TourStepPath)
 	if step.State != app.TourStepDone {
-		t.Fatalf("tour PATH readback after new shell = %q, want done", step.State)
+		t.Fatalf("tour PATH readback after new session = %q, want done", step.State)
 	}
 }

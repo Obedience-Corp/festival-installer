@@ -97,7 +97,21 @@ func TestShellInitSnippet_PowerShellQuotesBinDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, `$env:PATH = 'C:\Users\O''Brien\Festival bin' + ';' + $env:PATH`) {
+	if !strings.Contains(got, `$env:PATH = 'C:\Users\O''Brien\Festival bin' + [System.IO.Path]::PathSeparator + $env:PATH`) {
 		t.Fatalf("PowerShell PATH snippet escaped incorrectly: %s", got)
+	}
+}
+
+func TestShellInitSnippet_PwshUsesHostPathSeparator(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/pwsh")
+	if got := ShellFromEnv(); got != "pwsh" {
+		t.Fatalf("ShellFromEnv = %q, want pwsh", got)
+	}
+	snippet, err := ShellInitSnippet(ShellFromEnv(), "/opt/festival/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(snippet, `[System.IO.Path]::PathSeparator`) || strings.Contains(snippet, `+ ';' +`) {
+		t.Fatalf("pwsh must preserve the host PATH separator: %s", snippet)
 	}
 }

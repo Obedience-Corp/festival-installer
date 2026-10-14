@@ -14,7 +14,7 @@ $Suites = @(
     @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|BeginPrunesCompletedWindowsImageBackup|WindowsSuiteUpgradeRollbackOnLockedExecutable|WindowsRunningExecutableReplacedAndOldProcessCompletes)$' },
     @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions|WindowsScoopShimOriginAndGuidance|WindowsScoopShimRejectsUnownedPaths)$' },
     @{ Package = './internal/cli'; Exe = 'cli.test.exe'; Pattern = '^TestWindowsFirstRunPowerShellCommand$' },
-    @{ Package = './internal/tui'; Exe = 'tui.test.exe'; Pattern = '^TestWindowsTourPathConsentProfileAndReadback$' },
+    @{ Package = './internal/tui'; Exe = 'tui.test.exe'; Pattern = '^TestWindowsTourPathConsentUserPathAndReadback$' },
     @{ Package = './internal/metadata'; Exe = 'metadata.test.exe'; Pattern = '^TestParseManifestWindowsSuiteArtifact$' }
 )
 

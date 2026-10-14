@@ -46,3 +46,7 @@ starter-real camp_binary fest_binary:
 # Compile on the host and execute filesystem-mutating Windows proofs in Server Core.
 windows-install-container-proof:
     pwsh -NoProfile -File scripts/ci/windows-install-container-proof.ps1
+
+# Prove a non-Windows pwsh profile append without mutating the host filesystem.
+pwsh-append-container-proof:
+    docker run --rm -v "{{invocation_directory()}}:/src:ro" golang:1.26-alpine sh -c 'cp -a /src /work && cd /work && go test -tags container_fs -run "^TestPwshAppendPreservesHostPathSeparator$" -count=1 ./internal/app'

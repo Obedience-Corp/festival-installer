@@ -153,9 +153,8 @@ func (m model) dismissTour() (tea.Model, tea.Cmd) {
 	}
 }
 
-// confirmTourPathAppend shows the exact rc file and block, then asks. The rc
-// file belongs to the user, so the tour never writes to it without a yes on
-// this screen, matching what `festival shell-init --append` does at the CLI.
+// confirmTourPathAppend shows the profile block or Windows user Path change,
+// then asks. The tour never writes either target without a yes on this screen.
 func (m model) confirmTourPathAppend() (tea.Model, tea.Cmd) {
 	plan, err := app.PlanShellRCAppend(m.ctx, app.ShellFromEnv())
 	if err != nil {
@@ -165,14 +164,22 @@ func (m model) confirmTourPathAppend() (tea.Model, tea.Cmd) {
 	switch {
 	case plan.Present:
 		m.err = nil
-		m.banner = plan.File + " already has the block. Restart your shell to pick it up."
+		if plan.UserPath {
+			m.banner = plan.File + " already includes the managed bin. Open a new sign-in session to pick it up."
+		} else {
+			m.banner = plan.File + " already has the block. Restart your shell to pick it up."
+		}
 		return m, nil
 	case !plan.Appendable:
 		m.err = errpkg.New("E_SHELL_RC_NO_EFFECT",
 			"there is nothing here for a shell to run yet. Install the suite first.")
 		return m, nil
 	}
-	m.confirmMsg = "Append the festival PATH block to " + plan.File + "?\n\n" + plan.Block
+	if plan.UserPath {
+		m.confirmMsg = "Add the managed bin to " + plan.File + "?\n\n" + plan.Block
+	} else {
+		m.confirmMsg = "Append the festival PATH block to " + plan.File + "?\n\n" + plan.Block
+	}
 	m.confirmYes = false
 	m.confirmAct = "tour-path"
 	m.confirmArg = plan.Shell
@@ -182,7 +189,7 @@ func (m model) confirmTourPathAppend() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applyTourPathAppend performs the append the user just approved. The step is
+// applyTourPathAppend performs the change the user just approved. The step is
 // not recorded as done: only an observed PATH promotes it, because a user who
 // never restarts their shell does not have a working PATH.
 func (m model) applyTourPathAppend() (tea.Model, tea.Cmd) {

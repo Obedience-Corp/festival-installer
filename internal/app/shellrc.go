@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -18,15 +19,15 @@ const (
 	shellRCNote        = "# Added by festival shell-init. Remove this block to undo it."
 )
 
-// ShellRCPlan is the exact edit an rc append would make, computed before
-// anything is written so the user can be shown the file and the block and then
-// asked. Nothing in this type touches the filesystem.
+// ShellRCPlan is the exact PATH persistence change shown before consent. On
+// Windows, a managed PowerShell install uses the user Path registry value;
+// other shells use a profile block. Planning does not write either target.
 type ShellRCPlan struct {
 	// Shell is the shell the block was rendered for.
 	Shell string
-	// File is the rc file the block would be appended to.
+	// File names the profile file or Windows user Path value being changed.
 	File string
-	// Block is the literal text that would be appended, markers included.
+	// Block shows the profile text or describes the Windows user Path change.
 	Block string
 	// Present is true when the marker is already in the file, in which case
 	// appending would duplicate it.
@@ -37,6 +38,9 @@ type ShellRCPlan struct {
 	// so a later append after the leftover is cleaned up would decline to write
 	// the line that actually fixes PATH.
 	Appendable bool
+	// UserPath selects the Windows user Path value instead of a profile file.
+	UserPath bool
+	BinDir   string
 }
 
 // ShellRCFile returns the rc file festival would append to for shell.
@@ -60,19 +64,23 @@ func ShellRCFile(shell string) (string, error) {
 	}
 }
 
-// PlanShellRCAppend computes what an append would do without doing it.
+// PlanShellRCAppend computes the PATH persistence change without writing it.
 func PlanShellRCAppend(ctx context.Context, shell string) (ShellRCPlan, error) {
 	if err := ctx.Err(); err != nil {
 		return ShellRCPlan{}, errpkg.Wrap("E_SHELL_RC_CTX", err, "context cancelled before planning rc append")
+	}
+	guidance, err := ShellGuidanceFor(ctx, shell)
+	if err != nil {
+		return ShellRCPlan{}, err
+	}
+	if runtime.GOOS == "windows" && (shell == "powershell" || shell == "pwsh") && guidance.Managed {
+		return planWindowsUserPath(ctx, shell, guidance.Bin)
 	}
 	file, err := ShellRCFile(shell)
 	if err != nil {
 		return ShellRCPlan{}, err
 	}
-	snippet, err := ShellInit(ctx, shell)
-	if err != nil {
-		return ShellRCPlan{}, err
-	}
+	snippet := guidance.Snippet
 	present, err := shellRCBlockPresent(file)
 	if err != nil {
 		return ShellRCPlan{}, err
@@ -86,11 +94,14 @@ func PlanShellRCAppend(ctx context.Context, shell string) (ShellRCPlan, error) {
 	}, nil
 }
 
-// ApplyShellRCAppend appends the planned block. It is a no-op when the marker is
-// already present, so running it twice cannot duplicate the block.
+// ApplyShellRCAppend applies the approved change. It is idempotent for both
+// profile markers and Windows user Path entries.
 func ApplyShellRCAppend(ctx context.Context, plan ShellRCPlan) error {
 	if err := ctx.Err(); err != nil {
 		return errpkg.Wrap("E_SHELL_RC_CTX", err, "context cancelled before rc append")
+	}
+	if plan.UserPath {
+		return applyWindowsUserPath(ctx, plan)
 	}
 	if plan.File == "" {
 		return errpkg.New("E_SHELL_RC_PLAN", "rc append plan has no target file")

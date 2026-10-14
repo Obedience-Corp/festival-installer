@@ -47,7 +47,7 @@ export PATH=%s:"$PATH"
 fish_add_path --prepend --global %s
 `, quoted), nil
 	case "powershell", "pwsh":
-		return fmt.Sprintf("# festival: put managed camp/fest first on PATH\n$env:PATH = %s + ';' + $env:PATH\n", powershellSingleQuote(binDir)), nil
+		return fmt.Sprintf("# festival: put managed camp/fest first on PATH\n$env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH\n", powershellSingleQuote(binDir)), nil
 	default:
 		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish, powershell)")
 	}
@@ -58,6 +58,7 @@ type ShellGuidance struct {
 	Bin     string
 	OnPath  bool
 	Snippet string
+	Managed bool // The snippet is for the installer's managed bin, not a package helper.
 }
 
 func helperForShell(helperPath, shell string) string {
@@ -131,6 +132,7 @@ func ShellGuidanceFor(ctx context.Context, shell string) (ShellGuidance, error) 
 		g.Bin = bin
 		g.OnPath = on
 		g.Snippet = snip
+		g.Managed = true
 		return g, nil
 	}
 }
