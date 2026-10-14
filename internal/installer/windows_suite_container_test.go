@@ -83,10 +83,10 @@ func TestWindowsSuiteUpgradeRollbackOnLockedExecutable(t *testing.T) {
 	}
 }
 
-// Run a copy of this test binary as the managed festival.exe while its parent
-// attempts a three-tool transaction. Windows locks the image of a live process;
-// the transaction must fail at festival.exe and restore both earlier tools.
-func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
+// Run a copy of this test binary as managed festival.exe while its parent
+// replaces all three tools. The old process must finish after the rename, and
+// the receipt and files must report the new version.
+func TestWindowsRunningExecutableReplacedAndOldProcessCompletes(t *testing.T) {
 	if ready := os.Getenv("FESTIVAL_SELF_LOCK_READY"); ready != "" {
 		if err := os.WriteFile(ready, []byte("ready"), 0o644); err != nil {
 			t.Fatal(err)
@@ -134,7 +134,7 @@ func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
 	}
 	ready := filepath.Join(home, "child-ready")
 	release := filepath.Join(home, "child-release")
-	child := exec.Command(running, "-test.run=^TestWindowsRunningExecutableCannotBeReplaced$", "-test.count=1")
+	child := exec.Command(running, "-test.run=^TestWindowsRunningExecutableReplacedAndOldProcessCompletes$", "-test.count=1")
 	child.Env = append(os.Environ(), "FESTIVAL_SELF_LOCK_READY="+ready, "FESTIVAL_SELF_LOCK_RELEASE="+release)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
@@ -150,10 +150,6 @@ func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	oldSelf, err := os.ReadFile(running)
-	if err != nil {
-		t.Fatal(err)
-	}
 	oldReceipt := receipts.Receipt{PackageID: "obedience-corp/festival", Version: "1.0.0", Channel: "stable", Source: "official-obey"}
 	if err := receipts.Write(ctx, db.Raw(), oldReceipt); err != nil {
 		t.Fatal(err)
@@ -168,11 +164,15 @@ func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := tx.Commit(ctx, installer.ReceiptInfo{PackageID: oldReceipt.PackageID, Version: "2.0.0", Channel: "stable", Source: "official-obey"}); err == nil {
-		t.Fatal("transaction claimed to replace running festival.exe")
+	rec, err := tx.Commit(ctx, installer.ReceiptInfo{PackageID: oldReceipt.PackageID, Version: "2.0.0", Channel: "stable", Source: "official-obey"})
+	if err != nil {
+		t.Fatalf("replace running festival.exe: %v", err)
 	}
 	if err := tx.Rollback(ctx); err != nil {
 		t.Fatal(err)
+	}
+	if rec.Version != "2.0.0" || len(rec.OwnedFiles) != 3 {
+		t.Fatalf("upgraded receipt incomplete: %+v", rec)
 	}
 	if err := os.WriteFile(release, []byte("done"), 0o644); err != nil {
 		t.Fatal(err)
@@ -181,17 +181,17 @@ func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
 		t.Fatalf("managed child did not exit cleanly: %v", err)
 	}
 	for _, name := range []string{"camp.exe", "fest.exe", "festival.exe"} {
-		want := []byte("old-" + name)
-		if name == "festival.exe" {
-			want = oldSelf
-		}
+		want := []byte("new-" + name)
 		got, err := os.ReadFile(filepath.Join(binDir, name))
 		if err != nil || string(got) != string(want) {
-			t.Fatalf("%s after rollback changed: %v, %v", name, len(got), err)
+			t.Fatalf("%s after upgrade = %q, %v", name, got, err)
 		}
 	}
 	gotReceipt, err := receipts.Get(ctx, db.Raw(), oldReceipt.PackageID)
-	if err != nil || gotReceipt.Version != oldReceipt.Version {
-		t.Fatalf("receipt changed after locked self: %+v, %v", gotReceipt, err)
+	if err != nil || gotReceipt.Version != "2.0.0" || len(gotReceipt.OwnedFiles) != 3 {
+		t.Fatalf("receipt did not upgrade: %+v, %v", gotReceipt, err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(home, installer.IntentBackupsDir)); err == nil && len(entries) != 0 {
+		t.Fatalf("old running executable left backup files after child exited: %v", entries)
 	}
 }

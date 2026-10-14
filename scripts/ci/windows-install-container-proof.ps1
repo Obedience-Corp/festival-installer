@@ -11,8 +11,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $Suites = @(
     @{ Package = './internal/artifacts'; Exe = 'artifacts.test.exe'; Pattern = '^Test(ExtractZip|VerifySHA256_Mismatch)' },
     @{ Package = './internal/state/lock'; Exe = 'lock.test.exe'; Pattern = '^Test(AcquireRelease_HappyPath|SecondAcquireBlocksUntilRelease|Acquire_ContextCancel|CrashRecovery_KernelReleasesLock)$' },
-    @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|WindowsSuiteUpgradeRollbackOnLockedExecutable|WindowsRunningExecutableCannotBeReplaced)$' },
-    @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions|WindowsScoopShimOriginAndGuidance|WindowsScoopShimRejectsUnownedPaths|WindowsManagedSelfUpdateGuard)$' },
+    @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|WindowsSuiteUpgradeRollbackOnLockedExecutable|WindowsRunningExecutableReplacedAndOldProcessCompletes)$' },
+    @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions|WindowsScoopShimOriginAndGuidance|WindowsScoopShimRejectsUnownedPaths)$' },
     @{ Package = './internal/metadata'; Exe = 'metadata.test.exe'; Pattern = '^TestParseManifestWindowsSuiteArtifact$' }
 )
 

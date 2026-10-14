@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
@@ -81,14 +80,4 @@ func SelfSkippedNote(placement SelfPlacement, selfPath string) string {
 		return "could not determine whether the running festival binary is managed; festival binary left untouched"
 	}
 	return "festival is installed outside this managed bin dir (" + selfPath + "); left untouched"
-}
-
-// A running Windows executable cannot be renamed into the transaction backup
-// directory. Refuse before placing camp and fest so an update has no temporary
-// mixed-version state. Scoop installs take the package path before this check.
-func refuseRunningWindowsSelfReplacement(placement SelfPlacement) error {
-	if runtime.GOOS != "windows" || placement != SelfManaged {
-		return nil
-	}
-	return errpkg.New("E_INSTALL_SELF_LOCKED", "Windows locks the running managed festival.exe. Run the update from a festival.exe outside the managed bin directory, then replace the managed festival.exe after this process exits; for a Scoop install, run 'scoop update festival'.")
 }

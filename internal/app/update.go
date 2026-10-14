@@ -61,9 +61,6 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	if origin.Kind == OriginPackage || origin.Dual {
 		return packageUpdateResult(ctx, opts, origin, selfPlacement, selfPath)
 	}
-	if err := refuseRunningWindowsSelfReplacement(selfPlacement); err != nil {
-		return UpdateResult{}, "", err
-	}
 
 	rec, found, err := ReadFestivalReceipt(ctx)
 	if err != nil {
