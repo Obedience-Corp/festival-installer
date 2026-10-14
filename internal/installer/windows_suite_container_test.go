@@ -191,7 +191,18 @@ func TestWindowsRunningExecutableReplacedAndOldProcessCompletes(t *testing.T) {
 	if err != nil || gotReceipt.Version != "2.0.0" || len(gotReceipt.OwnedFiles) != 3 {
 		t.Fatalf("receipt did not upgrade: %+v, %v", gotReceipt, err)
 	}
+	// Once the old image is no longer running, a later transaction can remove
+	// the orphaned backup before doing any new placement.
+	next, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatalf("begin after old image exits: %v", err)
+	}
+	if err := next.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if entries, err := os.ReadDir(filepath.Join(home, installer.IntentBackupsDir)); err == nil && len(entries) != 0 {
-		t.Fatalf("old running executable left backup files after child exited: %v", entries)
+		t.Fatalf("orphan backups remained after next transaction: %v", entries)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read backup directory: %v", err)
 	}
 }
