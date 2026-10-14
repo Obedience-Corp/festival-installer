@@ -19,7 +19,7 @@ func NewShellInitCommand() *cobra.Command {
 	var appendRC bool
 	var assumeYes bool
 	cmd := &cobra.Command{
-		Use:   "shell-init <zsh|bash|fish>",
+		Use:   "shell-init <zsh|bash|fish|powershell>",
 		Short: "Print shell code to put the installer-managed bin dir on PATH",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -41,23 +41,21 @@ func NewShellInitCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "report whether the managed bin dir is on PATH")
-	cmd.Flags().BoolVar(&appendRC, "append", false, "show the block and offer to append it to your shell rc file")
-	cmd.Flags().BoolVar(&assumeYes, "yes", false, "append without asking (requires --append)")
+	cmd.Flags().BoolVar(&appendRC, "append", false, "offer to persist the managed bin on PATH after showing the change")
+	cmd.Flags().BoolVar(&assumeYes, "yes", false, "apply without asking (requires --append)")
 	return cmd
 }
 
-// runShellRCAppend shows the exact file and the exact block, then asks. An rc
-// file belongs to the user, so this path never writes without a yes on this
-// invocation: either --yes, or an answer typed at a real terminal. With neither,
-// it prints the block and stops, which leaves a pipe or an agent with something
-// to paste instead of an edited rc file nobody approved.
+// runShellRCAppend shows the target and the change before consent. A profile
+// or user Path value belongs to the user, so neither is written without --yes
+// or an answer typed at a real terminal.
 func runShellRCAppend(cmd *cobra.Command, shell string, assumeYes bool) error {
 	plan, err := app.PlanShellRCAppend(cmd.Context(), shell)
 	if err != nil {
 		return err
 	}
 	out := cmd.OutOrStdout()
-	if _, err := fmt.Fprintf(out, "file:  %s\n\n%s\n", plan.File, plan.Block); err != nil {
+	if _, err := fmt.Fprintf(out, "target: %s\n\n%s\n", plan.File, plan.Block); err != nil {
 		return err
 	}
 	if plan.Present {
@@ -69,22 +67,30 @@ func runShellRCAppend(cmd *cobra.Command, shell string, assumeYes bool) error {
 			"not appending: there is nothing here for a shell to run yet. Resolve the note above first.\n")
 		return err
 	}
-	ok, err := shellRCConsent(cmd, plan.File, assumeYes)
+	ok, err := shellRCConsent(cmd, plan, assumeYes)
 	if err != nil {
 		return err
 	}
 	if !ok {
+		if plan.UserPath {
+			_, err := fmt.Fprintln(out, "no change to your user Path. Run festival shell-init powershell | Invoke-Expression for this session.")
+			return err
+		}
 		_, err := fmt.Fprintf(out, "not appending. Paste the block above into %s when you are ready.\n", plan.File)
 		return err
 	}
 	if err := app.ApplyShellRCAppend(cmd.Context(), plan); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(out, "appended to %s. Restart your shell to pick it up.\n", plan.File)
+	if plan.UserPath {
+		_, err = fmt.Fprintf(out, "updated %s. Open a new sign-in session to pick it up.\n", plan.File)
+	} else {
+		_, err = fmt.Fprintf(out, "appended to %s. Restart your shell to pick it up.\n", plan.File)
+	}
 	return err
 }
 
-func shellRCConsent(cmd *cobra.Command, file string, assumeYes bool) (bool, error) {
+func shellRCConsent(cmd *cobra.Command, plan app.ShellRCPlan, assumeYes bool) (bool, error) {
 	if assumeYes {
 		return true, nil
 	}
@@ -93,7 +99,11 @@ func shellRCConsent(cmd *cobra.Command, file string, assumeYes bool) (bool, erro
 		_, err := fmt.Fprintln(cmd.OutOrStdout(), "no terminal to ask on, so nothing was written.")
 		return false, err
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Append this block to %s? [y/N] ", file); err != nil {
+	action := "Append this block to"
+	if plan.UserPath {
+		action = "Add the managed bin to"
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s %s? [y/N] ", action, plan.File); err != nil {
 		return false, err
 	}
 	line, err := bufio.NewReader(in).ReadString('\n')

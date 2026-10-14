@@ -100,6 +100,41 @@ func clearIntentBackups(home, journalID string) {
 	_ = os.RemoveAll(intentBackupDir(home, journalID))
 }
 
+// A Windows update can rename a running executable to its transaction backup,
+// but cannot remove that backup until the old process exits. Once Reconcile
+// has cleared the active journal, only generated transaction IDs here can be
+// stale. Retry their removal under the next install lock without delaying an
+// otherwise valid install when an older process is still alive.
+func pruneOrphanBackups(home string) {
+	root := filepath.Join(home, IntentBackupsDir)
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && isJournalID(entry.Name()) {
+			_ = os.RemoveAll(filepath.Join(root, entry.Name()))
+		}
+	}
+	_ = os.Remove(root)
+}
+
+func isJournalID(name string) bool {
+	if len(name) != 32 {
+		return false
+	}
+	for _, char := range name {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func readJournal(home string) (Journal, bool, error) {
 	raw, err := os.ReadFile(journalPath(home))
 	if err != nil {

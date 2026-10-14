@@ -75,6 +75,7 @@ func BeginWithTimeout(ctx context.Context, db *sql.DB, home string, lockTimeout 
 		_ = rel()
 		return nil, err
 	}
+	pruneOrphanBackups(home)
 	staging, err := os.MkdirTemp(home, "staging-")
 	if err != nil {
 		_ = rel()

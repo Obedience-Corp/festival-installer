@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +119,8 @@ func TestCommit_PlacesFilesAndWritesReceipt(t *testing.T) {
 	if statErr != nil {
 		t.Fatalf("dst not placed: %v", statErr)
 	}
-	if info.Mode().Perm() != 0o755 {
+	// Windows reports a synthetic 0666 permission mask for regular files.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
 		t.Fatalf("dst mode = %o, want 0755", info.Mode().Perm())
 	}
 	got, err := receipts.Get(ctx, db.Raw(), "obedience-corp/festival")
@@ -234,6 +236,7 @@ func TestCommit_FailureRestoresPriorBinaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
 	good := stageBlob(t, tx.StagingDir(), "camp", "new-camp")
 	badSrc := filepath.Join(tx.StagingDir(), "missing")
 
@@ -264,6 +267,9 @@ func TestCommit_FailureRestoresPriorBinaries(t *testing.T) {
 	}
 	if _, err := receipts.Get(ctx, db.Raw(), "obedience-corp/festival"); !errors.Is(err, receipts.ErrNotFound) {
 		t.Fatalf("expected no receipt after failed commit, got %v", err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatalf("release failed transaction: %v", err)
 	}
 }
 

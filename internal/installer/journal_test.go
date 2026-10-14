@@ -4,12 +4,47 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
+
+func TestBeginPrunesCompletedWindowsImageBackup(t *testing.T) {
+	home := t.TempDir()
+	ctx := context.Background()
+	db, err := state.OpenDB(ctx, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close(context.Background()) })
+	root := filepath.Join(home, IntentBackupsDir)
+	stale := filepath.Join(root, strings.Repeat("a", 32))
+	userDir := filepath.Join(root, "keep-user-data")
+	for _, dir := range []string{stale, userDir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "backup-0"), []byte("old image"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tx, err := Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("completed transaction backup remains: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(userDir, "backup-0")); err != nil {
+		t.Fatalf("unrelated directory was removed: %v", err)
+	}
+}
 
 func TestReconcile_ReversesPartialPlacement(t *testing.T) {
 	home := t.TempDir()

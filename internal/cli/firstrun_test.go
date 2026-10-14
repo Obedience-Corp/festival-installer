@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -80,7 +81,21 @@ func TestFirstRunGuidance_FishGetsAFishLine(t *testing.T) {
 	}
 }
 
+func TestFirstRunGuidance_PowerShellGetsAnExecutableLine(t *testing.T) {
+	for _, shell := range []string{"powershell", "pwsh"} {
+		got := cli.FirstRunGuidance(shell)
+		want := "festival shell-init " + shell + " | Invoke-Expression"
+		if !strings.Contains(got, want) || strings.Contains(got, "eval ") {
+			t.Fatalf("%s needs a PowerShell command it can paste:\n%s", shell, got)
+		}
+	}
+}
+
 func TestShellFromEnv(t *testing.T) {
+	defaultShell := "zsh"
+	if runtime.GOOS == "windows" {
+		defaultShell = "powershell"
+	}
 	tests := []struct {
 		env  string
 		want string
@@ -88,8 +103,10 @@ func TestShellFromEnv(t *testing.T) {
 		{"/bin/zsh", "zsh"},
 		{"/usr/local/bin/bash", "bash"},
 		{"/opt/homebrew/bin/fish", "fish"},
-		{"/usr/bin/nu", "zsh"},
-		{"", "zsh"},
+		{"/usr/bin/nu", defaultShell},
+		{"", defaultShell},
+		{"pwsh.exe", "pwsh"},
+		{"powershell.exe", "powershell"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.env, func(t *testing.T) {

@@ -72,7 +72,7 @@ func TestShellInit_UnsupportedShell(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 	t.Setenv("PATH", t.TempDir())
-	if _, _, err := runInstaller(t, "shell-init", "powershell"); err == nil {
+	if _, _, err := runInstaller(t, "shell-init", "unknown"); err == nil {
 		t.Fatal("expected error for unsupported shell")
 	} else if !strings.Contains(err.Error(), "unsupported shell") {
 		t.Fatalf("expected unsupported-shell error, got %v", err)

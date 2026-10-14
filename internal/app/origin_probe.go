@@ -277,6 +277,11 @@ func applyPackageGuidance(origin *SuiteOrigin, helper string) {
 		origin.Upgrade = "brew upgrade --cask festival"
 		origin.Remove = "brew uninstall --cask festival"
 		origin.Package = "festival"
+	case FlavorScoop:
+		origin.Helper = ""
+		origin.Upgrade = "scoop update festival"
+		origin.Remove = "scoop uninstall festival"
+		origin.Package = "festival"
 	case FlavorNpm:
 		if helper != "" {
 			origin.Helper = "source " + helper

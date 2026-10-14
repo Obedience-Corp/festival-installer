@@ -21,6 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: extractions/setup-just@v4
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
       - name: Vet
@@ -29,6 +30,8 @@ jobs:
         run: go vet -tags notty ./internal/cli/...
       - name: Test
         run: go test ./...
+      - name: Prove non-Windows pwsh profile append in a container
+        run: just testing pwsh-append-container-proof
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -67,4 +70,18 @@ jobs:
           cache: true
       - name: Check Windows executable naming
         run: go test ./internal/app -run '^TestProductExecutableNames$' -count=1
+
+  windows-install-container:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: extractions/setup-just@v4
+      - name: Prove Windows ZIP, lock, transaction, and names in Server Core
+        shell: pwsh
+        run: just testing windows-install-container-proof
 

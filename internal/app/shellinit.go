@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -20,6 +21,10 @@ var ErrUnsupportedShell = errpkg.New("E_SHELL_UNSUPPORTED", "unsupported shell")
 // A single quote inside s is encoded as '\” (end quote, escaped quote, reopen).
 func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func powershellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 // ShellInitSnippet returns shell code to prepend the managed bin dir to PATH.
@@ -41,8 +46,10 @@ export PATH=%s:"$PATH"
 #   festival shell-init fish | source
 fish_add_path --prepend --global %s
 `, quoted), nil
+	case "powershell", "pwsh":
+		return fmt.Sprintf("# festival: put managed camp/fest first on PATH\n$env:PATH = %s + [System.IO.Path]::PathSeparator + $env:PATH\n", powershellSingleQuote(binDir)), nil
 	default:
-		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish)")
+		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish, powershell)")
 	}
 }
 
@@ -51,6 +58,7 @@ type ShellGuidance struct {
 	Bin     string
 	OnPath  bool
 	Snippet string
+	Managed bool // The snippet is for the installer's managed bin, not a package helper.
 }
 
 func helperForShell(helperPath, shell string) string {
@@ -77,6 +85,10 @@ func ShellGuidanceFor(ctx context.Context, shell string) (ShellGuidance, error) 
 	g := ShellGuidance{Bin: origin.Prefix, OnPath: origin.Kind != OriginAbsent && origin.Kind != OriginLeftover}
 	switch origin.Kind {
 	case OriginPackage:
+		if origin.Flavor == FlavorScoop {
+			g.Snippet = "# Scoop has already put its shims on PATH.\n# upgrade: " + origin.Upgrade + "\n"
+			return g, nil
+		}
 		h := origin.Helper
 		if strings.HasPrefix(h, "source ") {
 			h = strings.TrimPrefix(h, "source ")
@@ -120,6 +132,7 @@ func ShellGuidanceFor(ctx context.Context, shell string) (ShellGuidance, error) 
 		g.Bin = bin
 		g.OnPath = on
 		g.Snippet = snip
+		g.Managed = true
 		return g, nil
 	}
 }
@@ -147,7 +160,11 @@ func PathCheck(ctx context.Context, out io.Writer) error {
 		if _, err := fmt.Fprintf(out, "managed bin dir is NOT on PATH: %s\n", binDir); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(out, "  add it with: eval \"$(festival shell-init zsh)\"\n"); err != nil {
+		hint := `eval "$(festival shell-init zsh)"`
+		if runtime.GOOS == "windows" {
+			hint = `festival shell-init powershell | Invoke-Expression`
+		}
+		if _, err := fmt.Fprintf(out, "  add it with: %s\n", hint); err != nil {
 			return err
 		}
 	}
@@ -174,15 +191,19 @@ func ManagedBinOnPath(ctx context.Context) (binDir string, onPath bool, err erro
 	return binDir, dirOnPath(binDir), nil
 }
 
-// ShellFromEnv resolves the user's shell from $SHELL, which is the pragmatic
-// source for this. Anything unset or unrecognized falls back to zsh, matching
-// what shell-init defaults to. Supported shells are zsh, bash and fish.
+// ShellFromEnv resolves the user's shell from $SHELL. On Windows an unset or
+// unrecognized name uses Windows PowerShell, whose command syntax also works in
+// PowerShell 7. An explicit pwsh name selects the PowerShell 7 profile.
 func ShellFromEnv() string {
-	name := filepath.Base(strings.TrimSpace(os.Getenv("SHELL")))
+	name := strings.ToLower(filepath.Base(strings.TrimSpace(os.Getenv("SHELL"))))
+	name = strings.TrimSuffix(name, ".exe")
 	switch name {
-	case "zsh", "bash", "fish":
+	case "zsh", "bash", "fish", "powershell", "pwsh":
 		return name
 	default:
+		if runtime.GOOS == "windows" {
+			return "powershell"
+		}
 		return "zsh"
 	}
 }

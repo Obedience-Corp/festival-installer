@@ -53,8 +53,11 @@ func FirstRunGuidance(shell string) string {
 // shellInitLineFor is the copy-pasteable line for one shell. fish has no eval,
 // so printing the zsh form to a fish user would hand them something that fails.
 func shellInitLineFor(shell string) string {
-	if shell == "fish" {
+	switch shell {
+	case "fish":
 		return "festival shell-init fish | source"
+	case "powershell", "pwsh":
+		return "festival shell-init " + shell + " | Invoke-Expression"
 	}
 	return `eval "$(festival shell-init ` + shell + `)"`
 }

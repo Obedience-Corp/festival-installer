@@ -64,7 +64,7 @@
             "additionalProperties": false,
             "required": ["os", "arch"],
             "properties": {
-              "os": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["darwin", "linux"] } },
+              "os": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["darwin", "linux", "windows"] } },
               "arch": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["amd64", "arm64"] } }
             }
           },
@@ -90,7 +90,7 @@
               "required": ["kind", "os", "arch", "url", "sha256"],
               "properties": {
                 "kind": { "type": "string", "enum": ["suite-archive", "tar.gz", "binary"] },
-                "os": { "type": "string", "enum": ["darwin", "linux"] },
+                "os": { "type": "string", "enum": ["darwin", "linux", "windows"] },
                 "arch": { "type": "string", "enum": ["amd64", "arm64", "all"] },
                 "url": { "type": "string", "format": "uri" },
                 "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },

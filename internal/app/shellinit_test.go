@@ -86,7 +86,32 @@ func TestShellInit_PackageOriginSourcesHelper(t *testing.T) {
 }
 
 func TestShellInitSnippet_Unsupported(t *testing.T) {
-	if _, err := ShellInitSnippet("powershell", "/tmp/bin"); err == nil {
+	if _, err := ShellInitSnippet("unknown", "/tmp/bin"); err == nil {
 		t.Fatal("expected unsupported shell error")
+	}
+}
+
+func TestShellInitSnippet_PowerShellQuotesBinDir(t *testing.T) {
+	binDir := `C:\Users\O'Brien\Festival bin`
+	got, err := ShellInitSnippet("powershell", binDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, `$env:PATH = 'C:\Users\O''Brien\Festival bin' + [System.IO.Path]::PathSeparator + $env:PATH`) {
+		t.Fatalf("PowerShell PATH snippet escaped incorrectly: %s", got)
+	}
+}
+
+func TestShellInitSnippet_PwshUsesHostPathSeparator(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/pwsh")
+	if got := ShellFromEnv(); got != "pwsh" {
+		t.Fatalf("ShellFromEnv = %q, want pwsh", got)
+	}
+	snippet, err := ShellInitSnippet(ShellFromEnv(), "/opt/festival/bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(snippet, `[System.IO.Path]::PathSeparator`) || strings.Contains(snippet, `+ ';' +`) {
+		t.Fatalf("pwsh must preserve the host PATH separator: %s", snippet)
 	}
 }

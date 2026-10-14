@@ -7,8 +7,26 @@ import (
 	"testing"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
+
+func TestSuiteBinaryNamesForWindows(t *testing.T) {
+	for _, tc := range []struct {
+		entry        metadata.InstallEntry
+		source, dest string
+	}{
+		{metadata.InstallEntry{Source: "camp", ExecutableName: "camp"}, "camp.exe", "camp.exe"},
+		{metadata.InstallEntry{Source: "fest", ExecutableName: "fest"}, "fest.exe", "fest.exe"},
+		{metadata.InstallEntry{Source: "festival"}, "festival.exe", "festival.exe"},
+		{metadata.InstallEntry{Source: "bin/camp.exe", ExecutableName: "camp.exe"}, "bin/camp.exe", "camp.exe"},
+	} {
+		source, dest := suiteBinaryNames(tc.entry, "windows")
+		if source != tc.source || dest != tc.dest {
+			t.Fatalf("%+v => %q, %q; want %q, %q", tc.entry, source, dest, tc.source, tc.dest)
+		}
+	}
+}
 
 func TestInstallFestivalBootstrapsOfficialSourceOnFreshHome(t *testing.T) {
 	t.Setenv("FESTIVAL_HOME", t.TempDir())
