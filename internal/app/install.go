@@ -111,6 +111,13 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 	if err := refusePackageChannel(ctx, opts.Force); err != nil {
 		return InstallResult{}, err
 	}
+	placement, selfPath, err := ResolveSelf(ctx)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if err := refuseRunningWindowsSelfReplacement(placement); err != nil {
+		return InstallResult{}, err
+	}
 	vo := opts.Verify
 	progress := opts.Progress
 
@@ -187,11 +194,6 @@ func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 	extractDir := filepath.Join(stageDir, "extracted")
 	report(progress, ProgressEvent{Stage: "extract", Package: FestivalPackageID, Percent: 0.7, Message: "extracting archive"})
 	if err := extractSuiteArchive(ctx, archivePath, extractDir, art.OS); err != nil {
-		return InstallResult{}, err
-	}
-
-	placement, selfPath, err := ResolveSelf(ctx)
-	if err != nil {
 		return InstallResult{}, err
 	}
 

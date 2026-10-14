@@ -84,6 +84,10 @@ func ShellGuidanceFor(ctx context.Context, shell string) (ShellGuidance, error) 
 	g := ShellGuidance{Bin: origin.Prefix, OnPath: origin.Kind != OriginAbsent && origin.Kind != OriginLeftover}
 	switch origin.Kind {
 	case OriginPackage:
+		if origin.Flavor == FlavorScoop {
+			g.Snippet = "# Scoop has already put its shims on PATH.\n# upgrade: " + origin.Upgrade + "\n"
+			return g, nil
+		}
 		h := origin.Helper
 		if strings.HasPrefix(h, "source ") {
 			h = strings.TrimPrefix(h, "source ")

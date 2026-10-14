@@ -54,6 +54,9 @@ func classifyPath(ctx context.Context, path string) (OriginKind, PackageFlavor, 
 			return OriginManaged, "", ""
 		}
 	}
+	if scoopOwns(path) {
+		return OriginPackage, FlavorScoop, "festival"
+	}
 
 	if prefix, ok := brewPrefixFor(path); ok {
 		if brewOwns(prefix, path) || helperFile(filepath.Join(prefix, "share", "festival", "shell")) != "" {

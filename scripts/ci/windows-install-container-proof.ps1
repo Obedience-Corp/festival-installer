@@ -11,8 +11,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $Suites = @(
     @{ Package = './internal/artifacts'; Exe = 'artifacts.test.exe'; Pattern = '^Test(ExtractZip|VerifySHA256_Mismatch)' },
     @{ Package = './internal/state/lock'; Exe = 'lock.test.exe'; Pattern = '^Test(AcquireRelease_HappyPath|SecondAcquireBlocksUntilRelease|Acquire_ContextCancel|CrashRecovery_KernelReleasesLock)$' },
-    @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|WindowsSuiteUpgradeRollbackOnLockedExecutable)$' },
-    @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions)$' },
+    @{ Package = './internal/installer'; Exe = 'installer.test.exe'; Pattern = '^Test(Commit_PlacesFilesAndWritesReceipt|Commit_UpgradeReplacesPriorBinary|Commit_FailureRestoresPriorBinaries|WindowsSuiteUpgradeRollbackOnLockedExecutable|WindowsRunningExecutableCannotBeReplaced)$' },
+    @{ Package = './internal/app'; Exe = 'app.test.exe'; Pattern = '^Test(SuiteBinaryNamesForWindows|ProductExecutableNames|ShellInitSnippet_PowerShellQuotesBinDir|WindowsDoctorVerifiesThreeManagedExecutablesAcrossVersions|WindowsScoopShimOriginAndGuidance|WindowsScoopShimRejectsUnownedPaths|WindowsManagedSelfUpdateGuard)$' },
     @{ Package = './internal/metadata'; Exe = 'metadata.test.exe'; Pattern = '^TestParseManifestWindowsSuiteArtifact$' }
 )
 
@@ -43,7 +43,7 @@ try {
 
     foreach ($suite in $Suites) {
         $exe = 'C:\proof\' + $suite.Exe
-        $output = & docker exec --user ContainerUser -e 'TEMP=C:\Users\ContainerUser\AppData\Local\Temp' -e 'TMP=C:\Users\ContainerUser\AppData\Local\Temp' $container $exe -test.v -test.count=1 -test.run $suite.Pattern 2>&1
+        $output = & docker exec --user ContainerUser -e 'TEMP=C:\Users\ContainerUser\AppData\Local\Temp' -e 'TMP=C:\Users\ContainerUser\AppData\Local\Temp' $container $exe '-test.v' '-test.count=1' "-test.run=$($suite.Pattern)" 2>&1
         $exitCode = $LASTEXITCODE
         $output | ForEach-Object { Write-Host $_ }
         if ($exitCode -ne 0) { throw "$($suite.Package) native proof failed ($exitCode)" }

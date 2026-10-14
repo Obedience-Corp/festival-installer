@@ -5,9 +5,12 @@ package installer_test
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 
@@ -77,5 +80,118 @@ func TestWindowsSuiteUpgradeRollbackOnLockedExecutable(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, installer.JournalName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stale install journal after successful rollback: %v", err)
+	}
+}
+
+// Run a copy of this test binary as the managed festival.exe while its parent
+// attempts a three-tool transaction. Windows locks the image of a live process;
+// the transaction must fail at festival.exe and restore both earlier tools.
+func TestWindowsRunningExecutableCannotBeReplaced(t *testing.T) {
+	if ready := os.Getenv("FESTIVAL_SELF_LOCK_READY"); ready != "" {
+		if err := os.WriteFile(ready, []byte("ready"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(25 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(os.Getenv("FESTIVAL_SELF_LOCK_RELEASE")); err == nil {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatal("parent did not release managed executable")
+	}
+
+	home, db := newHomeDB(t)
+	ctx := context.Background()
+	binDir := filepath.Join(home, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"camp.exe", "fest.exe"} {
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte("old-"+name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := filepath.Join(binDir, "festival.exe")
+	src, err := os.Open(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, err := os.Create(running)
+	if err != nil {
+		_ = src.Close()
+		t.Fatal(err)
+	}
+	_, copyErr := io.Copy(dst, src)
+	closeDstErr := dst.Close()
+	_ = src.Close()
+	if copyErr != nil || closeDstErr != nil {
+		t.Fatalf("copy executable: %v, close: %v", copyErr, closeDstErr)
+	}
+	ready := filepath.Join(home, "child-ready")
+	release := filepath.Join(home, "child-release")
+	child := exec.Command(running, "-test.run=^TestWindowsRunningExecutableCannotBeReplaced$", "-test.count=1")
+	child.Env = append(os.Environ(), "FESTIVAL_SELF_LOCK_READY="+ready, "FESTIVAL_SELF_LOCK_RELEASE="+release)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = child.Process.Kill(); _ = child.Wait() })
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("managed festival.exe child never became ready")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	oldSelf, err := os.ReadFile(running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldReceipt := receipts.Receipt{PackageID: "obedience-corp/festival", Version: "1.0.0", Channel: "stable", Source: "official-obey"}
+	if err := receipts.Write(ctx, db.Raw(), oldReceipt); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := installer.Begin(ctx, db.Raw(), home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"camp.exe", "fest.exe", "festival.exe"} {
+		staged := stageBlob(t, tx.StagingDir(), name, "new-"+name)
+		if err := tx.Stage(ctx, installer.StagedFile{StagedPath: staged, DestPath: filepath.Join(binDir, name), Mode: 0o755}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Commit(ctx, installer.ReceiptInfo{PackageID: oldReceipt.PackageID, Version: "2.0.0", Channel: "stable", Source: "official-obey"}); err == nil {
+		t.Fatal("transaction claimed to replace running festival.exe")
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(release, []byte("done"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Wait(); err != nil {
+		t.Fatalf("managed child did not exit cleanly: %v", err)
+	}
+	for _, name := range []string{"camp.exe", "fest.exe", "festival.exe"} {
+		want := []byte("old-" + name)
+		if name == "festival.exe" {
+			want = oldSelf
+		}
+		got, err := os.ReadFile(filepath.Join(binDir, name))
+		if err != nil || string(got) != string(want) {
+			t.Fatalf("%s after rollback changed: %v, %v", name, len(got), err)
+		}
+	}
+	gotReceipt, err := receipts.Get(ctx, db.Raw(), oldReceipt.PackageID)
+	if err != nil || gotReceipt.Version != oldReceipt.Version {
+		t.Fatalf("receipt changed after locked self: %+v, %v", gotReceipt, err)
 	}
 }

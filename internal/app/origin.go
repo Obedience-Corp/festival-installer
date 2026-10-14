@@ -29,6 +29,7 @@ type PackageFlavor string
 const (
 	FlavorAUR       PackageFlavor = "aur"
 	FlavorHomebrew  PackageFlavor = "homebrew"
+	FlavorScoop     PackageFlavor = "scoop"
 	FlavorNpm       PackageFlavor = "npm"
 	FlavorDeb       PackageFlavor = "deb"
 	FlavorRpm       PackageFlavor = "rpm"
