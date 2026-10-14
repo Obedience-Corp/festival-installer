@@ -3,7 +3,6 @@
 package cli_test
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Obedience-Corp/festival-installer/internal/cli"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
@@ -24,35 +22,33 @@ func TestWindowsFirstRunPowerShellCommand(t *testing.T) {
 	t.Setenv("FESTIVAL_HOME", home)
 	t.Setenv("OBEY_INSTALLER_HOME", "")
 	t.Setenv("SHELL", "")
-	basePath := os.Getenv("PATH")
-	t.Setenv("PATH", filepath.Dir(os.Args[0])+string(os.PathListSeparator)+basePath)
-
-	var out, errOut bytes.Buffer
-	if err := cli.BareInvocation(ctx, &out, &errOut, func() error {
-		t.Fatal("first run unexpectedly called help")
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if got := cli.ShellFromEnv(); got != "powershell" {
-		t.Fatalf("Windows default shell = %q, want powershell", got)
+	binary := filepath.Join(filepath.Dir(os.Args[0]), "festival.exe")
+	bare := exec.Command(binary)
+	out, err := bare.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bare festival first run failed: %v\n%s", err, out)
 	}
 	var line string
-	for _, text := range strings.Split(out.String(), "\n") {
+	for _, text := range strings.Split(string(out), "\n") {
 		if _, value, ok := strings.Cut(text, "Wire your PATH:"); ok {
 			line = strings.TrimSpace(value)
 			break
 		}
 	}
 	if line != "festival shell-init powershell | Invoke-Expression" {
-		t.Fatalf("first-run PATH command = %q:\n%s", line, out.String())
+		t.Fatalf("first-run PATH command = %q:\n%s", line, out)
 	}
 	binDir, err := state.BinDir(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ps := `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`
-	cmd := exec.Command(ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", line+"; [Console]::Out.Write($env:PATH)")
+	// A user can invoke an unpacked installer by path before it is on PATH.
+	// Define the command for this PowerShell session without making that
+	// unpacked copy look like a managed or package installation to the child.
+	quotedBinary := strings.ReplaceAll(binary, "'", "''")
+	script := "function festival { & '" + quotedBinary + "' @args }; " + line + "; [Console]::Out.Write($env:PATH)"
+	cmd := exec.Command(ps, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("pasting first-run line into Windows PowerShell failed: %v\n%s", err, output)
