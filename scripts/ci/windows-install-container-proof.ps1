@@ -55,12 +55,24 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'create proof directory failed' }
     & docker cp "${OutDir}\." "${container}:C:\proof"
     if ($LASTEXITCODE -ne 0) { throw 'copy proof executables failed' }
+    & docker exec $container cmd /S /C 'mkdir C:\proof\internal\metadata'
+    if ($LASTEXITCODE -ne 0) { throw 'create metadata test directory failed' }
+    & docker exec $container cmd /S /C 'mkdir C:\proof\testdata\metadata\manifest'
+    if ($LASTEXITCODE -ne 0) { throw 'create metadata fixture directory failed' }
+    $manifestFixture = Join-Path $RepoRoot 'testdata/metadata/manifest/valid.json'
+    & docker cp $manifestFixture "${container}:C:\proof\testdata\metadata\manifest\valid.json"
+    if ($LASTEXITCODE -ne 0) { throw 'copy metadata manifest fixture failed' }
     & docker exec --user ContainerUser $container whoami
     if ($LASTEXITCODE -ne 0) { throw 'ContainerUser identity proof failed' }
 
     foreach ($suite in $Suites) {
         $exe = 'C:\proof\' + $suite.Exe
-        $output = & docker exec --user ContainerUser -e 'TEMP=C:\Users\ContainerUser\AppData\Local\Temp' -e 'TMP=C:\Users\ContainerUser\AppData\Local\Temp' $container $exe '-test.v' '-test.count=1' "-test.run=$($suite.Pattern)" 2>&1
+        $dockerArgs = @('exec', '--user', 'ContainerUser', '-e', 'TEMP=C:\Users\ContainerUser\AppData\Local\Temp', '-e', 'TMP=C:\Users\ContainerUser\AppData\Local\Temp')
+        if ($suite.Package -eq './internal/metadata') {
+            $dockerArgs += @('--workdir', 'C:\proof\internal\metadata')
+        }
+        $dockerArgs += @($container, $exe, '-test.v', '-test.count=1', "-test.run=$($suite.Pattern)")
+        $output = & docker @dockerArgs 2>&1
         $exitCode = $LASTEXITCODE
         $output | ForEach-Object { Write-Host $_ }
         if ($exitCode -ne 0) { throw "$($suite.Package) native proof failed ($exitCode)" }
