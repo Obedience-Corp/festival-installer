@@ -51,6 +51,19 @@ func TestWindowsTourPathConsentProfileAndReadback(t *testing.T) {
 			_ = os.WriteFile(profile, original, 0o644)
 		}
 	})
+	assertUnchanged := func(stage string) {
+		t.Helper()
+		body, err := os.ReadFile(profile)
+		if errors.Is(readErr, os.ErrNotExist) {
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s created or changed profile: %v", stage, err)
+			}
+			return
+		}
+		if err != nil || string(body) != string(original) {
+			t.Fatalf("%s changed profile: %v", stage, err)
+		}
+	}
 
 	m := tourAt(t, app.TourStepPath)
 	next, _ := m.handleEnter()
@@ -61,17 +74,13 @@ func TestWindowsTourPathConsentProfileAndReadback(t *testing.T) {
 	if !strings.Contains(confirm.confirmMsg, "$env:PATH = ") {
 		t.Fatalf("tour confirmation omitted executable PowerShell PATH line: %q", confirm.confirmMsg)
 	}
-	if before, err := os.ReadFile(profile); (err == nil && string(before) != string(original)) || (err != nil && !errors.Is(err, readErr)) {
-		t.Fatalf("showing confirmation changed profile: %v", err)
-	}
+	assertUnchanged("showing confirmation")
 	confirm.confirmYes = false
 	_, noCmd := confirm.handleEnter()
 	if noCmd != nil {
 		t.Fatal("declining PowerShell profile append returned a write command")
 	}
-	if before, err := os.ReadFile(profile); (err == nil && string(before) != string(original)) || (err != nil && !errors.Is(err, readErr)) {
-		t.Fatalf("declining changed profile: %v", err)
-	}
+	assertUnchanged("declining")
 
 	next, _ = m.handleEnter()
 	confirm = next.(model)
