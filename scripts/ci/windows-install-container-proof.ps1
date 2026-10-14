@@ -27,6 +27,23 @@ try {
     Pop-Location
 }
 
+# Hosted Windows runners can expose docker.exe before the Windows Docker
+# service has started. Do not misreport that startup race as a product failure.
+$DockerService = Get-Service -Name docker -ErrorAction SilentlyContinue
+if ($DockerService -and $DockerService.Status -ne 'Running') {
+    Start-Service docker
+}
+$DockerReady = $false
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    $serverVersion = & docker info --format '{{.ServerVersion}}' 2>$null
+    if ($LASTEXITCODE -eq 0 -and $serverVersion) {
+        $DockerReady = $true
+        break
+    }
+    Start-Sleep -Seconds 5
+}
+if (-not $DockerReady) { throw 'Windows Docker daemon did not become ready' }
+
 & docker pull $Image
 if ($LASTEXITCODE -ne 0) { throw "pull $Image failed ($LASTEXITCODE)" }
 $container = (& docker create $Image powershell.exe -NoProfile -Command 'Start-Sleep -Seconds 1800').Trim()
