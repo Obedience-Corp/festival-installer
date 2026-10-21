@@ -219,3 +219,28 @@ func TestIntegrationUsesZshenvRedirectFromGUILaunch(t *testing.T) {
 		t.Fatal("wrote inactive profile")
 	}
 }
+
+func TestUnsupportedShellCanOptOutAndRemoveTrackedBlocks(t *testing.T) {
+	_, _ = integrationFixture(t, "bash")
+	ctx := context.Background()
+	if report, err := ReconcileIntegrations(ctx, IntegrationOptions{}); err != nil || !report.Ready {
+		t.Fatalf("setup: %+v %v", report, err)
+	}
+	t.Setenv("SHELL", "/bin/nu")
+	report, err := ReconcileIntegrations(ctx, IntegrationOptions{Disable: true})
+	if err != nil || !report.Disabled {
+		t.Fatalf("disable: %+v %v", report, err)
+	}
+	for _, check := range report.Checks {
+		if check.Status != "ready" && check.Status != "not_required" && check.Status != "disabled" {
+			t.Fatalf("opt-out blocked: %+v", check)
+		}
+	}
+	files, _ := integrationProfiles("bash")
+	for _, path := range files {
+		data, _ := os.ReadFile(path)
+		if strings.Contains(string(data), shellsetup.Begin) {
+			t.Fatal("tracked block remained")
+		}
+	}
+}

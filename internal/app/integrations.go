@@ -67,13 +67,8 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 		var err error
 		r.Shell, err = integrationShell(ctx)
 		if err != nil {
-			r.add("shell", "unsupported", err.Error(), "", true)
-			return r, nil
+			r.Shell = "unknown"
 		}
-	}
-	if !shellsetup.Supported(r.Shell) {
-		r.add("shell", "unsupported", "Choose a supported terminal shell in setup.", r.Shell, false)
-		return r, nil
 	}
 	home, err := state.Home(ctx)
 	if err != nil {
@@ -110,17 +105,21 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 	}
 	if settings.Disabled {
 		r.Disabled, r.Ready = true, false
-		profiles, err := integrationProfilesFor(ctx, r.Shell)
-		if err != nil {
-			r.add("profile", "failed", err.Error(), "", true)
-		}
-		for _, path := range profiles {
-			settings.Files = addUnique(settings.Files, path)
+		if shellsetup.Supported(r.Shell) {
+			profiles, err := integrationProfilesFor(ctx, r.Shell)
+			if err != nil {
+				r.add("profile", "failed", err.Error(), "", true)
+			}
+			for _, path := range profiles {
+				settings.Files = addUnique(settings.Files, path)
+			}
 		}
 		for _, path := range settings.Files {
 			r.profile(ctx, path, "", home, opts.Check)
 		}
 		r.Checks = append(r.Checks, IntegrationCheck{ID: "preference", Status: "disabled", Message: "Automatic terminal integration is disabled. Enable it in setup to use ordinary provider commands.", Repairable: true})
+	} else if !shellsetup.Supported(r.Shell) {
+		r.add("shell", "unsupported", "Automatic integration supports Bash, Zsh, Fish and PowerShell. Choose one with --shell, or disable automatic terminal integration in advanced setup.", r.Shell, false)
 	} else {
 		reconcileShell(ctx, &r, &settings, home, opts.Check)
 	}
