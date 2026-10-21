@@ -197,6 +197,14 @@ func declaredBinaries(rs *release.Source, packageID string) ([]string, error) {
 // ships obey, so refusing here would leave a Homebrew user with no daemon at
 // all, which is why E_INSTALL_PACKAGE_CHANNEL is unreachable for this target.
 func InstallObey(ctx context.Context, opts InstallOptions) (InstallResult, error) {
+	res, err := installObey(ctx, opts)
+	if err == nil {
+		res.Integrations = integrationAfterInstall(ctx, opts.NoIntegrations)
+	}
+	return res, err
+}
+
+func installObey(ctx context.Context, opts InstallOptions) (InstallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return InstallResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
 	}
@@ -401,6 +409,15 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 // already running needs the restart, because only that one keeps serving the
 // replaced image.
 func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
+	res, warning, err := updateObey(ctx, opts)
+	if err == nil && res.Action != "absent" {
+		res.Integrations = integrationAfterInstall(ctx, false)
+		warning = appendWarning(warning, IntegrationNote(res.Integrations))
+	}
+	return res, warning, err
+}
+
+func updateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, error) {
 	if err := ctx.Err(); err != nil {
 		return UpdateResult{}, "", errpkg.Wrap("E_UPDATE_CTX", err, "context cancelled")
 	}
@@ -410,6 +427,9 @@ func UpdateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 		return UpdateResult{}, "", err
 	}
 	if !found {
+		if managedToolchain(ctx) {
+			return installManagedUpdate(ctx, "obey", opts)
+		}
 		return unmanagedObey(ctx)
 	}
 

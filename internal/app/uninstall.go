@@ -24,6 +24,14 @@ var ErrOutsideManagedBin = errpkg.New("E_UNINSTALL_PATH", "receipt file resolves
 // UninstallTarget removes festival suite or a plugin by CLI selector. The
 // second value is a human warning, empty when nothing needs saying.
 func UninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
+	res, warning, err := uninstallTarget(ctx, target)
+	if err == nil && len(res.Removed) > 0 && (res.Package == FestivalPackageID || res.Package == ObeyPackageID) {
+		warning = appendWarning(warning, IntegrationNote(integrationAfterInstall(ctx, false)))
+	}
+	return res, warning, err
+}
+
+func uninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
 	packageID := FestivalPackageID
 	if host, name, ok := PluginHost(target); ok {
 		// Uninstall resolves the package id from local marketplace metadata
@@ -99,7 +107,7 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 			}
 		}
 	}
-	if packageID == FestivalPackageID && origin.Kind == OriginLeftover {
+	if packageID == FestivalPackageID && origin.Kind == OriginLeftover && !managedToolchain(ctx) {
 		note := "leftover binaries at " + origin.Prefix + "; festival uninstall cannot remove them; see " + docsInstall
 		return UninstallResult{Package: packageID, Note: note}, nil
 	}

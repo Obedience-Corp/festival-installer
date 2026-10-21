@@ -40,6 +40,10 @@ func UpdateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	if err == nil && result.Action != "absent" && result.Starter == nil {
 		result.Starter = SetupStarter(ctx, "")
 	}
+	if err == nil && result.Action != "absent" {
+		result.Integrations = integrationAfterInstall(ctx, false)
+		warning = appendWarning(warning, IntegrationNote(result.Integrations))
+	}
 	return result, warning, err
 }
 
@@ -58,7 +62,7 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 	// Dual and package origin never plant ~/.obey/installer from update
 	// (including --force: tell the user to `festival install --force`).
 	origin, _ := DetectSuite(ctx)
-	if origin.Kind == OriginPackage || origin.Dual {
+	if !managedToolchain(ctx) && (origin.Kind == OriginPackage || origin.Dual) {
 		return packageUpdateResult(ctx, opts, origin, selfPlacement, selfPath)
 	}
 
@@ -67,6 +71,9 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		return UpdateResult{}, "", err
 	}
 	if !found {
+		if managedToolchain(ctx) {
+			return installManagedUpdate(ctx, "festival", opts)
+		}
 		res, warning, herr := handleUnmanaged(ctx)
 		res.SelfPlacement = selfPlacement
 		res.SelfPath = selfPath
@@ -102,7 +109,7 @@ func updateFestival(ctx context.Context, opts UpdateOptions) (UpdateResult, stri
 		return UpdateResult{Package: FestivalPackageID, Action: "current", Version: installedVersion, SelfPlacement: selfPlacement, SelfPath: selfPath}, warning, nil
 	}
 
-	res, err := InstallFestival(ctx, InstallOptions{
+	res, err := installFestival(ctx, InstallOptions{
 		Channel:            channel,
 		Source:             rec.Source,
 		Verify:             opts.Verify,

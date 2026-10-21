@@ -61,6 +61,8 @@ func resolveToolFrom(ctx context.Context, tool string, origin SuiteOrigin) (stri
 	}
 
 	switch {
+	case managedToolchain(ctx) && managed != "":
+		return managed, "", nil
 	case origin.Kind == OriginPackage:
 		if onPATH != "" {
 			return onPATH, "", nil

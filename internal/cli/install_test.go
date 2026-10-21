@@ -74,7 +74,8 @@ func TestDropHostFestivalPATH_RemovesNonSystemSuiteDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(packageBin, "festival"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatalf("write package festival: %v", err)
 	}
-	original := strings.Join([]string{packageBin, "/usr/bin", "/bin"}, string(os.PathListSeparator))
+	ordinaryBin := t.TempDir()
+	original := strings.Join([]string{packageBin, ordinaryBin}, string(os.PathListSeparator))
 	got := pathWithoutDirectories(original, suiteDirectories(original))
 
 	for _, dir := range got {
@@ -82,7 +83,7 @@ func TestDropHostFestivalPATH_RemovesNonSystemSuiteDirectory(t *testing.T) {
 			t.Fatalf("package suite directory remained on PATH: %v", got)
 		}
 	}
-	if !slices.Contains(got, "/bin") {
+	if !slices.Contains(got, ordinaryBin) {
 		t.Fatalf("ordinary tool directory was removed from PATH: %v", got)
 	}
 }
@@ -453,7 +454,7 @@ func TestInstallFestival_ExternalHubSkipsAndWarns(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &envelope); err != nil {
 		t.Fatalf("decode envelope: %v\n%s", err, out)
 	}
-	if len(envelope.Warnings) != 1 || !strings.Contains(envelope.Warnings[0], "left untouched") {
+	if !slices.ContainsFunc(envelope.Warnings, func(warning string) bool { return strings.Contains(warning, "left untouched") }) {
 		t.Fatalf("expected a left-untouched warning in the JSON warnings array, got %v", envelope.Warnings)
 	}
 

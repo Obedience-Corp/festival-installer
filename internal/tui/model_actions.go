@@ -374,6 +374,9 @@ func runInstall(ctx context.Context, channel string, allowUnverified, force bool
 		}
 		body := fmt.Sprintf("installed %s %s (%s)\n", res.Package, res.Version, res.Channel)
 		body += installedFilesBody(res.Files)
+		if note := app.IntegrationNote(res.Integrations); note != "" {
+			body += "\n" + note + "\n"
+		}
 		if notice := res.Starter.Notice(); notice != "" {
 			body += "\n" + notice + "\n"
 		}

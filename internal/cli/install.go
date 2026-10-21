@@ -18,6 +18,7 @@ func NewInstallCommand() *cobra.Command {
 	var allowUnverified bool
 	var force bool
 	var noRestart bool
+	var noIntegrations bool
 	cmd := &cobra.Command{
 		Use:   "install <festival|camp|fest|obey>",
 		Short: "Install the festival suite (camp, fest, and festival)",
@@ -49,15 +50,22 @@ func NewInstallCommand() *cobra.Command {
 				}
 			}
 			res, err := app.InstallTarget(cmd.Context(), target, app.InstallOptions{
-				Channel:   channel,
-				Verify:    vo,
-				Force:     force,
-				NoRestart: noRestart,
+				Channel:        channel,
+				Verify:         vo,
+				Force:          force,
+				NoRestart:      noRestart,
+				NoIntegrations: noIntegrations,
 			})
 			if err != nil {
 				return err
 			}
 			var warnings []string
+			if note := app.IntegrationNote(res.Integrations); note != "" {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "install: "+textsafe.Block(note))
+				if !res.Integrations.Ready {
+					warnings = append(warnings, note)
+				}
+			}
 			if res.SelfSkipped {
 				note := app.SelfSkippedNote(res.SelfPlacement, res.SelfPath)
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "install: "+note)
@@ -79,6 +87,7 @@ func NewInstallCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "install a hub copy even when a package-manager suite is already on PATH")
 	cmd.Flags().BoolVar(&noRestart, "no-restart", false,
 		"install the new obey binaries without restarting the running daemon")
+	cmd.Flags().BoolVar(&noIntegrations, "no-shell-setup", false, "disable automatic terminal integration (remembered across updates)")
 	return cmd
 }
 

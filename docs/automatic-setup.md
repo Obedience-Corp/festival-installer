@@ -1,0 +1,64 @@
+# Automatic setup and repair
+
+`festival setup integrations` is the common app/CLI setup operation. It caches
+camp/fest/Obey-generated helpers, adds one owned startup block, verifies a fresh
+shell, and installs current user provider hooks. Shell startup uses local files
+and performs no installer network check. `festival setup` without a subcommand
+still creates the starter camp.
+
+The JSON envelope's `data.schema` is `festival-integrations/v1`. Its fields are
+`shell`, `ready`, `changed`, `new_terminal`, `disabled`, and `checks`. Each check
+has an `id`, `status`, `message`, optional `path`, and `repairable`. Exit success
+means a report was produced; callers must inspect readiness. `upgrade_required`
+means the resolved tool cannot generate its integration, so the app can update
+it and retry. Read-only `--check` does not write installer state, startup files,
+or hooks, but fresh-shell verification executes the user's startup scripts.
+
+## Customization and removal
+
+Bash setup covers `.bashrc` and the first existing login profile. Zsh honors
+`ZDOTDIR`, Fish honors `XDG_CONFIG_HOME`, and PowerShell uses its resolved
+profile. An explicit `--shell` overrides login-shell detection. Unsupported
+shells and malformed/duplicate Festival blocks are reported for repair.
+Existing aliases/functions are preserved and may prevent automatic wrapping;
+explicit `obey wrap <provider>` remains available. Scripts and pipelines keep
+their normal behavior.
+
+Changes preserve unrelated bytes and permissions, follow rc symlinks, and save
+backups under `$FESTIVAL_HOME/backups/integration` (default home:
+`~/.obey/installer`). Setup uses the installer lock and rejects concurrent file
+changes before replacement. Repeated setup is idempotent.
+
+`--disable` removes tracked owned startup blocks and persists the preference.
+`--enable` restores automatic configuration. `install --no-shell-setup` records
+the same opt-out. Provider hooks remain useful for observation and explicit
+wrapped launches. Uninstall refreshes the helper for remaining components and
+removes owned blocks when none remain. Cached helper files, preferences, and
+backups are retained; unrelated configuration is never removed.
+
+## App-managed toolchains and prerequisites
+
+The global `--managed` flag selects a separate installer-managed toolchain for
+status, resolve, install, update, and integration setup. The app passes it on
+every installer invocation. When a package-owned copy is incompatible, a signed
+managed copy is installed in the user installer bin directory; no Homebrew,
+AUR, or other package files are overwritten. Reported tool paths show the copy
+in use. Generated shell helpers put those tool directories first. CLI calls
+without this explicit mode retain existing package ownership rules.
+
+`festival setup prerequisites --json` installs missing Git using the OS:
+macOS developer tools, Windows Git.Git through winget, or a supported Linux
+package manager through desktop pkexec authorization. Festival never captures
+an administrator password. Linux requires pkexec and apt-get, dnf, pacman, or
+zypper; Windows requires winget. Offline, denied authorization, or unavailable
+system installers produce a retryable explanation. macOS installation can be
+pending while the system dialog runs. Some Windows environments need the app
+reopened after Git installation to inherit the new PATH.
+
+## Releases
+
+Ship the installer API before an app that requires it. App packaging verifies
+the staged installer's schema and managed-mode support in addition to release
+checksums. Obey must contain `wrap shell-init` and compatible provider hooks.
+Obey is proprietary and is installed from distributed artifacts, never by
+requiring customer access to its private source repository.
