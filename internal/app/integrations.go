@@ -297,7 +297,7 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 	if shell == "pwsh" || shell == "powershell" {
 		out, err = shellsetup.RunInput(ctx, target.Path, shellsetup.ProbeHelpers(shell, helpers, false)+"exit\n", args...)
 	} else {
-		out, err = shellsetup.Run(ctx, target.Path, args...)
+		out, err = shellsetup.RunProbe(ctx, target.Path, args...)
 	}
 	if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
 		r.add("fresh_shell", "failed", "The shell did not load the expected helpers. Check custom provider aliases/functions or startup errors, then repair setup.", target.Path, true)

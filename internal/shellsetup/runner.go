@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -30,10 +31,23 @@ func Run(ctx context.Context, binary string, args ...string) (string, error) {
 // RunInput can exercise the ordinary interactive PowerShell startup path by
 // feeding commands at its prompt, without -Command or -NonInteractive.
 func RunInput(ctx context.Context, binary, input string, args ...string) (string, error) {
+	return runInput(ctx, binary, input, nil, args...)
+}
+
+// RunProbe marks only the child readiness shell, keeping probe-only completion
+// policy out of ordinary user terminals and tool-generation subprocesses.
+func RunProbe(ctx context.Context, binary string, args ...string) (string, error) {
+	return runInput(ctx, binary, "", []string{"FESTIVAL_INTEGRATION_PROBE=1"}, args...)
+}
+
+func runInput(ctx context.Context, binary, input string, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...) //nolint:gosec // resolved local tool with explicit arguments
 	prepareCommand(cmd)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	if input != "" {
 		cmd.Stdin = strings.NewReader(input)
 	}

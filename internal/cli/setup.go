@@ -79,8 +79,18 @@ func newIntegrationsCommand() *cobra.Command {
 			}
 			if report.Ready {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Terminal setup is ready. Open a new terminal to use newly configured helpers.")
+				return err
 			}
-			return err
+			// An explicit, successfully applied opt-out is a completed request.
+			if opts.Disable && report.Disabled {
+				for _, check := range report.Checks {
+					if check.Status != "ready" && check.Status != "not_required" && check.Status != "disabled" {
+						return errpkg.New("E_INTEGRATION_SETUP", "Terminal setup needs attention; see the checks above.")
+					}
+				}
+				return nil
+			}
+			return errpkg.New("E_INTEGRATION_SETUP", "Terminal setup is not ready; see the checks above.")
 		},
 	}
 	cmd.Flags().StringVar(&opts.Shell, "shell", "", "shell name or absolute executable (defaults to login shell; both installed PowerShell editions on Windows)")

@@ -32,6 +32,8 @@ jobs:
         run: go test ./...
       - name: Prove non-Windows pwsh profile append in a container
         run: just testing pwsh-append-container-proof
+      - name: Prove shell completion policy and app tool precedence
+        run: just testing shell-integration-container-proof
       - name: Prove PowerShell interactive-only integration
         run: |
           CGO_ENABLED=0 go test -c -tags container_fs -o "$RUNNER_TEMP/festival-shellsetup.test" ./internal/shellsetup

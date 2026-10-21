@@ -8,8 +8,10 @@ still creates the starter camp.
 
 The JSON envelope's `data.schema` is `festival-integrations/v1`. Its fields are
 `shell`, `ready`, `changed`, `new_terminal`, `disabled`, and `checks`. Each check
-has an `id`, `status`, `message`, optional `path`, and `repairable`. Exit success
-means a report was produced; callers must inspect readiness. `upgrade_required`
+has an `id`, `status`, `message`, optional `path`, and `repairable`. In JSON mode, exit success
+means a report was produced; callers must inspect readiness. Without `--json`,
+not-ready reports exit nonzero, including root refusal and a persisted opt-out.
+An explicit `--disable` exits successfully when removal and persistence succeed. `upgrade_required`
 means the resolved tool cannot generate its integration, so the app can update
 it and retry. Read-only `--check` does not write installer state, startup files,
 or hooks, but fresh-shell verification executes the user's startup scripts.
@@ -30,7 +32,13 @@ explicit `obey wrap <provider>` remains available. Scripts and pipelines keep
 their normal behavior. PowerShell's owned block is limited to console prompt
 sessions: script, command, encoded-command and ordinary piped invocations do
 not load helpers or change PATH. Other PowerShell hosts/custom launch modes
-are left alone and may require explicit integration.
+are left alone and may require explicit integration. Automatic setup intentionally
+does not change the Windows user Path registry: the managed bin directory is
+available in configured interactive PowerShell prompts, but is not added to
+`cmd.exe`, Explorer launches, or scripts. Use explicit executable paths there,
+or choose the separate advanced PATH setup if process-wide discovery is wanted.
+Zsh keeps its usual completion security prompt in ordinary terminals; only the
+bounded readiness child skips insecure completion directories without prompting.
 
 Changes preserve unrelated bytes and permissions, follow rc symlinks, and save
 backups under `$FESTIVAL_HOME/backups/integration` (default home:
@@ -44,7 +52,10 @@ and return a repairable not-ready report; run setup as the normal user.
 `--enable` restores automatic configuration. `install --no-shell-setup` records
 the same opt-out. Provider hooks remain useful for observation and explicit
 wrapped launches. Uninstall refreshes the helper for remaining components and
-removes owned blocks when none remain. Cached helper files, preferences, and
+removes owned blocks when none remain. Receipt-owned Obey uninstall first removes
+its user-scoped provider hooks, then its service, while the binary still exists.
+A cleanup failure is reported with a retry path; binary removal still follows
+the existing uninstall warning contract. Installs without receipts are left alone. Cached helper files, preferences, and
 backups are retained; unrelated configuration is never removed.
 
 ## App-managed toolchains and prerequisites
@@ -75,3 +86,10 @@ the staged installer's schema and managed-mode support in addition to release
 checksums. Obey must contain `wrap shell-init` and compatible provider hooks.
 Obey is proprietary and is installed from distributed artifacts, never by
 requiring customer access to its private source repository.
+
+The desktop app can set `FESTIVAL_APP_TOOL_BIN` to its existing absolute private
+launcher directory. Helpers keep that directory first after adding tool parents,
+so a stale executable beside another selected tool cannot shadow the app's exact
+resolved executables. Empty, relative, or missing directories are ignored.
+Ordinary terminals without this launch environment retain normal managed PATH
+ordering. The app owns the directory and keeps it alive for its terminal sessions.

@@ -39,8 +39,16 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 			if !filepath.IsAbs(profile) {
 				t.Fatalf("unexpected profile: %q", profile)
 			}
+			toolDir := filepath.Join(home, "tool parent")
+			appDir := filepath.Join(home, "app exact tools")
+			for _, dir := range []string{toolDir, appDir} {
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("FESTIVAL_APP_TOOL_BIN", "")
 			helper := filepath.Join(home, "helper.ps1")
-			if err := os.WriteFile(helper, []byte("$env:FESTIVAL_TEST_HELPER_LOADED = 'yes'\nfunction cgo { }\nfunction fgo { }\n"), 0600); err != nil {
+			if err := os.WriteFile(helper, []byte(Header(shell, []string{filepath.Join(toolDir, "camp")})+"$env:FESTIVAL_TEST_HELPER_LOADED = 'yes'\nfunction cgo { }\nfunction fgo { }\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.MkdirAll(filepath.Dir(profile), 0700); err != nil {
@@ -90,6 +98,16 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 			out, err = RunInput(ctx, path, assertion+"\nexit\n", "-NoLogo")
 			if err != nil || !strings.Contains(out, "FESTIVAL_SCRIPT_UNCHANGED") {
 				t.Fatalf("pipeline: %q %v", out, err)
+			}
+			for _, tc := range []struct{ override, want string }{
+				{appDir, appDir}, {"", toolDir}, {"relative/path", toolDir}, {filepath.Join(home, "absent"), toolDir},
+			} {
+				t.Setenv("FESTIVAL_APP_TOOL_BIN", tc.override)
+				assertPath := "if (($env:PATH -split [IO.Path]::PathSeparator)[0] -ne " + Quote(shell, tc.want) + ") { exit 35 }; echo FESTIVAL_PATH_READY\nexit\n"
+				out, err := RunInput(ctx, path, assertPath, "-NoLogo", "-NoExit")
+				if err != nil || !strings.Contains(out, "FESTIVAL_PATH_READY") {
+					t.Fatalf("app override %q: %q %v", tc.override, out, err)
+				}
 			}
 		})
 	}
