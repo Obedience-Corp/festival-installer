@@ -69,6 +69,8 @@ func TestShellRCFile_UnsupportedShell(t *testing.T) {
 func TestShellRCFile_PerShellPaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	tests := []struct {
 		shell string
 		want  string
