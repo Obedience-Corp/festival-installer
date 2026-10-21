@@ -21,7 +21,9 @@ func TestWindowsDamagedExecutablesStayUnavailable(t *testing.T) {
 		t.Fatalf("damaged login shell was accepted: %v", err)
 	}
 	t.Run("healthy edition survives", func(t *testing.T) {
-		t.Setenv("SHELL", "")
+		// Git Bash can pass a POSIX SHELL into the Windows installer. The
+		// default still configures both native console editions.
+		t.Setenv("SHELL", "/usr/bin/bash")
 		t.Setenv("PATH", filepath.Dir(path))
 		targets, err := integrationShells(context.Background(), "")
 		if err != nil || len(targets) != 2 || targets[0].Name != "pwsh" || targets[0].Unavailable == nil || targets[1].Name != "powershell" || targets[1].Unavailable != nil {
@@ -32,7 +34,7 @@ func TestWindowsDamagedExecutablesStayUnavailable(t *testing.T) {
 	t.Setenv("FESTIVAL_HOME", managed)
 	t.Setenv("OBEY_INSTALLER_HOME", "")
 	t.Setenv("SHELL", path)
-	report, err := ReconcileIntegrations(context.Background(), IntegrationOptions{})
+	report, err := ReconcileIntegrations(context.Background(), IntegrationOptions{Shell: path})
 	if err != nil || report.Ready || len(report.Checks) == 0 || report.Checks[0].ID != "shell" || report.Checks[0].Status != "unavailable" {
 		t.Fatalf("damaged shell was not reported unavailable: %+v %v", report, err)
 	}

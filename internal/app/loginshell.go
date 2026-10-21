@@ -46,15 +46,18 @@ func integrationShells(ctx context.Context, requested string) ([]integrationShel
 		target.Unavailable = err
 		return []integrationShellTarget{target}, nil
 	}
-	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {
-		return integrationShells(ctx, shell)
-	}
 	if runtime.GOOS == "windows" {
+		// Git Bash and other Unix-like launchers can export SHELL using a
+		// POSIX path that Windows cannot execute. Auto setup still covers both
+		// native PowerShell editions; --shell remains the explicit override.
 		paths := windowsIntegrationShells(exec.LookPath, os.Getenv)
 		if len(paths) == 0 {
 			return nil, fmt.Errorf("no installed PowerShell was found; choose a shell executable with --shell")
 		}
 		return windowsShellTargets(paths, shellTarget), nil
+	}
+	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {
+		return integrationShells(ctx, shell)
 	}
 	u, err := user.Current()
 	if err != nil {

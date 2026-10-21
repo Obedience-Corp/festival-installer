@@ -22,8 +22,9 @@ Bash setup covers `.bashrc` and the first existing login profile. Zsh honors
 `ZDOTDIR`, Fish honors `XDG_CONFIG_HOME`, and PowerShell uses its resolved
 profile. Detection retains the absolute login-shell executable, including a
 Homebrew shell outside the GUI's PATH. On Windows, automatic setup configures
-and probes both installed PowerShell editions independently; PowerShell 7 and
-Windows PowerShell 5 use different profiles. Missing shell executables are
+and probes both installed PowerShell editions independently, even when a
+Git Bash launch provides a POSIX `SHELL`; PowerShell 7 and Windows PowerShell 5
+use different profiles. Missing shell executables are
 reported separately from startup/helper failures. An explicit `--shell`
 (name or absolute executable path) overrides detection. Unsupported
 shells and malformed/duplicate Festival blocks are reported for repair.
