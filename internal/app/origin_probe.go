@@ -3,11 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"debug/pe"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -113,6 +115,16 @@ func probeCopies(ctx context.Context, copies []ToolLocation) []ToolLocation {
 func probeBinary(ctx context.Context, path, tool string) (version, bundle, profile string) {
 	if path == "" {
 		return "", "", ""
+	}
+	// A damaged file named *.exe can terminate the Windows process during a
+	// version probe. Treat an invalid PE as an unavailable tool instead of
+	// asking the OS loader to run it (notably during doctor/status checks).
+	if runtime.GOOS == "windows" {
+		binary, err := pe.Open(path)
+		if err != nil {
+			return "", "", ""
+		}
+		_ = binary.Close()
 	}
 	if ctx == nil {
 		ctx = context.Background()
