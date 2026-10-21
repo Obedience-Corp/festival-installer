@@ -73,7 +73,7 @@ func TestIntegrationMissingLoginExecutableDoesNotWriteProfilesOrHelper(t *testin
 	}
 }
 
-func TestDisableRemovesTrackedBlocksWithoutShellOrHookRepair(t *testing.T) {
+func TestDisableRemovesTrackedBlocksWithoutShellWhileRepairingHooks(t *testing.T) {
 	home, _ := integrationFixture(t, "bash")
 	ctx := context.Background()
 	if r, err := ReconcileIntegrations(ctx, IntegrationOptions{}); err != nil || !r.Ready {
@@ -90,11 +90,11 @@ func TestDisableRemovesTrackedBlocksWithoutShellOrHookRepair(t *testing.T) {
 	}
 	for _, check := range r.Checks {
 		if check.Status != "ready" && check.Status != "disabled" {
-			t.Fatalf("broken shell or hook blocked opt-out: %+v", check)
+			t.Fatalf("broken shell blocked opt-out: %+v", check)
 		}
 	}
-	if _, err := os.Stat(hookMarker); !os.IsNotExist(err) {
-		t.Fatalf("disable repaired provider hooks: %v", err)
+	if _, err := os.Stat(hookMarker); err != nil {
+		t.Fatalf("disable did not preserve provider-hook repair: %v", err)
 	}
 	profiles, err := integrationProfiles("bash")
 	if err != nil {

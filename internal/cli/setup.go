@@ -90,6 +90,11 @@ func newIntegrationsCommand() *cobra.Command {
 			// An explicit, successfully applied opt-out is a completed request.
 			if opts.Disable && report.Disabled {
 				for _, check := range report.Checks {
+					// Hook repair is independent of removing terminal startup
+					// blocks. Keep reporting it, but do not fail the opt-out.
+					if check.ID == "bridge" {
+						continue
+					}
 					if check.Status != "ready" && check.Status != "not_required" && check.Status != "disabled" {
 						return errpkg.New("E_INTEGRATION_SETUP", "Terminal setup needs attention; see the checks above.")
 					}

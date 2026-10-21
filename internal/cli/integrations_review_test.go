@@ -63,6 +63,36 @@ func TestIntegrationCommandReadinessExit(t *testing.T) {
 	}
 }
 
+func TestDisableSucceedsWhenProviderHookRepairFails(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("normal-user Unix fixture")
+	}
+	home := t.TempDir()
+	managed := filepath.Join(home, "installer")
+	bin := filepath.Join(managed, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "obey"), []byte("#!/bin/sh\nexit 27\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("FESTIVAL_HOME", managed)
+	t.Setenv("OBEY_INSTALLER_HOME", "")
+	t.Setenv("PATH", "/usr/bin:/bin")
+	cmd := cli.NewSetupCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"integrations", "--shell", "/missing/bash", "--disable"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("opt-out failed because hook repair failed: %v; %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "failed: Provider hook setup failed") {
+		t.Fatalf("hook failure was hidden: %s", out.String())
+	}
+}
+
 func TestUninstallObeyProviderHookCleanup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell fixture")

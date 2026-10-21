@@ -142,13 +142,9 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 	} else {
 		reconcileShellTargets(ctx, &r, &settings, home, opts.Check, targets)
 	}
-	// An explicit opt-out only removes our startup blocks and saves the user's
-	// choice. It must not install provider hooks or depend on a broken shell.
-	// Previously installed hooks remain available for observation and explicit
-	// wrapped launches; later reconciliation can repair them independently.
-	if !opts.Disable {
-		reconcileBridge(ctx, &r, opts.Check)
-	}
+	// Provider hooks remain useful for observation and explicit wrapped launches
+	// even when startup integration is disabled.
+	reconcileBridge(ctx, &r, opts.Check)
 	if !opts.Check {
 		data, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {

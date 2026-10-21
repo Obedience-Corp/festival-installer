@@ -49,6 +49,8 @@ idempotent. Root/sudo invocations skip all integration and provider-hook work
 and return a repairable not-ready report; run setup as the normal user.
 
 `--disable` removes tracked owned startup blocks and persists the preference.
+Provider-hook repair is independent: a hook warning does not fail a completed
+opt-out.
 `--enable` restores automatic configuration. `install --no-shell-setup` records
 the same opt-out. Provider hooks remain useful for observation and explicit
 wrapped launches. Uninstall refreshes the helper for remaining components and
