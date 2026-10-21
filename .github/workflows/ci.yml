@@ -32,6 +32,16 @@ jobs:
         run: go test ./...
       - name: Prove non-Windows pwsh profile append in a container
         run: just testing pwsh-append-container-proof
+      - name: Prove shell completion policy and app tool precedence
+        run: just testing shell-integration-container-proof
+      - name: Prove root Obey uninstall preserves hooks and receipt
+        run: just testing uninstall-root-container-proof
+      - name: Prove PowerShell interactive-only integration
+        run: |
+          CGO_ENABLED=0 go test -c -tags container_fs -o "$RUNNER_TEMP/festival-shellsetup.test" ./internal/shellsetup
+          CGO_ENABLED=0 go test -c -tags container_fs -o "$RUNNER_TEMP/festival-pwsh-app.test" ./internal/app
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/festival-pwsh-app.test:/proof:ro" --entrypoint /proof mcr.microsoft.com/powershell:7.4-ubuntu-22.04@sha256:62300a213a9293916333df2b014cd3a8f22fb0b0b65f2bb446aaf436bcf8c868 -test.v -test.run '^TestPwshIntegrationUsesPowerShellDialect$'
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP/festival-shellsetup.test:/proof:ro" --entrypoint /proof mcr.microsoft.com/powershell:7.4-ubuntu-22.04@sha256:62300a213a9293916333df2b014cd3a8f22fb0b0b65f2bb446aaf436bcf8c868 -test.v -test.run '^TestPowerShellInteractiveProfileOnly$'
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:

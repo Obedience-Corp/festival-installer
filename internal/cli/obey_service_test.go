@@ -33,6 +33,11 @@ install_help() {
 __RESTART_FLAG__  echo "  -h, --help   help for install"
 }
 answer_help() {
+  if [ "$1" = "wrap" ] && [ "$2" = "shell-init" ]; then echo "# shell integration fixture"; exit 0; fi
+  if [ "$1" = "bridge" ]; then
+    echo '[{"provider":"claude-code","installed":true,"install_status":"current"},{"provider":"codex","installed":true,"install_status":"current"},{"provider":"grok","installed":true,"install_status":"current"}]'
+    exit 0
+  fi
   if [ "$1" = "service" ] && [ "$2" = "--help" ]; then service_help; exit 0; fi
   if [ "$1" = "service" ] && [ "$3" = "--help" ]; then install_help; exit 0; fi
 }
@@ -249,12 +254,21 @@ type obeyEnvelope struct {
 	Data     json.RawMessage `json:"data"`
 }
 
-func envelopeOf(t *testing.T, out string) obeyEnvelope {
+// serviceEnvelopeOf isolates service warnings. The deliberately minimal tool
+// fixtures do not provide shell helpers; integration readiness has its own tests.
+func serviceEnvelopeOf(t *testing.T, out string) obeyEnvelope {
 	t.Helper()
 	var env obeyEnvelope
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("decode envelope: %v\n%s", err, out)
 	}
+	var serviceWarnings []string
+	for _, warning := range env.Warnings {
+		if !strings.HasPrefix(warning, "Components are installed, but setup needs attention:") && !strings.HasPrefix(warning, "Automatic terminal setup is disabled.") {
+			serviceWarnings = append(serviceWarnings, warning)
+		}
+	}
+	env.Warnings = serviceWarnings
 	return env
 }
 
@@ -285,7 +299,7 @@ func TestInstallObey_FreshInstallRunsInstallOnly(t *testing.T) {
 	if strings.Contains(out, `"error"`) {
 		t.Fatalf("a clean install payload must carry no error key:\n%s", out)
 	}
-	if env := envelopeOf(t, out); len(env.Warnings) != 0 {
+	if env := serviceEnvelopeOf(t, out); len(env.Warnings) != 0 {
 		t.Fatalf("a fresh install has nothing pending to warn about, got %v", env.Warnings)
 	}
 
@@ -348,7 +362,7 @@ func TestInstallObey_OverRunningDaemonNoRestartReportsPending(t *testing.T) {
 		t.Fatalf("--no-restart must not restart, got %+v", res.Service)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -371,7 +385,7 @@ func TestInstallObey_ServiceFailureIsAWarningNotAFailure(t *testing.T) {
 		t.Fatalf("a service failure must not fail the install: %v\n%s", err, errOut)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if !env.OK {
 		t.Fatalf("ok must stay true when only the service step failed:\n%s", out)
 	}
@@ -488,7 +502,7 @@ func TestUpdateObey_StoppedDaemonIsStartedNotRestarted(t *testing.T) {
 	}
 	wantVerbs(t, f.verbs(t), []string{"service install", "service install"})
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -530,7 +544,7 @@ func TestUpdateObey_NoRestartDefers(t *testing.T) {
 		}
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -629,7 +643,7 @@ func TestUninstallObey_NoReceiptLeavesTheServiceAlone(t *testing.T) {
 		t.Fatalf("uninstall ran service verbs for an install it does not own: %v", got)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if !env.OK || len(env.Warnings) != 0 {
 		t.Fatalf("expected a clean no-op envelope, got ok=%v warnings=%v", env.OK, env.Warnings)
 	}
@@ -676,7 +690,7 @@ func TestUninstallObey_ServiceFailureIsReported(t *testing.T) {
 		t.Fatalf("a failed unregister must not fail the uninstall: %v\n%s", err, errOut)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -723,7 +737,7 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractRegistersOnAStoppedDaemon(t
 	if len(res.Files) != 2 {
 		t.Fatalf("the binaries must still land, got %v", res.Files)
 	}
-	if env := envelopeOf(t, out); !env.OK || len(env.Warnings) != 0 {
+	if env := serviceEnvelopeOf(t, out); !env.OK || len(env.Warnings) != 0 {
 		t.Fatalf("a fresh install has nothing pending to warn about, got ok=%v warnings=%v", env.OK, env.Warnings)
 	}
 
@@ -760,7 +774,7 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractSkipsOverARunningDaemon(t *
 		t.Fatalf("contract_reason = %q, want it to name the missing verb", res.Service.ContractReason)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if !env.OK || len(env.Warnings) != 1 {
 		t.Fatalf("expected one warning on a successful install, got ok=%v warnings=%v", env.OK, env.Warnings)
 	}
@@ -829,7 +843,7 @@ func TestInstallObey_ObeyWithoutTheSupervisedContractNeverClaimsDeferred(t *test
 		t.Fatalf("expected unsupported true and deferred false, got %+v\n%s", res.Service, out)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -902,7 +916,7 @@ func TestInstallObey_UnreadableDaemonStateDefersWithoutClaimingStarted(t *testin
 		t.Fatalf("a probe that could not answer must claim neither a start nor a restart, got %+v", res.Service)
 	}
 
-	env := envelopeOf(t, out)
+	env := serviceEnvelopeOf(t, out)
 	if len(env.Warnings) != 1 {
 		t.Fatalf("warnings = %v, want exactly one entry", env.Warnings)
 	}
@@ -947,7 +961,7 @@ func TestUpdateObey_UnreadableDaemonStateRestartsRatherThanClaimingStarted(t *te
 		t.Fatalf("started must stay unset when the probe could not tell, got %+v", res.Service)
 	}
 
-	if env := envelopeOf(t, out); len(env.Warnings) != 0 {
+	if env := serviceEnvelopeOf(t, out); len(env.Warnings) != 0 {
 		t.Fatalf("a completed restart leaves nothing pending, got %v", env.Warnings)
 	}
 	wantVerbs(t, f.verbs(t), []string{"service install", "service install", "service restart"})

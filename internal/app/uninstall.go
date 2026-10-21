@@ -10,6 +10,7 @@ import (
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/hosts/shared"
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/lock"
@@ -24,6 +25,14 @@ var ErrOutsideManagedBin = errpkg.New("E_UNINSTALL_PATH", "receipt file resolves
 // UninstallTarget removes festival suite or a plugin by CLI selector. The
 // second value is a human warning, empty when nothing needs saying.
 func UninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
+	res, warning, err := uninstallTarget(ctx, target)
+	if err == nil && len(res.Removed) > 0 && (res.Package == FestivalPackageID || res.Package == ObeyPackageID) {
+		warning = appendWarning(warning, IntegrationNote(integrationAfterInstall(ctx, false)))
+	}
+	return res, warning, err
+}
+
+func uninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
 	packageID := FestivalPackageID
 	if host, name, ok := PluginHost(target); ok {
 		// Uninstall resolves the package id from local marketplace metadata
@@ -48,7 +57,7 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 }
 
 // uninstallObey removes the obey product and, only for an install this hub
-// owns, unregisters its user service first.
+// owns, removes its user bridge hooks and unregisters its user service first.
 //
 // The receipt decides. Without one there is nothing to remove, so there is
 // nothing to unregister either: an obey that reached the managed bin dir by
@@ -59,6 +68,12 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 // is about to vanish, and a failed unregister is reported rather than dropped:
 // the unit may outlive the binary and the user is the one who has to clear it.
 func uninstallObey(ctx context.Context) (UninstallResult, string, error) {
+	if err := ctx.Err(); err != nil {
+		return UninstallResult{}, "", errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
+	}
+	if os.Geteuid() == 0 {
+		return UninstallResult{}, "", errpkg.New("E_UNINSTALL_ROOT", "run festival uninstall obey as your normal user without sudo so provider hooks and the managed binary are removed under the same identity")
+	}
 	_, found, err := readReceipt(ctx, ObeyPackageID)
 	if err != nil {
 		return UninstallResult{}, "", err
@@ -70,11 +85,20 @@ func uninstallObey(ctx context.Context) (UninstallResult, string, error) {
 	warning := ""
 	obeyPath, perr := obeyServicePath(ctx)
 	if perr != nil {
-		warning = "could not locate the managed obey to unregister its service: " + perr.Error() +
-			". Remove the service by hand if it is still registered."
-	} else if verr := runServiceVerb(ctx, obeyPath, serviceVerbUninstall); verr != nil {
-		warning = "obey service uninstall failed: " + verr.Error() +
-			". The receipt-owned files were still removed; the service unit may remain registered."
+		warning = "could not locate the managed obey to remove its provider hooks and service: " + perr.Error() +
+			". Provider hooks and the service may need manual removal."
+	} else {
+		// Hooks embed this exact binary path. Remove them while the receipt-owned
+		// executable still exists; resolving another Obey on PATH would remove
+		// that installation's hooks instead.
+		if _, err := shellsetup.Run(ctx, obeyPath, "bridge", "uninstall", "all", "--scope", "user"); err != nil {
+			warning = "obey bridge uninstall failed: " + err.Error() +
+				". Provider hooks may remain; reinstall Obey and run obey bridge uninstall all --scope user to retry."
+		}
+		if verr := runServiceVerb(ctx, obeyPath, serviceVerbUninstall); verr != nil {
+			warning = appendWarning(warning, "obey service uninstall failed: "+verr.Error()+
+				". The receipt-owned files were still removed; the service unit may remain registered.")
+		}
 	}
 	res, uerr := UninstallPackage(ctx, ObeyPackageID)
 	return res, warning, uerr
@@ -99,7 +123,7 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 			}
 		}
 	}
-	if packageID == FestivalPackageID && origin.Kind == OriginLeftover {
+	if packageID == FestivalPackageID && origin.Kind == OriginLeftover && !managedToolchain(ctx) {
 		note := "leftover binaries at " + origin.Prefix + "; festival uninstall cannot remove them; see " + docsInstall
 		return UninstallResult{Package: packageID, Note: note}, nil
 	}

@@ -54,10 +54,22 @@ func ShellRCFile(shell string) (string, error) {
 	}
 	switch shell {
 	case "zsh":
+		if dir := os.Getenv("ZDOTDIR"); dir != "" {
+			if !filepath.IsAbs(dir) {
+				return "", errpkg.New("E_SHELL_RC_PATH", "ZDOTDIR must be absolute")
+			}
+			return filepath.Join(dir, ".zshrc"), nil
+		}
 		return filepath.Join(home, ".zshrc"), nil
 	case "bash":
 		return filepath.Join(home, ".bashrc"), nil
 	case "fish":
+		if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+			if !filepath.IsAbs(dir) {
+				return "", errpkg.New("E_SHELL_RC_PATH", "XDG_CONFIG_HOME must be absolute")
+			}
+			return filepath.Join(dir, "fish", "config.fish"), nil
+		}
 		return filepath.Join(home, ".config", "fish", "config.fish"), nil
 	default:
 		return "", errpkg.Wrap("E_SHELL_UNSUPPORTED", ErrUnsupportedShell, shell+" (supported: zsh, bash, fish, powershell, pwsh)")

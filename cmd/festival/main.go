@@ -8,6 +8,7 @@ import (
 	"golang.org/x/term"
 
 	// bginit must load before bubbletea (via tui) so lipgloss skips OSC queries.
+	"github.com/Obedience-Corp/festival-installer/internal/app"
 	_ "github.com/Obedience-Corp/festival-installer/internal/bginit"
 	"github.com/Obedience-Corp/festival-installer/internal/cli"
 	"github.com/Obedience-Corp/festival-installer/internal/tui"
@@ -17,6 +18,7 @@ var version = "0.0.0-dev"
 
 func main() {
 	var forceTUI bool
+	var managed bool
 	root := &cobra.Command{
 		Use:   "festival",
 		Short: "Festival hub: install, onboard, and launch camp/fest tools",
@@ -30,6 +32,11 @@ festival.
 All your work, where you can find it.
 
 Scripts and agents can use subcommands with --json for machine-readable output.`,
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			if managed {
+				cmd.SetContext(app.WithManagedToolchain(cmd.Context()))
+			}
+		},
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Args:          cobra.NoArgs,
@@ -49,6 +56,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 			return cli.BareInvocation(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cmd.Help)
 		},
 	}
+	root.PersistentFlags().BoolVar(&managed, "managed", false, "use a separate Festival-managed toolchain without modifying package-owned files")
 	root.Flags().BoolVar(&forceTUI, "tui", false, "force the interactive TUI (requires a terminal)")
 
 	root.AddCommand(cli.NewInstallCommand())

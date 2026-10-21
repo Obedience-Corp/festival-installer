@@ -50,3 +50,19 @@ windows-install-container-proof:
 # Prove a non-Windows pwsh profile append without mutating the host filesystem.
 pwsh-append-container-proof:
     docker run --rm -v "{{invocation_directory()}}:/src:ro" golang:1.26-alpine sh -c 'cp -a /src /work && cd /work && go test -tags container_fs -run "^TestPwshAppendPreservesHostPathSeparator$" -count=1 ./internal/app'
+
+# Verify generated helpers in actual Bash, Zsh and Fish startup sessions.
+shell-integration-container-proof:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bin
+    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/shell-integration.test ./internal/shellsetup
+    docker run --rm --tmpfs /tmp:rw,exec,size=256m,mode=1777 -v "$PWD/bin/shell-integration.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache bash zsh fish >/dev/null && su nobody -s /bin/sh -c "/proof -test.v -test.run TestZshCompletionPolicyAndLegacyHelper\|TestAppToolDirectorySurvivesShellStartup"'
+
+# Prove sudo/root cannot mutate provider hooks or remove the Obey receipt/binary.
+uninstall-root-container-proof:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bin
+    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/uninstall-root.test ./internal/cli
+    docker run --rm --tmpfs /tmp:rw,exec,size=256m,mode=1777 -v "$PWD/bin/uninstall-root.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache git >/dev/null && /proof -test.v -test.run "^TestUninstallObeyRootPreservesReceiptBinaryAndHooks$"'

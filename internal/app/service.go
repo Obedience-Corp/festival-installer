@@ -13,6 +13,7 @@ import (
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 )
 
@@ -183,6 +184,9 @@ func runServiceVerb(ctx context.Context, obeyPath, verb string) error {
 // runServiceVerbWithin is runServiceVerb with an explicit budget, so the
 // timeout path can be exercised without waiting out a real one.
 func runServiceVerbWithin(ctx context.Context, obeyPath, verb string, budget time.Duration) error {
+	if err := shellsetup.ValidateExecutable(obeyPath); err != nil {
+		return err
+	}
 	runCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
@@ -240,6 +244,9 @@ func obeyDaemonStateAt(ctx context.Context, obeyPath string) daemonState {
 			// than a failure to read one.
 			return daemonStateStopped
 		}
+		return daemonStateUnknown
+	}
+	if shellsetup.ValidateExecutable(obeyPath) != nil {
 		return daemonStateUnknown
 	}
 	runCtx, cancel := context.WithTimeout(ctx, verbTimeout(serviceVerbStatus))
@@ -339,6 +346,9 @@ func obeyServiceContractAt(ctx context.Context, obeyPath string) serviceContract
 // body runs and before obey loads its config, so this asks the binary what it
 // can do without asking it to do anything.
 func obeyHelp(ctx context.Context, obeyPath string, args ...string) (string, error) {
+	if err := shellsetup.ValidateExecutable(obeyPath); err != nil {
+		return "", err
+	}
 	runCtx, cancel := context.WithTimeout(ctx, serviceTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, obeyPath, args...) //nolint:gosec // obeyPath is the managed bin dir, args are constants

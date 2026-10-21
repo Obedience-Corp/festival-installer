@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 )
 
 // campProbeTimeout bounds the camp query. The tour runs it on every load of the
@@ -41,6 +43,9 @@ func ProbeCamps(ctx context.Context) CampInventory {
 		return CampInventory{}
 	}
 	inv := CampInventory{Installed: true}
+	if shellsetup.ValidateExecutable(path) != nil {
+		return inv
+	}
 
 	runCtx, cancel := context.WithTimeout(ctx, campProbeTimeout)
 	defer cancel()

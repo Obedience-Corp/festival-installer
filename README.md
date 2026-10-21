@@ -7,6 +7,30 @@ subcommands for scripts and agents.
 
 > _All your work, where you can find it._
 
+## Automatic terminal setup
+
+Suite and Obey installs/updates configure terminal integration for the detected
+login shell. Festival App uses this same installer contract during first run
+and later repair. Open a new terminal after setup: `cgo`/`fgo` navigation and
+ordinary interactive `grok`, `claude`, and `codex` launches work without copying
+configuration lines. Obey wrapping supports Bash, Zsh and Fish on Linux/macOS,
+including Linux Ghostty. PowerShell receives camp/fest helpers; Windows PTY
+wrapping is not supported.
+
+```sh
+festival setup integrations                # configure or repair
+festival setup integrations --check --json # inspect readiness
+festival setup integrations --disable      # remember an advanced opt-out
+festival setup integrations --enable       # enable it again
+```
+
+The installer preserves unrelated shell content and custom provider launchers,
+backs up changed startup files, and reports conflicts or unsupported shells.
+Existing shells and provider sessions must be reopened/relaunched. Binary
+installation can succeed while integration needs attention; inspect the report
+or retry setup. See [automatic setup](docs/automatic-setup.md) for the API,
+installation ownership, prerequisites, and removal behavior.
+
 ## Demo
 
 Recorded against a real `./bin/festival` binary (VHS + PTY).

@@ -60,7 +60,9 @@ func suiteBinaryNames(entry metadata.InstallEntry, goos string) (source, destina
 
 // InstallOptions configure a suite or plugin install.
 type InstallOptions struct {
-	Channel string
+	// NoIntegrations remembers the user's advanced opt-out from shell setup.
+	NoIntegrations bool
+	Channel        string
 	// Source overrides the configured marketplace. Updates use the receipt's
 	// source here so resolution and activation remain provenance-consistent.
 	Source   string
@@ -82,7 +84,7 @@ type InstallOptions struct {
 var ensureOfficialSeed = source.EnsureOfficialSeed
 
 func refusePackageChannel(ctx context.Context, force bool) error {
-	if force {
+	if force || managedToolchain(ctx) {
 		return nil
 	}
 	origin, _ := DetectSuite(ctx)
@@ -98,6 +100,14 @@ func refusePackageChannel(ctx context.Context, force bool) error {
 
 // InstallFestival installs the camp+fest suite bundle.
 func InstallFestival(ctx context.Context, opts InstallOptions) (InstallResult, error) {
+	res, err := installFestival(ctx, opts)
+	if err == nil {
+		res.Integrations = integrationAfterInstall(ctx, opts.NoIntegrations)
+	}
+	return res, err
+}
+
+func installFestival(ctx context.Context, opts InstallOptions) (InstallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return InstallResult{}, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled")
 	}
