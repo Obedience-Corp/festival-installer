@@ -114,7 +114,9 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 		r.Disabled, r.Ready = true, false
 		for _, target := range targets {
 			if target.Unavailable != nil {
-				r.add("shell", "unavailable", target.Unavailable.Error(), target.Path, true)
+				if !opts.Disable {
+					r.add("shell", "unavailable", target.Unavailable.Error(), target.Path, true)
+				}
 				continue
 			}
 			if !shellsetup.Supported(target.Name) {
@@ -131,7 +133,7 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 		for _, path := range settings.Files {
 			r.profile(ctx, path, "", home, opts.Check)
 		}
-		if shellErr != nil {
+		if shellErr != nil && !opts.Disable {
 			r.add("shell", "unavailable", shellErr.Error(), "", true)
 		}
 		r.Checks = append(r.Checks, IntegrationCheck{ID: "preference", Status: "disabled", Message: "Automatic terminal integration is disabled. Enable it in setup to use ordinary provider commands.", Repairable: true})
@@ -140,7 +142,13 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 	} else {
 		reconcileShellTargets(ctx, &r, &settings, home, opts.Check, targets)
 	}
-	reconcileBridge(ctx, &r, opts.Check)
+	// An explicit opt-out only removes our startup blocks and saves the user's
+	// choice. It must not install provider hooks or depend on a broken shell.
+	// Previously installed hooks remain available for observation and explicit
+	// wrapped launches; later reconciliation can repair them independently.
+	if !opts.Disable {
+		reconcileBridge(ctx, &r, opts.Check)
+	}
 	if !opts.Check {
 		data, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {

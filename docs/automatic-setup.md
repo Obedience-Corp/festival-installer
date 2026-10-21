@@ -78,7 +78,10 @@ zypper; Windows requires winget. Offline, denied authorization, or unavailable
 system installers produce a retryable explanation. macOS installation can be
 pending while the system dialog runs. Status checks query `xcode-select -p`
 before executing Apple's Git launcher, so missing developer tools do not raise
-an installation dialog from a read-only status check. Some Windows environments need the app
+an installation dialog from a read-only status check. The JSON command returns
+a report even when Git is unavailable; callers inspect `ready` and `pending`.
+The human command exits nonzero until Git is ready, including while the macOS
+developer-tools installer is pending. Some Windows environments need the app
 reopened after Git installation to inherit the new PATH.
 
 ## Releases

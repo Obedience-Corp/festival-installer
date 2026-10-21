@@ -73,6 +73,41 @@ func TestIntegrationMissingLoginExecutableDoesNotWriteProfilesOrHelper(t *testin
 	}
 }
 
+func TestDisableRemovesTrackedBlocksWithoutShellOrHookRepair(t *testing.T) {
+	home, _ := integrationFixture(t, "bash")
+	ctx := context.Background()
+	if r, err := ReconcileIntegrations(ctx, IntegrationOptions{}); err != nil || !r.Ready {
+		t.Fatalf("setup: %+v %v", r, err)
+	}
+	hookMarker := filepath.Join(home, "hooks-current")
+	if err := os.Remove(hookMarker); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", filepath.Join(home, "removed", "bash"))
+	r, err := ReconcileIntegrations(ctx, IntegrationOptions{Disable: true})
+	if err != nil || !r.Disabled || r.Ready {
+		t.Fatalf("disable: %+v %v", r, err)
+	}
+	for _, check := range r.Checks {
+		if check.Status != "ready" && check.Status != "disabled" {
+			t.Fatalf("broken shell or hook blocked opt-out: %+v", check)
+		}
+	}
+	if _, err := os.Stat(hookMarker); !os.IsNotExist(err) {
+		t.Fatalf("disable repaired provider hooks: %v", err)
+	}
+	profiles, err := integrationProfiles("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range profiles {
+		data, err := os.ReadFile(profile)
+		if err != nil || strings.Contains(string(data), "festival shell integration") {
+			t.Fatalf("tracked block remains in %s: %q %v", profile, data, err)
+		}
+	}
+}
+
 func TestIntegrationRootNeverTouchesStateProfilesOrHooks(t *testing.T) {
 	home, managed := integrationFixture(t, "bash")
 	profile := filepath.Join(home, ".bashrc")

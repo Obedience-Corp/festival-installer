@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
@@ -34,22 +35,27 @@ func NewSetupCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
 	cmd.AddCommand(newIntegrationsCommand())
-	cmd.AddCommand(newPrerequisitesCommand())
+	cmd.AddCommand(newPrerequisitesCommand(app.SetupPrerequisites))
 	return cmd
 }
 
-func newPrerequisitesCommand() *cobra.Command {
+func newPrerequisitesCommand(run func(context.Context) app.PrerequisiteReport) *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use: "prerequisites", Short: "Install missing Git using the system installer",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			report := app.SetupPrerequisites(cmd.Context())
+			report := run(cmd.Context())
 			if asJSON {
 				return jsonout.Success(cmd.OutOrStdout(), "setup prerequisites", report, nil)
 			}
-			_, err := fmt.Fprintln(cmd.OutOrStdout(), textsafe.Block(report.Message))
-			return err
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), textsafe.Block(report.Message)); err != nil {
+				return err
+			}
+			if !report.Ready {
+				return errpkg.New("E_PREREQUISITES_SETUP", "Git is not ready; see the setup message above.")
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit a structured prerequisite report")

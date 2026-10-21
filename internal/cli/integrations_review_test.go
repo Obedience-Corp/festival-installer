@@ -32,6 +32,7 @@ func TestIntegrationCommandReadinessExit(t *testing.T) {
 		{"not ready", []string{"integrations", "--shell", "/missing/nu"}, true, false},
 		{"json report", []string{"integrations", "--shell", "/missing/nu", "--json"}, false, true},
 		{"disable", []string{"integrations", "--shell", "/missing/nu", "--disable"}, false, false},
+		{"disable missing supported shell", []string{"integrations", "--shell", "/missing/bash", "--disable"}, false, false},
 		{"persisted opt out", []string{"integrations", "--shell", "/missing/nu"}, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
