@@ -12,6 +12,7 @@ import (
 	"time"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 )
 
 // festProbeTimeout bounds a single fest call. The tour runs these whenever step
@@ -209,6 +210,9 @@ func firstRunnable(ctx context.Context, festPath string, dirs []string) (dir str
 // read-only question: fest next reports the next task and never advances one,
 // so asking costs nothing but the process.
 func festNextWouldRun(ctx context.Context, festPath, dir string) bool {
+	if shellsetup.ValidateExecutable(festPath) != nil {
+		return false
+	}
 	runCtx, cancel := context.WithTimeout(ctx, festProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, festPath, "next", "--json") //nolint:gosec // path from ResolveTool, args fixed
@@ -223,6 +227,9 @@ func festNextWouldRun(ctx context.Context, festPath, dir string) bool {
 // hub prefers: something already running, then something prepared, then
 // something still being planned.
 func festivalCandidates(ctx context.Context, festPath, campRoot string) ([]string, error) {
+	if err := shellsetup.ValidateExecutable(festPath); err != nil {
+		return nil, err
+	}
 	runCtx, cancel := context.WithTimeout(ctx, festProbeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, festPath, "list", "--json") //nolint:gosec // path from ResolveTool, args fixed

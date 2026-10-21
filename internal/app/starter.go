@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 )
 
 // StarterResult is Camp's setup result, plus a failed/deferred action when the
@@ -60,6 +62,9 @@ func SetupStarter(ctx context.Context, campPath string) *StarterResult {
 }
 
 func executeStarter(ctx context.Context, campPath string) *StarterResult {
+	if err := shellsetup.ValidateExecutable(campPath); err != nil {
+		return &StarterResult{Action: "failed", Message: "Starter camp setup is pending: " + err.Error() + ". Run festival setup to retry."}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, campPath, "setup", "--json")

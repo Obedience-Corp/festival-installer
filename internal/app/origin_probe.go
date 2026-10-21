@@ -3,16 +3,16 @@ package app
 import (
 	"bytes"
 	"context"
-	"debug/pe"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
 )
 
 const (
@@ -116,15 +116,9 @@ func probeBinary(ctx context.Context, path, tool string) (version, bundle, profi
 	if path == "" {
 		return "", "", ""
 	}
-	// A damaged file named *.exe can terminate the Windows process during a
-	// version probe. Treat an invalid PE as an unavailable tool instead of
-	// asking the OS loader to run it (notably during doctor/status checks).
-	if runtime.GOOS == "windows" {
-		binary, err := pe.Open(path)
-		if err != nil {
-			return "", "", ""
-		}
-		_ = binary.Close()
+	// A damaged .exe can terminate the Windows process during a version probe.
+	if err := shellsetup.ValidateExecutable(path); err != nil {
+		return "", "", ""
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -179,6 +173,9 @@ func probeOnce(ctx context.Context, path string, args ...string) ([]byte, error)
 // a probe failure: the tool's own output was already written, so ErrWaitDelay
 // is folded into success and parsed like any other.
 func runProbe(ctx context.Context, path string, args ...string) ([]byte, error) {
+	if err := shellsetup.ValidateExecutable(path); err != nil {
+		return nil, err
+	}
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // path from ResolveTool or the managed bin dir, args from a fixed table
 	cmd.Stdin = nil
 	cmd.WaitDelay = probeWaitDelay

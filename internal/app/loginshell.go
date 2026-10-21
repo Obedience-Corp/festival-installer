@@ -28,7 +28,13 @@ func shellTarget(path string) (integrationShellTarget, error) {
 		return target, fmt.Errorf("shell executable %q is unavailable: %w", path, err)
 	}
 	target.Path, err = filepath.Abs(resolved)
-	return target, err
+	if err != nil {
+		return target, err
+	}
+	if err := shellsetup.ValidateExecutable(target.Path); err != nil {
+		return target, fmt.Errorf("shell executable %q is unavailable: %w", path, err)
+	}
+	return target, nil
 }
 
 func integrationShells(ctx context.Context, requested string) ([]integrationShellTarget, error) {

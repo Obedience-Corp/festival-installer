@@ -46,6 +46,9 @@ func RunProbeInput(ctx context.Context, binary, input string, args ...string) (s
 }
 
 func runInput(ctx context.Context, binary, input string, env []string, args ...string) (string, error) {
+	if err := ValidateExecutable(binary); err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, args...) //nolint:gosec // resolved local tool with explicit arguments
