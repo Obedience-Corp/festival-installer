@@ -4,9 +4,10 @@ package shellsetup
 // Accept only prompt startup options. Unknown modes (including encoded or
 // abbreviated commands, scripts, remoting and server modes) leave the session
 // untouched. NoExit allows the bounded readiness probe to feed a real prompt
-// through stdin; ordinary piped input without NoExit stays unmodified.
+// through stdin, including a Windows session without an interactive desktop.
+// Ordinary piped input without NoExit stays unmodified.
 // CLI option reference: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_pwsh
-const powerShellInteractive = `  if ($Host.Name -ne 'ConsoleHost' -or -not [Environment]::UserInteractive) { return $false }
+const powerShellInteractive = `  if ($Host.Name -ne 'ConsoleHost') { return $false }
   $startup = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
   $noExit = $false
   for ($i = 0; $i -lt $startup.Count; $i++) {
@@ -23,5 +24,5 @@ const powerShellInteractive = `  if ($Host.Name -ne 'ConsoleHost' -or -not [Envi
     }
     return $false
   }
-  return ($noExit -or -not [Console]::IsInputRedirected)
+  return ($noExit -or ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected))
 `

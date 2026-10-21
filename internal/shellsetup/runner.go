@@ -62,7 +62,7 @@ func runInput(ctx context.Context, binary, input string, env []string, args ...s
 		if len(detail) > 1024 {
 			detail = detail[:1024]
 		}
-		return "", fmt.Errorf("%s: %w: %s", binary, err, detail)
+		return out.String(), fmt.Errorf("%s: %w: %s", binary, err, detail)
 	}
 	if out.Len() >= 1<<20 {
 		return "", fmt.Errorf("%s output exceeded 1 MiB", binary)

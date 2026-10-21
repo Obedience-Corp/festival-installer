@@ -24,3 +24,10 @@ func TestRunCancellationKillsBackgroundChildren(t *testing.T) {
 		t.Fatal("cancelled child kept running")
 	}
 }
+
+func TestRunRetainsOutputOnFailure(t *testing.T) {
+	out, err := Run(context.Background(), "/bin/sh", "-c", "echo startup-diagnostic; exit 21")
+	if err == nil || out != "startup-diagnostic\n" {
+		t.Fatalf("failed probe lost startup output: out=%q err=%v", out, err)
+	}
+}

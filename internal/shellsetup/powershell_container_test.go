@@ -70,7 +70,8 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 			probe := ProbeHelpers(shell, []string{"cgo", "fgo"}, false) + "exit\n"
 			out, err := RunInput(ctx, path, probe, "-NoLogo", "-NoExit")
 			if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
-				t.Fatalf("interactive: %q %v", out, err)
+				diagnostic, diagnosticErr := RunInput(ctx, path, "@{Host=$Host.Name; UserInteractive=[Environment]::UserInteractive; Args=[Environment]::GetCommandLineArgs(); Profile=$PROFILE.CurrentUserAllHosts; Policy=(Get-ExecutionPolicy); Errors=@($Error | ForEach-Object { $_.ToString() })} | ConvertTo-Json -Compress\nexit\n", "-NoLogo", "-NoExit")
+				t.Fatalf("interactive: %q %v; startup facts: %s (%v)", out, err, diagnostic, diagnosticErr)
 			}
 			assertion := "if ($env:FESTIVAL_TEST_HELPER_LOADED -eq 'yes') { exit 31 }; if (Get-Command cgo -CommandType Function -ErrorAction SilentlyContinue) { exit 32 }; echo FESTIVAL_SCRIPT_UNCHANGED"
 			script := filepath.Join(home, "script.ps1")
@@ -84,6 +85,7 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 			for _, args := range [][]string{
 				{"-NoLogo", "-NonInteractive", "-Command", assertion},
 				{"-NoLogo", "-Command", assertion},
+				{"-NoLogo", "-NoExit", "-Command", assertion + "; exit"},
 				{"-NoLogo", "-c", assertion},
 				{"-NoLogo", "-File", script},
 				{"-NoLogo", "-f", script},
