@@ -18,16 +18,27 @@ or hooks, but fresh-shell verification executes the user's startup scripts.
 
 Bash setup covers `.bashrc` and the first existing login profile. Zsh honors
 `ZDOTDIR`, Fish honors `XDG_CONFIG_HOME`, and PowerShell uses its resolved
-profile. An explicit `--shell` overrides login-shell detection. Unsupported
+profile. Detection retains the absolute login-shell executable, including a
+Homebrew shell outside the GUI's PATH. On Windows, automatic setup configures
+and probes both installed PowerShell editions independently; PowerShell 7 and
+Windows PowerShell 5 use different profiles. Missing shell executables are
+reported separately from startup/helper failures. An explicit `--shell`
+(name or absolute executable path) overrides detection. Unsupported
 shells and malformed/duplicate Festival blocks are reported for repair.
 Existing aliases/functions are preserved and may prevent automatic wrapping;
 explicit `obey wrap <provider>` remains available. Scripts and pipelines keep
-their normal behavior.
+their normal behavior. PowerShell's owned block is limited to console prompt
+sessions: script, command, encoded-command and ordinary piped invocations do
+not load helpers or change PATH. Other PowerShell hosts/custom launch modes
+are left alone and may require explicit integration.
 
 Changes preserve unrelated bytes and permissions, follow rc symlinks, and save
 backups under `$FESTIVAL_HOME/backups/integration` (default home:
 `~/.obey/installer`). Setup uses the installer lock and rejects concurrent file
-changes before replacement. Repeated setup is idempotent.
+changes before replacement. Backups are written atomically and checked on
+retry, including recovery from an incomplete earlier backup. Repeated setup is
+idempotent. Root/sudo invocations skip all integration and provider-hook work
+and return a repairable not-ready report; run setup as the normal user.
 
 `--disable` removes tracked owned startup blocks and persists the preference.
 `--enable` restores automatic configuration. `install --no-shell-setup` records
@@ -52,7 +63,9 @@ package manager through desktop pkexec authorization. Festival never captures
 an administrator password. Linux requires pkexec and apt-get, dnf, pacman, or
 zypper; Windows requires winget. Offline, denied authorization, or unavailable
 system installers produce a retryable explanation. macOS installation can be
-pending while the system dialog runs. Some Windows environments need the app
+pending while the system dialog runs. Status checks query `xcode-select -p`
+before executing Apple's Git launcher, so missing developer tools do not raise
+an installation dialog from a read-only status check. Some Windows environments need the app
 reopened after Git installation to inherit the new PATH.
 
 ## Releases

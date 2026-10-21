@@ -1,0 +1,96 @@
+//go:build container_fs
+
+package shellsetup
+
+import (
+	"context"
+	"encoding/base64"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"unicode/utf16"
+)
+
+// This test writes actual PowerShell profiles. Run only in a disposable
+// container: on Windows the profile follows the user's Documents known folder.
+func TestPowerShellInteractiveProfileOnly(t *testing.T) {
+	shells := []string{"pwsh"}
+	if runtime.GOOS == "windows" {
+		shells = []string{"powershell"}
+	}
+	for _, shell := range shells {
+		t.Run(shell, func(t *testing.T) {
+			path, err := exec.LookPath(shell)
+			if err != nil {
+				t.Fatal(err)
+			}
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+			ctx := context.Background()
+			profile, err := Run(ctx, path, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "[Console]::Write($PROFILE.CurrentUserAllHosts)")
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile = strings.TrimSpace(profile)
+			if !filepath.IsAbs(profile) {
+				t.Fatalf("unexpected profile: %q", profile)
+			}
+			helper := filepath.Join(home, "helper.ps1")
+			if err := os.WriteFile(helper, []byte("$env:FESTIVAL_TEST_HELPER_LOADED = 'yes'\nfunction cgo { }\nfunction fgo { }\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(profile), 0700); err != nil {
+				t.Fatal(err)
+			}
+			// Save/restore in case another proof in this container uses the same user.
+			old, readErr := os.ReadFile(profile)
+			t.Cleanup(func() {
+				if readErr == nil {
+					_ = os.WriteFile(profile, old, 0600)
+				} else {
+					_ = os.Remove(profile)
+				}
+			})
+			if err := os.WriteFile(profile, []byte(Block(Source(shell, helper))), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("FESTIVAL_TEST_HELPER_LOADED", "")
+			probe := ProbeHelpers(shell, []string{"cgo", "fgo"}, false) + "exit\n"
+			out, err := RunInput(ctx, path, probe, "-NoLogo", "-NoExit")
+			if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
+				t.Fatalf("interactive: %q %v", out, err)
+			}
+			assertion := "if ($env:FESTIVAL_TEST_HELPER_LOADED -eq 'yes') { exit 31 }; if (Get-Command cgo -CommandType Function -ErrorAction SilentlyContinue) { exit 32 }; echo FESTIVAL_SCRIPT_UNCHANGED"
+			script := filepath.Join(home, "script.ps1")
+			if err := os.WriteFile(script, []byte(assertion), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var encoded []byte
+			for _, c := range utf16.Encode([]rune(assertion)) {
+				encoded = append(encoded, byte(c), byte(c>>8))
+			}
+			for _, args := range [][]string{
+				{"-NoLogo", "-NonInteractive", "-Command", assertion},
+				{"-NoLogo", "-Command", assertion},
+				{"-NoLogo", "-c", assertion},
+				{"-NoLogo", "-File", script},
+				{"-NoLogo", "-f", script},
+				{"-NoLogo", script},
+				{"-NoLogo", "-e", base64.StdEncoding.EncodeToString(encoded)},
+			} {
+				out, err := Run(ctx, path, args...)
+				if err != nil || !strings.Contains(out, "FESTIVAL_SCRIPT_UNCHANGED") {
+					t.Fatalf("script %v: %q %v", args, out, err)
+				}
+			}
+			out, err = RunInput(ctx, path, assertion+"\nexit\n", "-NoLogo")
+			if err != nil || !strings.Contains(out, "FESTIVAL_SCRIPT_UNCHANGED") {
+				t.Fatalf("pipeline: %q %v", out, err)
+			}
+		})
+	}
+}

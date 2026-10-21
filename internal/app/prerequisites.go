@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/Obedience-Corp/festival-installer/internal/shellsetup"
@@ -48,7 +50,24 @@ func gitReady(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	_, err = shellsetup.Run(ctx, path, "--version")
+	return gitExecutableReady(ctx, runtime.GOOS, path, shellsetup.Run)
+}
+
+// Apple's /usr/bin/git launcher can prompt to install developer tools even
+// for --version. Query xcode-select without launching Git first. --install is
+// reserved for SetupPrerequisites, never a status or app-launch probe.
+func gitExecutableReady(ctx context.Context, goos, path string, run func(context.Context, string, ...string) (string, error)) bool {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		path = resolved
+	}
+	if goos == "darwin" && filepath.Clean(path) == "/usr/bin/git" {
+		selected, err := run(ctx, "/usr/bin/xcode-select", "-p")
+		if err != nil || strings.TrimSpace(selected) == "" {
+			return false
+		}
+	}
+	_, err = run(ctx, path, "--version")
 	return err == nil
 }
 

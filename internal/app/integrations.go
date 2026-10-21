@@ -55,6 +55,10 @@ var integrationMu sync.Mutex
 // Inspection never creates state. Apply takes both an in-process mutex and the
 // existing installer lock so concurrent app/CLI repair cannot duplicate blocks.
 func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (IntegrationReport, error) {
+	return reconcileIntegrations(ctx, opts, os.Geteuid())
+}
+
+func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid int) (IntegrationReport, error) {
 	r := IntegrationReport{Schema: IntegrationSchema, Ready: true, Checks: []IntegrationCheck{}}
 	if err := ctx.Err(); err != nil {
 		return r, err
@@ -62,13 +66,16 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 	if opts.Check && (opts.Enable || opts.Disable) || opts.Enable && opts.Disable {
 		return r, fmt.Errorf("check, enable and disable options conflict")
 	}
-	r.Shell = opts.Shell
-	if r.Shell == "" {
-		var err error
-		r.Shell, err = integrationShell(ctx)
-		if err != nil {
-			r.Shell = "unknown"
-		}
+	// Never run user startup files or provider hook installers as root, including
+	// health checks. sudo -E may retain a user's HOME and otherwise change ownership.
+	if euid == 0 {
+		r.add("user", "failed", "Terminal integration must run as your normal user, without sudo. Run festival setup integrations as yourself.", "", true)
+		return r, nil
+	}
+	targets, shellErr := integrationShells(ctx, opts.Shell)
+	r.Shell = "unknown"
+	if len(targets) > 0 {
+		r.Shell = targets[0].Name
 	}
 	home, err := state.Home(ctx)
 	if err != nil {
@@ -105,10 +112,13 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 	}
 	if settings.Disabled {
 		r.Disabled, r.Ready = true, false
-		if shellsetup.Supported(r.Shell) {
-			profiles, err := integrationProfilesFor(ctx, r.Shell)
+		for _, target := range targets {
+			if !shellsetup.Supported(target.Name) {
+				continue
+			}
+			profiles, err := integrationProfilesFor(ctx, target)
 			if err != nil {
-				r.add("profile", "failed", err.Error(), "", true)
+				r.add("profile", "failed", err.Error(), target.Path, true)
 			}
 			for _, path := range profiles {
 				settings.Files = addUnique(settings.Files, path)
@@ -118,10 +128,14 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 			r.profile(ctx, path, "", home, opts.Check)
 		}
 		r.Checks = append(r.Checks, IntegrationCheck{ID: "preference", Status: "disabled", Message: "Automatic terminal integration is disabled. Enable it in setup to use ordinary provider commands.", Repairable: true})
+	} else if shellErr != nil {
+		r.add("shell", "unavailable", shellErr.Error(), "", true)
 	} else if !shellsetup.Supported(r.Shell) {
 		r.add("shell", "unsupported", "Automatic integration supports Bash, Zsh, Fish and PowerShell. Choose one with --shell, or disable automatic terminal integration in advanced setup.", r.Shell, false)
 	} else {
-		reconcileShell(ctx, &r, &settings, home, opts.Check)
+		for _, target := range targets {
+			reconcileShell(ctx, &r, &settings, home, opts.Check, target)
+		}
 	}
 	reconcileBridge(ctx, &r, opts.Check)
 	if !opts.Check {
@@ -187,10 +201,11 @@ func addUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integrationSettings, home string, check bool) {
+func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integrationSettings, home string, check bool, target integrationShellTarget) {
+	shell := target.Name
 	origin, _ := DetectSuite(ctx)
 	var paths, snippets, helpers []string
-	wrap := runtime.GOOS != "windows" && r.Shell != "powershell" && r.Shell != "pwsh"
+	wrap := runtime.GOOS != "windows" && shell != "powershell" && shell != "pwsh"
 	for _, tool := range []string{"camp", "fest", "obey"} {
 		path, _, err := resolveToolFrom(ctx, tool, origin)
 		if err != nil && tool == "obey" {
@@ -213,9 +228,15 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 			r.add("wrapper", "not_required", "PTY provider wrapping is supported in Bash, Zsh and Fish on Linux and macOS.", path, false)
 			continue
 		}
-		args := []string{"shell-init", r.Shell}
+		// pwsh selects an executable/profile, while both editions use the
+		// PowerShell dialect expected by camp/fest's generators.
+		dialect := shell
+		if dialect == "pwsh" {
+			dialect = "powershell"
+		}
+		args := []string{"shell-init", dialect}
 		if tool == "obey" {
-			args = []string{"wrap", "shell-init", r.Shell}
+			args = []string{"wrap", "shell-init", shell}
 		}
 		out, err := shellsetup.Run(ctx, path, args...)
 		if err != nil || strings.TrimSpace(out) == "" {
@@ -230,8 +251,11 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 		}
 		return
 	}
-	helper := filepath.Join(home, "shell", "festival."+r.Shell)
-	content := shellsetup.Header(r.Shell, paths) + strings.Join(snippets, "\n")
+	helper := filepath.Join(home, "shell", "festival."+shell)
+	if shell == "pwsh" || shell == "powershell" {
+		helper += ".ps1"
+	}
+	content := shellsetup.Header(shell, paths) + strings.Join(snippets, "\n")
 	file, err := shellsetup.Read(helper)
 	if err != nil {
 		r.add("helper", "failed", err.Error(), helper, true)
@@ -253,28 +277,33 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 		r.add("helper", "ready", "Terminal helpers are current.", helper, false)
 	}
 	settings.Helpers = addUnique(settings.Helpers, helper)
-	profiles, err := integrationProfilesFor(ctx, r.Shell)
+	profiles, err := integrationProfilesFor(ctx, target)
 	if err != nil {
 		r.add("profile", "failed", err.Error(), "", true)
 		return
 	}
 	for _, profile := range profiles {
 		settings.Files = addUnique(settings.Files, profile)
-		r.profile(ctx, profile, shellsetup.Block(shellsetup.Source(r.Shell, helper)), home, check)
+		r.profile(ctx, profile, shellsetup.Block(shellsetup.Source(shell, helper)), home, check)
 	}
 	if !r.Ready {
 		return
 	}
-	args := []string{"-lic", shellsetup.ProbeHelpers(r.Shell, helpers, wrap)}
-	if r.Shell == "pwsh" || r.Shell == "powershell" {
-		args = []string{"-NoLogo", "-NonInteractive", "-Command", shellsetup.ProbeHelpers(r.Shell, helpers, false)}
+	args := []string{"-lic", shellsetup.ProbeHelpers(shell, helpers, wrap)}
+	if shell == "pwsh" || shell == "powershell" {
+		args = []string{"-NoLogo", "-NoExit"}
 	}
-	out, err := shellsetup.Run(ctx, r.Shell, args...)
+	var out string
+	if shell == "pwsh" || shell == "powershell" {
+		out, err = shellsetup.RunInput(ctx, target.Path, shellsetup.ProbeHelpers(shell, helpers, false)+"exit\n", args...)
+	} else {
+		out, err = shellsetup.Run(ctx, target.Path, args...)
+	}
 	if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
-		r.add("fresh_shell", "failed", "The shell did not load the expected helpers. Check custom provider aliases/functions or startup errors, then repair setup.", "", true)
+		r.add("fresh_shell", "failed", "The shell did not load the expected helpers. Check custom provider aliases/functions or startup errors, then repair setup.", target.Path, true)
 		return
 	}
-	r.add("fresh_shell", "ready", "New terminals load camp, fest and supported provider helpers.", "", false)
+	r.add("fresh_shell", "ready", "New terminals load camp, fest and supported provider helpers.", target.Path, false)
 }
 
 func (r *IntegrationReport) profile(ctx context.Context, path, block, home string, check bool) {
@@ -307,9 +336,21 @@ func (r *IntegrationReport) profile(ctx context.Context, path, block, home strin
 
 // A GUI launch may not inherit ZDOTDIR exported by a terminal. Ask Zsh after
 // its own .zshenv has run, without loading interactive profiles.
-func integrationProfilesFor(ctx context.Context, shell string) ([]string, error) {
+func integrationProfilesFor(ctx context.Context, target integrationShellTarget) ([]string, error) {
+	shell := target.Name
+	if shell == "pwsh" || shell == "powershell" {
+		out, err := shellsetup.Run(ctx, target.Path, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "[Console]::Write($PROFILE.CurrentUserAllHosts)")
+		if err != nil {
+			return nil, err
+		}
+		path := strings.TrimSpace(out)
+		if !filepath.IsAbs(path) || strings.ContainsAny(path, "\r\n") {
+			return nil, fmt.Errorf("%s did not report an absolute profile path", target.Path)
+		}
+		return []string{path}, nil
+	}
 	if shell == "zsh" {
-		out, err := shellsetup.Run(ctx, "zsh", "-c", `printf '\nFESTIVAL_ZDOTDIR=%s\n' "${ZDOTDIR:-$HOME}"`)
+		out, err := shellsetup.Run(ctx, target.Path, "-c", `printf '\nFESTIVAL_ZDOTDIR=%s\n' "${ZDOTDIR:-$HOME}"`)
 		if err != nil {
 			return nil, err
 		}

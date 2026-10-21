@@ -83,7 +83,7 @@ func newIntegrationsCommand() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&opts.Shell, "shell", "", "terminal shell (defaults to the login shell)")
+	cmd.Flags().StringVar(&opts.Shell, "shell", "", "shell name or absolute executable (defaults to login shell; both installed PowerShell editions on Windows)")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "inspect without changing configuration")
 	cmd.Flags().BoolVar(&opts.Disable, "disable", false, "remove owned startup blocks and remember the opt-out")
 	cmd.Flags().BoolVar(&opts.Enable, "enable", false, "enable automatic integration after an opt-out")

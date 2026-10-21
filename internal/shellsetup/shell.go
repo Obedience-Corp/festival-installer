@@ -29,7 +29,7 @@ func Source(shell, file string) string {
 	case "fish":
 		return fmt.Sprintf("if status is-interactive; and test -r %s\n  source %s\nend\n", q, q)
 	case "pwsh", "powershell":
-		return fmt.Sprintf("if (Test-Path -LiteralPath %s) { . %s }\n", q, q)
+		return fmt.Sprintf("if ((& {\n%s}) -and (Test-Path -LiteralPath %s)) { . %s }\n", powerShellInteractive, q, q)
 	default:
 		return fmt.Sprintf("case $- in *i*) [ ! -r %s ] || . %s ;; esac\n", q, q)
 	}

@@ -2,6 +2,8 @@ package shellsetup
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,5 +107,34 @@ func TestWriteRefusesChangedSnapshotAndCancelledContext(t *testing.T) {
 	got, _ := os.ReadFile(path)
 	if string(got) != "user edit" {
 		t.Fatal("user edit lost")
+	}
+}
+
+func TestWriteRepairsIncompleteBackupBeforeReplacingProfile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "profile")
+	original := []byte("user content that must survive\n")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Read(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backups := filepath.Join(dir, "backups")
+	if err := os.Mkdir(backups, 0700); err != nil {
+		t.Fatal(err)
+	}
+	name := fmt.Sprintf("%x-%x", sha256.Sum256([]byte(f.Target)), sha256.Sum256(original))
+	backup := filepath.Join(backups, name)
+	if err := os.WriteFile(backup, original[:5], 0600); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := f.Write(context.Background(), []byte("replacement"), backups); err != nil || !changed {
+		t.Fatalf("%v %v", changed, err)
+	}
+	got, err := os.ReadFile(backup)
+	if err != nil || string(got) != string(original) {
+		t.Fatalf("incomplete backup: %q %v", got, err)
 	}
 }

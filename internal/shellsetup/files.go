@@ -109,20 +109,16 @@ func (f File) Write(ctx context.Context, data []byte, backupDir string) (bool, e
 			return false, err
 		}
 		name := fmt.Sprintf("%x-%x", sha256.Sum256([]byte(f.Target)), sha256.Sum256(f.Data))
-		backup, err := os.OpenFile(filepath.Join(backupDir, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err != nil && !os.IsExist(err) {
+		// Publish the backup atomically, and compare its bytes on every retry.
+		// A previous interrupted write must never count as a completed backup.
+		backup, err := Read(filepath.Join(backupDir, name))
+		if err != nil {
 			return false, err
 		}
-		if err == nil {
-			_, writeErr := backup.Write(f.Data)
-			closeErr := backup.Close()
-			if writeErr != nil {
-				return false, writeErr
-			}
-			if closeErr != nil {
-				return false, closeErr
-			}
+		if _, err := backup.Write(ctx, f.Data, ""); err != nil {
+			return false, err
 		}
+
 	}
 	file, err := os.CreateTemp(filepath.Dir(f.Target), ".festival-setup-*")
 	if err != nil {
