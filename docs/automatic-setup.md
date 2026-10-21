@@ -54,6 +54,8 @@ the same opt-out. Provider hooks remain useful for observation and explicit
 wrapped launches. Uninstall refreshes the helper for remaining components and
 removes owned blocks when none remain. Receipt-owned Obey uninstall first removes
 its user-scoped provider hooks, then its service, while the binary still exists.
+Root/sudo Obey uninstall refuses before cleanup or binary deletion; rerun as the
+normal user so the hooks and binary are removed under the same identity.
 A cleanup failure is reported with a retry path; binary removal still follows
 the existing uninstall warning contract. Installs without receipts are left alone. Cached helper files, preferences, and
 backups are retained; unrelated configuration is never removed.

@@ -68,6 +68,12 @@ func uninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 // is about to vanish, and a failed unregister is reported rather than dropped:
 // the unit may outlive the binary and the user is the one who has to clear it.
 func uninstallObey(ctx context.Context) (UninstallResult, string, error) {
+	if err := ctx.Err(); err != nil {
+		return UninstallResult{}, "", errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
+	}
+	if os.Geteuid() == 0 {
+		return UninstallResult{}, "", errpkg.New("E_UNINSTALL_ROOT", "run festival uninstall obey as your normal user without sudo so provider hooks and the managed binary are removed under the same identity")
+	}
 	_, found, err := readReceipt(ctx, ObeyPackageID)
 	if err != nil {
 		return UninstallResult{}, "", err

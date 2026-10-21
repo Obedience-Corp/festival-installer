@@ -3,9 +3,9 @@ package shellsetup
 // PowerShell loads profiles for -File/-Command as well as interactive prompts.
 // Accept only prompt startup options. Unknown modes (including encoded or
 // abbreviated commands, scripts, remoting and server modes) leave the session
-// untouched. NoExit allows the bounded readiness probe to feed a real prompt
-// through stdin, including a Windows session without an interactive desktop.
-// Ordinary piped input without NoExit stays unmodified.
+// untouched. A child-only marker permits the bounded readiness probe to feed
+// a real prompt through stdin, including without an interactive desktop.
+// Ordinary piped input stays unmodified, including with NoExit.
 // CLI option reference: https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_pwsh
 const powerShellInteractive = `  if ($Host.Name -ne 'ConsoleHost') { return $false }
   $startup = @([Environment]::GetCommandLineArgs() | Select-Object -Skip 1)
@@ -24,5 +24,5 @@ const powerShellInteractive = `  if ($Host.Name -ne 'ConsoleHost') { return $fal
     }
     return $false
   }
-  return ($noExit -or ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected))
+  return (([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) -or ($noExit -and $env:FESTIVAL_INTEGRATION_PROBE -eq '1'))
 `

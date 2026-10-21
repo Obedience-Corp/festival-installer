@@ -47,6 +47,7 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 				}
 			}
 			t.Setenv("FESTIVAL_APP_TOOL_BIN", "")
+			t.Setenv("FESTIVAL_INTEGRATION_PROBE", "")
 			helper := filepath.Join(home, "helper.ps1")
 			if err := os.WriteFile(helper, []byte(Header(shell, []string{filepath.Join(toolDir, "camp")})+"$env:FESTIVAL_TEST_HELPER_LOADED = 'yes'\nfunction cgo { }\nfunction fgo { }\n"), 0600); err != nil {
 				t.Fatal(err)
@@ -68,9 +69,9 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 			}
 			t.Setenv("FESTIVAL_TEST_HELPER_LOADED", "")
 			probe := ProbeHelpers(shell, []string{"cgo", "fgo"}, false) + "exit\n"
-			out, err := RunInput(ctx, path, probe, "-NoLogo", "-NoExit")
+			out, err := RunProbeInput(ctx, path, probe, "-NoLogo", "-NoExit")
 			if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
-				diagnostic, diagnosticErr := RunInput(ctx, path, "@{Host=$Host.Name; UserInteractive=[Environment]::UserInteractive; Args=[Environment]::GetCommandLineArgs(); Profile=$PROFILE.CurrentUserAllHosts; Policy=(Get-ExecutionPolicy); Errors=@($Error | ForEach-Object { $_.ToString() })} | ConvertTo-Json -Compress\nexit\n", "-NoLogo", "-NoExit")
+				diagnostic, diagnosticErr := RunProbeInput(ctx, path, "@{Host=$Host.Name; UserInteractive=[Environment]::UserInteractive; Args=[Environment]::GetCommandLineArgs(); Profile=$PROFILE.CurrentUserAllHosts; Policy=(Get-ExecutionPolicy); Errors=@($Error | ForEach-Object { $_.ToString() })} | ConvertTo-Json -Compress\nexit\n", "-NoLogo", "-NoExit")
 				t.Fatalf("interactive: %q %v; startup facts: %s (%v)", out, err, diagnostic, diagnosticErr)
 			}
 			assertion := "if ($env:FESTIVAL_TEST_HELPER_LOADED -eq 'yes') { exit 31 }; if (Get-Command cgo -CommandType Function -ErrorAction SilentlyContinue) { exit 32 }; echo FESTIVAL_SCRIPT_UNCHANGED"
@@ -97,16 +98,22 @@ func TestPowerShellInteractiveProfileOnly(t *testing.T) {
 					t.Fatalf("script %v: %q %v", args, out, err)
 				}
 			}
-			out, err = RunInput(ctx, path, assertion+"\nexit\n", "-NoLogo")
+			out, err = RunProbe(ctx, path, "-NoLogo", "-NoExit", "-Command", assertion+"; exit")
 			if err != nil || !strings.Contains(out, "FESTIVAL_SCRIPT_UNCHANGED") {
-				t.Fatalf("pipeline: %q %v", out, err)
+				t.Fatalf("probe marker must not enable command sessions: %q %v", out, err)
+			}
+			for _, args := range [][]string{{"-NoLogo"}, {"-NoLogo", "-NoExit"}} {
+				out, err = RunInput(ctx, path, assertion+"\nexit\n", args...)
+				if err != nil || !strings.Contains(out, "FESTIVAL_SCRIPT_UNCHANGED") {
+					t.Fatalf("pipeline %v: %q %v", args, out, err)
+				}
 			}
 			for _, tc := range []struct{ override, want string }{
 				{appDir, appDir}, {"", toolDir}, {"relative/path", toolDir}, {filepath.Join(home, "absent"), toolDir},
 			} {
 				t.Setenv("FESTIVAL_APP_TOOL_BIN", tc.override)
 				assertPath := "if (($env:PATH -split [IO.Path]::PathSeparator)[0] -ne " + Quote(shell, tc.want) + ") { exit 35 }; echo FESTIVAL_PATH_READY\nexit\n"
-				out, err := RunInput(ctx, path, assertPath, "-NoLogo", "-NoExit")
+				out, err := RunProbeInput(ctx, path, assertPath, "-NoLogo", "-NoExit")
 				if err != nil || !strings.Contains(out, "FESTIVAL_PATH_READY") {
 					t.Fatalf("app override %q: %q %v", tc.override, out, err)
 				}

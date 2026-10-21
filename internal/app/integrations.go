@@ -295,7 +295,7 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 	}
 	var out string
 	if shell == "pwsh" || shell == "powershell" {
-		out, err = shellsetup.RunInput(ctx, target.Path, shellsetup.ProbeHelpers(shell, helpers, false)+"exit\n", args...)
+		out, err = shellsetup.RunProbeInput(ctx, target.Path, shellsetup.ProbeHelpers(shell, helpers, false)+"exit\n", args...)
 	} else {
 		out, err = shellsetup.RunProbe(ctx, target.Path, args...)
 	}

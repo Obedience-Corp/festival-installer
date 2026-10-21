@@ -37,7 +37,12 @@ func RunInput(ctx context.Context, binary, input string, args ...string) (string
 // RunProbe marks only the child readiness shell, keeping probe-only completion
 // policy out of ordinary user terminals and tool-generation subprocesses.
 func RunProbe(ctx context.Context, binary string, args ...string) (string, error) {
-	return runInput(ctx, binary, "", []string{"FESTIVAL_INTEGRATION_PROBE=1"}, args...)
+	return RunProbeInput(ctx, binary, "", args...)
+}
+
+// RunProbeInput marks only the child readiness shell when probing via stdin.
+func RunProbeInput(ctx context.Context, binary, input string, args ...string) (string, error) {
+	return runInput(ctx, binary, input, []string{"FESTIVAL_INTEGRATION_PROBE=1"}, args...)
 }
 
 func runInput(ctx context.Context, binary, input string, env []string, args ...string) (string, error) {
