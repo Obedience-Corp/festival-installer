@@ -71,6 +71,9 @@ try {
     & docker exec --user ContainerUser $container whoami
     if ($LASTEXITCODE -ne 0) { throw 'ContainerUser identity proof failed' }
 
+    # Run every suite even when a native process fails, so an unrelated crash
+    # cannot hide the shell/profile proofs. Preserve all failures for the gate.
+    $failures = [System.Collections.Generic.List[string]]::new()
     foreach ($suite in $Suites) {
         $exe = 'C:\proof\' + $suite.Exe
         $dockerArgs = @('exec', '--user', 'ContainerUser', '-e', 'TEMP=C:\Users\ContainerUser\AppData\Local\Temp', '-e', 'TMP=C:\Users\ContainerUser\AppData\Local\Temp')
@@ -81,13 +84,31 @@ try {
         $output = & docker @dockerArgs 2>&1
         $exitCode = $LASTEXITCODE
         $output | ForEach-Object { Write-Host $_ }
-        if ($exitCode -ne 0) { throw "$($suite.Package) native proof failed ($exitCode)" }
+        if ($exitCode -ne 0) {
+            $failure = "$($suite.Package) native proof failed ($exitCode)"
+            $failures.Add($failure)
+            Write-Host $failure
+            if ($exitCode -lt 0) {
+                Write-Host 'Recent native application events (diagnostic only):'
+                $eventQuery = 'Get-WinEvent -FilterHashtable @{LogName="Application"; StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 8 -ErrorAction SilentlyContinue | Select-Object TimeCreated, ProviderName, Id, Message | Format-List'
+                try {
+                    & docker exec $container powershell.exe -NoProfile -Command $eventQuery 2>&1 | ForEach-Object { Write-Host $_ }
+                    if ($LASTEXITCODE -ne 0) { Write-Host 'Native application event log was unavailable.' }
+                } catch {
+                    Write-Host "Native application event log was unavailable: $_"
+                }
+            }
+            continue
+        }
         if (@($output | Select-String -Pattern '^--- PASS:' ).Count -eq 0) {
-            throw "$($suite.Package) native proof ran no tests"
+            $failures.Add("$($suite.Package) native proof ran no tests")
         }
         if (@($output | Select-String -Pattern '^--- SKIP:' ).Count -ne 0) {
-            throw "$($suite.Package) native proof skipped a selected test"
+            $failures.Add("$($suite.Package) native proof skipped a selected test")
         }
+    }
+    if ($failures.Count -gt 0) {
+        throw ("Windows container installer proof failed:`n" + ($failures -join "`n"))
     }
     Write-Host 'Windows container installer proof passed'
 } finally {
