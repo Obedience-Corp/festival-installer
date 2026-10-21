@@ -113,6 +113,10 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 	if settings.Disabled {
 		r.Disabled, r.Ready = true, false
 		for _, target := range targets {
+			if target.Unavailable != nil {
+				r.add("shell", "unavailable", target.Unavailable.Error(), target.Path, true)
+				continue
+			}
 			if !shellsetup.Supported(target.Name) {
 				continue
 			}
@@ -127,15 +131,14 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 		for _, path := range settings.Files {
 			r.profile(ctx, path, "", home, opts.Check)
 		}
+		if shellErr != nil {
+			r.add("shell", "unavailable", shellErr.Error(), "", true)
+		}
 		r.Checks = append(r.Checks, IntegrationCheck{ID: "preference", Status: "disabled", Message: "Automatic terminal integration is disabled. Enable it in setup to use ordinary provider commands.", Repairable: true})
 	} else if shellErr != nil {
 		r.add("shell", "unavailable", shellErr.Error(), "", true)
-	} else if !shellsetup.Supported(r.Shell) {
-		r.add("shell", "unsupported", "Automatic integration supports Bash, Zsh, Fish and PowerShell. Choose one with --shell, or disable automatic terminal integration in advanced setup.", r.Shell, false)
 	} else {
-		for _, target := range targets {
-			reconcileShell(ctx, &r, &settings, home, opts.Check, target)
-		}
+		reconcileShellTargets(ctx, &r, &settings, home, opts.Check, targets)
 	}
 	reconcileBridge(ctx, &r, opts.Check)
 	if !opts.Check {
@@ -201,7 +204,22 @@ func addUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
+func reconcileShellTargets(ctx context.Context, r *IntegrationReport, settings *integrationSettings, home string, check bool, targets []integrationShellTarget) {
+	for _, target := range targets {
+		if target.Unavailable != nil {
+			r.add("shell", "unavailable", target.Unavailable.Error(), target.Path, true)
+			continue
+		}
+		if !shellsetup.Supported(target.Name) {
+			r.add("shell", "unsupported", "Automatic integration supports Bash, Zsh, Fish and PowerShell. Choose one with --shell, or disable automatic terminal integration in advanced setup.", target.Path, false)
+			continue
+		}
+		reconcileShell(ctx, r, settings, home, check, target)
+	}
+}
+
 func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integrationSettings, home string, check bool, target integrationShellTarget) {
+	checksAt := len(r.Checks)
 	shell := target.Name
 	origin, _ := DetectSuite(ctx)
 	var paths, snippets, helpers []string
@@ -286,8 +304,10 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 		settings.Files = addUnique(settings.Files, profile)
 		r.profile(ctx, profile, shellsetup.Block(shellsetup.Source(shell, helper)), home, check)
 	}
-	if !r.Ready {
-		return
+	for _, c := range r.Checks[checksAt:] {
+		if c.Status != "ready" && c.Status != "not_required" {
+			return
+		}
 	}
 	args := []string{"-lic", shellsetup.ProbeHelpers(shell, helpers, wrap)}
 	if shell == "pwsh" || shell == "powershell" {

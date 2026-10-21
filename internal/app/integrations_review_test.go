@@ -117,6 +117,46 @@ func TestWindowsAutoSetupFindsEachInstalledEditionOutsidePATH(t *testing.T) {
 	}
 }
 
+func TestWindowsShellTargetsRetainHealthyEditionAfterFailure(t *testing.T) {
+	paths := []string{"pwsh.exe", "powershell.exe"}
+	targets := windowsShellTargets(paths, func(path string) (integrationShellTarget, error) {
+		if path == paths[0] {
+			return integrationShellTarget{Name: "pwsh", Path: path}, errors.New("damaged image")
+		}
+		return integrationShellTarget{Name: "powershell", Path: path}, nil
+	})
+	if len(targets) != 2 || targets[0].Unavailable == nil || targets[1].Unavailable != nil || targets[1].Path != paths[1] {
+		t.Fatalf("one damaged edition hid a healthy one: %+v", targets)
+	}
+}
+
+func TestReconcileShellTargetsProbesHealthyShellAfterUnavailableShell(t *testing.T) {
+	home, managed := integrationFixture(t, "bash")
+	healthy, err := shellTarget("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := integrationShellTarget{Name: "pwsh", Path: filepath.Join(home, "damaged-pwsh.exe"), Unavailable: errors.New("damaged image")}
+	r := IntegrationReport{Ready: true}
+	settings := integrationSettings{}
+	reconcileShellTargets(context.Background(), &r, &settings, managed, false, []integrationShellTarget{bad, healthy})
+	if r.Ready {
+		t.Fatal("report ignored unavailable shell")
+	}
+	unavailable, probed := false, false
+	for _, check := range r.Checks {
+		if check.ID == "shell" && check.Status == "unavailable" && check.Path == bad.Path {
+			unavailable = true
+		}
+		if check.ID == "fresh_shell" && check.Status == "ready" && check.Path == healthy.Path {
+			probed = true
+		}
+	}
+	if !unavailable || !probed {
+		t.Fatalf("healthy shell was not configured and probed after a bad edition: %+v", r.Checks)
+	}
+}
+
 func TestMacGitShimNeverRunsWhenDeveloperToolsAreMissing(t *testing.T) {
 	for _, selected := range []bool{false, true} {
 		var calls []string

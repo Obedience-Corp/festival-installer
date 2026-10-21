@@ -15,7 +15,10 @@ import (
 
 // Keep the executable as well as its dialect. A GUI's PATH may resolve a
 // different Bash, or may not contain the user's Homebrew shell at all.
-type integrationShellTarget struct{ Name, Path string }
+type integrationShellTarget struct {
+	Name, Path  string
+	Unavailable error
+}
 
 func shellTarget(path string) (integrationShellTarget, error) {
 	name := strings.TrimSuffix(strings.ToLower(filepath.Base(path)), ".exe")
@@ -40,7 +43,8 @@ func shellTarget(path string) (integrationShellTarget, error) {
 func integrationShells(ctx context.Context, requested string) ([]integrationShellTarget, error) {
 	if requested != "" {
 		target, err := shellTarget(requested)
-		return []integrationShellTarget{target}, err
+		target.Unavailable = err
+		return []integrationShellTarget{target}, nil
 	}
 	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {
 		return integrationShells(ctx, shell)
@@ -50,15 +54,7 @@ func integrationShells(ctx context.Context, requested string) ([]integrationShel
 		if len(paths) == 0 {
 			return nil, fmt.Errorf("no installed PowerShell was found; choose a shell executable with --shell")
 		}
-		var targets []integrationShellTarget
-		for _, path := range paths {
-			target, err := shellTarget(path)
-			if err != nil {
-				return targets, err
-			}
-			targets = append(targets, target)
-		}
-		return targets, nil
+		return windowsShellTargets(paths, shellTarget), nil
 	}
 	u, err := user.Current()
 	if err != nil {
@@ -84,6 +80,18 @@ func integrationShells(ctx context.Context, requested string) ([]integrationShel
 		}
 	}
 	return nil, fmt.Errorf("cannot detect the login shell; choose one with --shell")
+}
+
+// Keep failed editions in the report while allowing healthy editions to be
+// configured and probed. One broken pwsh must not hide Windows PowerShell.
+func windowsShellTargets(paths []string, resolve func(string) (integrationShellTarget, error)) []integrationShellTarget {
+	targets := make([]integrationShellTarget, 0, len(paths))
+	for _, path := range paths {
+		target, err := resolve(path)
+		target.Unavailable = err
+		targets = append(targets, target)
+	}
+	return targets
 }
 
 // Windows has no single login shell. Cover both installed console editions;

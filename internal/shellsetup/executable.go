@@ -16,10 +16,19 @@ func ValidateExecutable(path string) error {
 	if runtime.GOOS != "windows" || !strings.EqualFold(filepath.Ext(path), ".exe") {
 		return nil
 	}
-	if err := validatePEImage(path); err != nil {
+	// Store-installed commands are app execution links, not PE files. Windows
+	// resolves them while launching; opening them as data may fail outright.
+	if err := validateWindowsExecutable(path, appExecutionAlias(path)); err != nil {
 		return fmt.Errorf("windows executable %q is unavailable: %w", path, err)
 	}
 	return nil
+}
+
+func validateWindowsExecutable(path string, alias bool) error {
+	if alias {
+		return nil
+	}
+	return validatePEImage(path)
 }
 
 // validatePEImage checks the headers the Windows loader needs and ensures

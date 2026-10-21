@@ -20,6 +20,14 @@ func TestWindowsDamagedExecutablesStayUnavailable(t *testing.T) {
 	if _, err := shellTarget(path); err == nil || !strings.Contains(err.Error(), "unavailable") {
 		t.Fatalf("damaged login shell was accepted: %v", err)
 	}
+	t.Run("healthy edition survives", func(t *testing.T) {
+		t.Setenv("SHELL", "")
+		t.Setenv("PATH", filepath.Dir(path))
+		targets, err := integrationShells(context.Background(), "")
+		if err != nil || len(targets) != 2 || targets[0].Name != "pwsh" || targets[0].Unavailable == nil || targets[1].Name != "powershell" || targets[1].Unavailable != nil {
+			t.Fatalf("damaged pwsh hid Windows PowerShell: %+v %v", targets, err)
+		}
+	})
 	managed := filepath.Join(t.TempDir(), "festival-home")
 	t.Setenv("FESTIVAL_HOME", managed)
 	t.Setenv("OBEY_INSTALLER_HOME", "")
