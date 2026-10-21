@@ -130,7 +130,7 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 		Flavor:            origin.Flavor,
 		Setup:             setup,
 		Tools:             resolveStatusTools(ctx, origin),
-		Prerequisites:     resolvePrerequisites(),
+		Prerequisites:     resolvePrerequisites(ctx),
 	}, nil
 }
 
@@ -249,12 +249,14 @@ func readStatusReceipts(ctx context.Context) map[string]receipts.Receipt {
 	return out
 }
 
-func resolvePrerequisites() []StatusPrerequisite {
+func resolvePrerequisites(ctx context.Context) []StatusPrerequisite {
 	out := make([]StatusPrerequisite, 0, len(prerequisiteBinaries))
 	for _, name := range prerequisiteBinaries {
 		p := StatusPrerequisite{Name: name}
 		if path, err := exec.LookPath(name); err == nil {
-			p.Present = true
+			// macOS ships a git launcher before developer tools are installed.
+			// An executable path alone does not prove the prerequisite works.
+			p.Present = name != "git" || gitReady(ctx)
 			p.Path = path
 		}
 		out = append(out, p)

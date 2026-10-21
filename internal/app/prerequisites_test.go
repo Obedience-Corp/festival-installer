@@ -1,7 +1,12 @@
 package app
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -23,5 +28,28 @@ func TestPrerequisiteCommandsUseSystemAuthorizationAndFixedArguments(t *testing.
 	}
 	if _, _, err := prerequisiteCommand("linux", func(string) bool { return false }); err == nil {
 		t.Fatal("missing authorization helper accepted")
+	}
+}
+
+func TestGitLauncherWithoutWorkingGitIsNotReady(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix launcher fixture")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "git")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Fatal(err)
+	}
+	if gitReady(context.Background()) {
+		t.Fatal("launcher mistaken for installed Git")
+	}
+	for _, p := range resolvePrerequisites(context.Background()) {
+		if p.Name == "git" && p.Present {
+			t.Fatal("status accepted nonworking Git")
+		}
 	}
 }
