@@ -63,6 +63,9 @@ func TestIntegrationCommandReadinessExit(t *testing.T) {
 }
 
 func TestUninstallObeyProviderHookCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix shell fixture")
+	}
 	for _, mode := range []string{"success", "failed", "both failed", "no receipt", "cancelled"} {
 		t.Run(mode, func(t *testing.T) {
 			f := obeyServiceFixture(t, "0.2.0")
@@ -79,7 +82,7 @@ func TestUninstallObeyProviderHookCleanup(t *testing.T) {
 			if mode == "failed" || mode == "both failed" {
 				body += "echo 'hook configuration is unwritable' >&2\nexit 1\n"
 			} else {
-				body += "rm '" + marker + "'\n"
+				body += "/bin/rm '" + marker + "'\n"
 			}
 			body += ";;\n'service uninstall') printf 'service\\n' >> '" + log + "'\n"
 			if mode == "both failed" {
@@ -126,7 +129,7 @@ func TestUninstallObeyProviderHookCleanup(t *testing.T) {
 			}
 			_, markerErr := os.Stat(marker)
 			if (mode == "success") != os.IsNotExist(markerErr) {
-				t.Fatalf("hook cleanup: %v", markerErr)
+				t.Fatalf("hook cleanup: %v, calls=%q, output=%s, stderr=%s", markerErr, calls, out, stderr)
 			}
 			if mode == "both failed" && !strings.Contains(out, "service cleanup refused") {
 				t.Fatalf("lost service warning: %s", out)
