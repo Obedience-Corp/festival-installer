@@ -37,6 +37,9 @@ func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (Upd
 		}
 		return result, "", nil
 	}
+	if err := validatePluginReceiptVersion(receipt); err != nil {
+		return UpdateResult{}, "", err
+	}
 	result.Version = receipt.Version
 	intact, err := pluginReceiptIntact(ctx, receipt)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
@@ -92,4 +93,12 @@ func pluginReceiptIntact(ctx context.Context, receipt receipts.Receipt) (bool, e
 		}
 	}
 	return intact, nil
+}
+
+// A damaged receipt cannot establish whether replacement would be a downgrade.
+func validatePluginReceiptVersion(receipt receipts.Receipt) error {
+	if _, err := installer.SatisfiesConstraint(receipt.Version, ">=0.0.0"); err != nil {
+		return errpkg.Wrap("E_PLUGIN_VERSION", err, "preserved "+receipt.PackageID+": installed receipt version is invalid; repair the receipt through its existing owner before retrying")
+	}
+	return nil
 }

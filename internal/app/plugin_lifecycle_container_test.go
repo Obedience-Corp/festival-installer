@@ -23,6 +23,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/release"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 	"github.com/Obedience-Corp/festival-installer/internal/verify"
 )
 
@@ -121,6 +122,41 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	if err != nil || result.Action != "current" || downloads.Load() != before {
 		t.Fatalf("current: %+v %v", result, err)
 	}
+
+	// Receipt corruption must not be treated as version zero and overwritten.
+	owned, found, err := pluginReceipt(ctx, "obedience-corp/camp-app")
+	if err != nil || !found {
+		t.Fatalf("receipt: %v", err)
+	}
+	installerHome, err := state.Home(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := state.OpenDB(ctx, installerHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := owned
+	invalid.Version = "broken-version"
+	if err := receipts.Write(ctx, db.Raw(), invalid); err != nil {
+		t.Fatal(err)
+	}
+	before = downloads.Load()
+	if _, _, err := UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo}); errpkg.Code(err) != "E_PLUGIN_VERSION" {
+		t.Fatalf("invalid receipt version accepted: %v", err)
+	}
+	if downloads.Load() != before {
+		t.Fatal("invalid receipt downloaded an artifact")
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != string(payload("0.1.0")) {
+		t.Fatalf("invalid receipt changed file: %q %v", got, err)
+	}
+	if err := receipts.Write(ctx, db.Raw(), owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
 	browseSeedGit(t, git, "tag", "camp-app-v0.2.0")
 	result, _, err = UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
 	if err != nil || result.Action != "upgraded" || result.Version != "0.2.0" {
@@ -154,6 +190,17 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(payload("0.2.0")) {
 		t.Fatalf("corrupt changed file: %q %v", got, err)
+	}
+
+	corrupt.Store(false)
+	result, _, err = UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
+	if err != nil || result.Action != "upgraded" || result.Version != "0.3.0" {
+		t.Fatalf("retry: %+v %v", result, err)
+	}
+	before = downloads.Load()
+	result, _, err = UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
+	if err != nil || result.Action != "current" || downloads.Load() != before {
+		t.Fatalf("retry convergence: %+v %v", result, err)
 	}
 	foreign := []byte("foreign replacement")
 	if err := os.WriteFile(path, foreign, 0o755); err != nil {

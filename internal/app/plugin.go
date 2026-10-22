@@ -444,6 +444,11 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 	if err != nil && !errors.Is(err, receipts.ErrNotFound) {
 		return InstallResult{}, err
 	}
+	if err == nil {
+		if err := validatePluginReceiptVersion(receipt); err != nil {
+			return InstallResult{}, err
+		}
+	}
 	if receipt.Version != "" && installer.VersionLess(spec.version, receipt.Version) {
 		return InstallResult{}, errpkg.New("E_PLUGIN_DOWNGRADE", "preserved newer plugin version "+receipt.Version+"; refusing implicit downgrade")
 	}

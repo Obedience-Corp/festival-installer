@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -330,7 +331,7 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 		t.Fatalf("write fake fest: %v", err)
 	}
 	managedBin := filepath.Join(home, "bin")
-	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin)
+	t.Setenv("PATH", pathDir+string(os.PathListSeparator)+managedBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	if _, errOut, err := runInstaller(t, "install", "fest-demo", "--allow-unverified"); err != nil {
 		t.Fatalf("install fest-demo: %v\n%s", err, errOut)
@@ -357,6 +358,25 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 		t.Fatalf("PATH resolves fest-demo to %s, want %s", resolved, landed)
 	}
 
+	stdout, stderr, err := runInstaller(t, "update", "acme/fest-demo", "--json", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("qualified non-TTY update: %v\n%s", err, stderr)
+	}
+	var envelope struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Package string `json:"package"`
+			Action  string `json:"action"`
+			Version string `json:"version"`
+			Latest  string `json:"latest"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("update JSON: %v: %s", err, stdout)
+	}
+	if !envelope.OK || envelope.Data.Package != "acme/fest-demo" || envelope.Data.Action != "current" || envelope.Data.Version != "0.1.0" || envelope.Data.Latest != "0.1.0" {
+		t.Fatalf("update envelope: %+v", envelope)
+	}
 	if _, errOut, err := runInstaller(t, "uninstall", "fest-demo"); err != nil {
 		t.Fatalf("uninstall fest-demo: %v\n%s", err, errOut)
 	}
