@@ -172,6 +172,9 @@ func stagePluginAssetsChecked(ctx context.Context, tx *installer.Transaction, ex
 			return err
 		}
 		dst := filepath.Join(dstRoot, rel)
+		if err := checkPluginAssetParents(ctx, dst); err != nil {
+			return err
+		}
 		if guard != nil {
 			if err := guard(dst); err != nil {
 				return err

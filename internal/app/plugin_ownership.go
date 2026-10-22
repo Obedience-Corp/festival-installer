@@ -102,3 +102,32 @@ func validatePluginReceiptVersion(receipt receipts.Receipt) error {
 	}
 	return nil
 }
+
+// Preserve redirected runtime directories rather than placing new files through
+// a user-owned symlink. Missing destination files alone do not establish ownership.
+func checkPluginAssetParents(ctx context.Context, destination string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return errpkg.Wrap("E_PLUGIN_HOME", err, "resolve asset ownership boundary")
+	}
+	home = filepath.Clean(home)
+	for parent := filepath.Dir(destination); parent != home; parent = filepath.Dir(parent) {
+		if err := ctx.Err(); err != nil {
+			return errpkg.Wrap("E_PLUGIN_CTX", err, "check asset directory ownership")
+		}
+		if parent == filepath.Dir(parent) {
+			return foreignPluginPath(destination)
+		}
+		info, err := os.Lstat(parent)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return errpkg.Wrap("E_PLUGIN_OWNERSHIP", err, "inspect asset directory "+parent)
+		}
+		if !info.IsDir() {
+			return foreignPluginPath(parent)
+		}
+	}
+	return nil
+}

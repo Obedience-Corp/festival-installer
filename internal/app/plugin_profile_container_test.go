@@ -102,3 +102,46 @@ func TestSelectedCampAppStatusReadsProtocolAndLeavesUnrelatedPluginsAlone(t *tes
 		t.Fatalf("failed capability payload accepted: %+v", entry)
 	}
 }
+
+func TestPluginOwnershipPreservesRedirectedRuntimeDirectories(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plugin-root", true: "nested-assets"}[nested], func(t *testing.T) {
+			ctx := context.Background()
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			extracted := t.TempDir()
+			source := filepath.Join(extracted, "assets", "support")
+			if err := os.MkdirAll(source, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(source, "new-file"), []byte("archive asset"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(home, ".obey", "plugins", "camp-app")
+			redirected := root
+			if nested {
+				redirected = filepath.Join(root, "support")
+			}
+			if err := os.MkdirAll(filepath.Dir(redirected), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			external := t.TempDir()
+			if err := os.Symlink(external, redirected); err != nil {
+				t.Fatal(err)
+			}
+			// Ownership must fail before transaction staging, including when the
+			// archive adds a file that has never existed under the redirected tree.
+			_, err := stagePluginAssetsChecked(ctx, nil, extracted, "camp-app", nil)
+			if errpkg.Code(err) != "E_PLUGIN_FOREIGN" {
+				t.Fatalf("redirected directory accepted: %v", err)
+			}
+			entries, err := os.ReadDir(external)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("external runtime changed: %v %v", entries, err)
+			}
+			if info, err := os.Lstat(redirected); err != nil || info.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("symlink changed: %v", err)
+			}
+		})
+	}
+}

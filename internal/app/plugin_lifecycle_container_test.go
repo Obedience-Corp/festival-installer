@@ -117,6 +117,32 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(bin, "camp-app")
+
+	// A newer standalone PATH plugin remains untouched while App-managed calls
+	// consistently select their receipt-owned copy.
+	standalone := filepath.Join(tools, "camp-app")
+	standaloneBytes := payload("9.0.0")
+	if err := os.WriteFile(standalone, standaloneBytes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	managedContext := WithManagedToolchain(ctx)
+	selected, err := ResolveTool(managedContext, "camp-app")
+	if err != nil || selected != path {
+		t.Fatalf("selected managed path: %s %v", selected, err)
+	}
+	status, err := StatusReportForPlugins(managedContext, []string{"obedience-corp/camp-app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pluginStatus := status.Tools[len(status.Tools)-1]
+	if pluginStatus.Path != path || pluginStatus.Managed != path || pluginStatus.Origin != OriginManaged {
+		t.Fatalf("status disagrees with resolve: %+v", pluginStatus)
+	}
+	t.Cleanup(func() {
+		if got, err := os.ReadFile(standalone); err != nil || string(got) != string(standaloneBytes) {
+			t.Errorf("standalone plugin changed: %q %v", got, err)
+		}
+	})
 	before := downloads.Load()
 	result, _, err := UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
 	if err != nil || result.Action != "current" || downloads.Load() != before {
