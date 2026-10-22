@@ -33,11 +33,18 @@ func (execRunner) Output(ctx context.Context, name string, args ...string) ([]by
 func (execRunner) LookPath(name string) (string, error) { return exec.LookPath(name) }
 
 type Adapter struct {
-	runner Runner
-	bin    string
+	runner     Runner
+	bin        string
+	executable string
 }
 
 func NewAdapter(bin string) *Adapter { return &Adapter{runner: execRunner{}, bin: bin} }
+
+// NewAdapterAt validates the host selected by the caller's toolchain policy.
+// The logical host ID stays camp/fest even when its executable is off PATH.
+func NewAdapterAt(bin, executable string) *Adapter {
+	return &Adapter{runner: execRunner{}, bin: bin, executable: executable}
+}
 
 func (a *Adapter) HostID() string { return a.bin }
 
@@ -45,11 +52,15 @@ func (a *Adapter) DetectInstalled(ctx context.Context) (bool, string, string, er
 	if err := ctx.Err(); err != nil {
 		return false, "", "", errpkg.Wrap("E_HOST_CTX", err, "context cancelled")
 	}
-	path, err := a.runner.LookPath(a.bin)
-	if err != nil {
-		return false, "", "", nil
+	path := a.executable
+	if path == "" {
+		var err error
+		path, err = a.runner.LookPath(a.bin)
+		if err != nil {
+			return false, "", "", nil
+		}
 	}
-	out, err := a.runner.Output(ctx, a.bin, "version")
+	out, err := a.runner.Output(ctx, path, "version")
 	if err != nil {
 		return true, "", path, nil
 	}

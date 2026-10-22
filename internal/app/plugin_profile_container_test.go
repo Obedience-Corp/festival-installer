@@ -11,6 +11,7 @@ import (
 
 	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
@@ -143,5 +144,44 @@ func TestPluginOwnershipPreservesRedirectedRuntimeDirectories(t *testing.T) {
 				t.Fatalf("symlink changed: %v", err)
 			}
 		})
+	}
+}
+
+func TestPluginProfileManagedHostCanBeInstalledBeforeShellConfiguration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("FESTIVAL_HOME", filepath.Join(home, "installer"))
+	t.Setenv("PATH", "/usr/bin:/bin")
+	bin := filepath.Join(home, "installer", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	managed := filepath.Join(bin, "camp")
+	if err := os.WriteFile(managed, []byte("#!/bin/sh\necho 'camp 0.9.0'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := metadata.RuntimeTarget{Runtime: "camp-cli", VersionConstraint: ">=0.4.0"}
+	ordinary := chooseAdapter(context.Background(), "camp")
+	if err := ordinary.ValidateCompatibility(context.Background(), target); errpkg.Code(err) != "E_HOST_ABSENT" {
+		t.Fatalf("ordinary PATH fixture unexpectedly finds Camp: %v", err)
+	}
+	ctx := WithManagedToolchain(context.Background())
+	selected := chooseAdapter(ctx, "camp")
+	if selected.HostID() != "camp" {
+		t.Fatalf("logical host changed: %s", selected.HostID())
+	}
+	if err := selected.ValidateCompatibility(ctx, target); err != nil {
+		t.Fatalf("fresh managed Camp rejected before terminal configuration: %v", err)
+	}
+	shadow := filepath.Join(home, "external")
+	if err := os.MkdirAll(shadow, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(shadow, "camp"), []byte("#!/bin/sh\necho 'camp 0.1.0'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shadow+":/usr/bin:/bin")
+	if err := chooseAdapter(ctx, "camp").ValidateCompatibility(ctx, target); err != nil {
+		t.Fatalf("PATH shadow overrode managed compatibility: %v", err)
 	}
 }

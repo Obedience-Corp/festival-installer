@@ -86,7 +86,7 @@ func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (Upd
 	if err != nil {
 		return UpdateResult{}, "", err
 	}
-	if err := chooseAdapter(target.Host).ValidateCompatibility(ctx, spec.target); err != nil {
+	if err := chooseAdapter(ctx, target.Host).ValidateCompatibility(ctx, spec.target); err != nil {
 		return UpdateResult{}, "", err
 	}
 	result.Latest = spec.version

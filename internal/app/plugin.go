@@ -35,7 +35,12 @@ func PluginHost(selector string) (host, name string, ok bool) {
 	}
 }
 
-func chooseAdapter(host string) hosts.Host {
+func chooseAdapter(ctx context.Context, host string) hosts.Host {
+	if managedToolchain(ctx) {
+		if selected, _, err := resolveToolFrom(ctx, host, SuiteOrigin{}); err == nil {
+			return hosts.NewAdapterAt(host, selected)
+		}
+	}
 	if host == "camp" {
 		return camp.New()
 	}
@@ -382,7 +387,7 @@ func InstallPlugin(ctx context.Context, host, name string, opts InstallOptions) 
 		return InstallResult{}, err
 	}
 
-	if err := chooseAdapter(host).ValidateCompatibility(ctx, spec.target); err != nil {
+	if err := chooseAdapter(ctx, host).ValidateCompatibility(ctx, spec.target); err != nil {
 		return InstallResult{}, err
 	}
 	return activatePlugin(ctx, spec, channel, progress)
