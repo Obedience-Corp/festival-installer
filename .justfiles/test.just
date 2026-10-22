@@ -59,6 +59,18 @@ shell-integration-container-proof:
     CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/shell-integration.test ./internal/shellsetup
     docker run --rm --tmpfs /tmp:rw,exec,size=256m,mode=1777 -v "$PWD/bin/shell-integration.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache bash zsh fish >/dev/null && su nobody -s /bin/sh -c "/proof -test.v -test.run TestZshCompletionPolicyAndLegacyHelper\|TestAppToolDirectorySurvivesShellStartup"'
 
+# Verify setup preserves custom launchers while distinguishing broken startup.
+integration-reconcile-container-proof docker_context="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker=(docker)
+    if [ -n {{quote(docker_context)}} ]; then
+        docker+=(--context {{quote(docker_context)}})
+    fi
+    mkdir -p bin
+    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/integration-reconcile.test ./internal/app
+    "${docker[@]}" run --rm --tmpfs /tmp:rw,exec,size=256m,mode=1777 -v "$PWD/bin/integration-reconcile.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache bash zsh fish >/dev/null && su nobody -s /bin/sh -c "/proof -test.v -test.run TestIntegration\|TestUnsupportedShell"'
+
 # Prove sudo/root cannot mutate provider hooks or remove the Obey receipt/binary.
 uninstall-root-container-proof:
     #!/usr/bin/env bash

@@ -18,7 +18,8 @@ func integrationFixture(t *testing.T, shell string) (string, string) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix shell fixture")
 	}
-	if _, err := exec.LookPath(shell); err != nil {
+	shellPath, err := exec.LookPath(shell)
+	if err != nil {
 		t.Skip(shell + " unavailable")
 	}
 	home := t.TempDir()
@@ -51,7 +52,7 @@ func integrationFixture(t *testing.T, shell string) (string, string) {
 				if shell == "fish" {
 					snippet += fmt.Sprintf("if not functions -q %s\nfunction %s\n command obey wrap %s $argv\nend\nend\n", p, p, p)
 				} else {
-					snippet += fmt.Sprintf("if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then\n%s() { command obey wrap %s \"$@\"; }\nfi\n", p, p, p, p)
+					snippet += fmt.Sprintf("if ! typeset -f %s >/dev/null 2>&1 && ! alias %s >/dev/null 2>&1; then\nfunction %s { command obey wrap %s \"$@\"; }\nfi\n", p, p, p, p)
 				}
 			}
 		}
@@ -66,7 +67,19 @@ func integrationFixture(t *testing.T, shell string) (string, string) {
 		}
 	}
 	// Managed resolution still works when a desktop process has no suite PATH.
+	// Bash and Zsh live in /bin. Homebrew fish does not, so keep that executable
+	// visible without putting the rest of Homebrew on PATH.
 	t.Setenv("PATH", "/usr/bin:/bin")
+	if _, err := exec.LookPath(shell); err != nil {
+		shellBin := filepath.Join(home, "shell-bin")
+		if err := os.MkdirAll(shellBin, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(shellPath, filepath.Join(shellBin, filepath.Base(shell))); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", "/usr/bin:/bin:"+shellBin)
+	}
 	return home, managed
 }
 
@@ -126,28 +139,82 @@ func TestIntegrationsFreshRepairAndOptOut(t *testing.T) {
 }
 
 func TestIntegrationsPreserveCustomProviderAndReportConflict(t *testing.T) {
-	_, _ = integrationFixture(t, "zsh")
-	profile, _ := ShellRCFile("zsh")
-	custom := "grok() { echo custom-keychain-launch; }\n"
-	if err := os.WriteFile(profile, []byte(custom), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	r, err := ReconcileIntegrations(context.Background(), IntegrationOptions{Shell: "zsh"})
-	if err != nil || r.Ready {
-		t.Fatalf("custom conflict not reported: %+v %v", r, err)
-	}
-	found := false
-	for _, c := range r.Checks {
-		if c.ID == "fresh_shell" && c.Status == "failed" {
-			found = true
+	for _, shell := range []string{"bash", "zsh", "fish"} {
+		for _, kind := range []string{"function", "alias"} {
+			t.Run(shell+"/"+kind, func(t *testing.T) {
+				integrationFixture(t, shell)
+				profile, _ := ShellRCFile(shell)
+				custom := "claude() { echo custom-keychain-launch; }\n"
+				if shell == "fish" {
+					custom = "function claude\n echo custom-keychain-launch\nend\n"
+				}
+				if kind == "alias" {
+					custom = "alias claude='echo custom-keychain-launch'\n"
+				}
+				// Startup themes may print terminal controls without a final newline.
+				custom += "printf '\\033]11;#2F5755\\007'\n"
+				if err := os.MkdirAll(filepath.Dir(profile), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(profile, []byte(custom), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if shell == "bash" {
+					// Bash login profiles commonly source the interactive rc file.
+					login := filepath.Join(filepath.Dir(profile), ".bash_profile")
+					if err := os.WriteFile(login, []byte(". \"$HOME/.bashrc\"\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, check := range []bool{false, true, false} {
+					r, err := ReconcileIntegrations(context.Background(), IntegrationOptions{Shell: shell, Check: check})
+					if err != nil || r.Ready {
+						t.Fatalf("custom conflict not reported: %+v %v", r, err)
+					}
+					conflict, fresh := false, false
+					for _, c := range r.Checks {
+						if c.ID == "provider_wrapper" && c.Status == "conflict" && strings.Contains(c.Message, "obey wrap claude") && !c.Repairable {
+							conflict = true
+							continue
+						}
+						if c.Status != "ready" && c.Status != "not_required" {
+							t.Fatalf("unexpected setup failure: %+v", c)
+						}
+						fresh = fresh || c.ID == "fresh_shell" && c.Status == "ready"
+					}
+					if !conflict || !fresh {
+						t.Fatalf("missing conflict or successful probe: %+v", r)
+					}
+					body, _ := os.ReadFile(profile)
+					if !strings.HasPrefix(string(body), custom) || strings.Count(string(body), shellsetup.Begin) != 1 {
+						t.Fatal("custom launcher or managed block changed")
+					}
+				}
+			})
 		}
 	}
-	if !found {
-		t.Fatalf("missing conflict check: %+v", r)
-	}
-	body, _ := os.ReadFile(profile)
-	if !strings.HasPrefix(string(body), custom) {
-		t.Fatal("custom launcher overwritten")
+}
+
+func TestIntegrationsCustomProviderDoesNotHideBrokenStartup(t *testing.T) {
+	for _, failure := range []string{"return\n", "exit 7\n"} {
+		t.Run(strings.TrimSpace(failure), func(t *testing.T) {
+			integrationFixture(t, "zsh")
+			profile, _ := ShellRCFile("zsh")
+			custom := "claude() { echo custom-keychain-launch; }\n" + failure
+			if err := os.WriteFile(profile, []byte(custom), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			r, err := ReconcileIntegrations(context.Background(), IntegrationOptions{Shell: "zsh"})
+			if err != nil || r.Ready {
+				t.Fatalf("startup failure not reported: %+v %v", r, err)
+			}
+			for _, c := range r.Checks {
+				if c.ID == "fresh_shell" && c.Status == "failed" && c.Repairable {
+					return
+				}
+			}
+			t.Fatalf("missing failed startup check: %+v", r)
+		})
 	}
 }
 
