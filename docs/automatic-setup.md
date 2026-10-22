@@ -30,7 +30,15 @@ reported separately from startup/helper failures. An explicit `--shell`
 shells and malformed/duplicate Festival blocks are reported for repair.
 Existing aliases/functions are preserved and may prevent automatic wrapping;
 explicit `obey wrap <provider>` remains available. Scripts and pipelines keep
-their normal behavior. PowerShell's owned block is limited to console prompt
+their normal behavior. A preserved launcher produces a `provider_wrapper` check
+with status `conflict`, naming the provider and the explicit command. It is not
+repairable by overwriting user configuration. The report remains `ready: false`
+because automatic wrapping is incomplete, while `fresh_shell` is `ready` when
+the required helpers load. Festival App can continue when these launcher
+conflicts are the only incomplete checks; failed startup, missing helpers, and
+failed provider hooks still block setup. The probe never launches a provider.
+
+PowerShell's owned block is limited to console prompt
 sessions: script, command, encoded-command and ordinary piped invocations do
 not load helpers or change PATH. Other PowerShell hosts/custom launch modes
 are left alone and may require explicit integration. Automatic setup intentionally

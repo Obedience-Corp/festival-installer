@@ -324,10 +324,13 @@ func reconcileShell(ctx context.Context, r *IntegrationReport, settings *integra
 		out, err = shellsetup.RunProbe(ctx, target.Path, args...)
 	}
 	if err != nil || !strings.Contains(out, "FESTIVAL_INTEGRATION_READY") {
-		r.add("fresh_shell", "failed", "The shell did not load the expected helpers. Check custom provider aliases/functions or startup errors, then repair setup.", target.Path, true)
+		r.add("fresh_shell", "failed", "The shell did not load the expected helpers. Check terminal startup errors, then repair setup.", target.Path, true)
 		return
 	}
-	r.add("fresh_shell", "ready", "New terminals load camp, fest and supported provider helpers.", target.Path, false)
+	for _, provider := range shellsetup.ProviderConflicts(out) {
+		r.add("provider_wrapper", "conflict", fmt.Sprintf("Preserved your custom %s command in %s. For controllable terminal sessions, run obey wrap %s explicitly.", provider, shell, provider), target.Path, false)
+	}
+	r.add("fresh_shell", "ready", "New terminals load camp, fest and available provider helpers.", target.Path, false)
 }
 
 func (r *IntegrationReport) profile(ctx context.Context, path, block, home string, check bool) {

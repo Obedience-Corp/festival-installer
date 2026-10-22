@@ -117,17 +117,35 @@ func ProbeHelpers(shell string, helpers []string, wrap bool) string {
 		case "fish":
 			fmt.Fprintf(&b, "functions -q %s; or exit 21\n", name)
 			if isProvider {
-				fmt.Fprintf(&b, "string match -q '*obey wrap*' -- (functions %s | string collect); or exit 22\n", name)
+				fmt.Fprintf(&b, "string match -q '*obey wrap*' -- (functions %s | string collect); or printf '\\n%s%s\\n'\n", name, ProviderConflictPrefix, name)
 			}
 		case "powershell", "pwsh":
 			fmt.Fprintf(&b, "if (-not (Get-Command %s -CommandType Function -ErrorAction SilentlyContinue)) { exit 21 }\n", name)
 		default:
-			fmt.Fprintf(&b, "typeset -f %s >/dev/null || exit 21\n", name)
 			if isProvider {
-				fmt.Fprintf(&b, "alias %s >/dev/null 2>&1 && exit 22\ncase \"$(typeset -f %s)\" in *'obey wrap'*) ;; *) exit 22 ;; esac\n", name, name)
+				fmt.Fprintf(&b, "if alias %s >/dev/null 2>&1; then\n  printf '\\n%s%s\\n'\nelse\n  typeset -f %s >/dev/null || exit 21\n  case \"$(typeset -f %s)\" in *'obey wrap'*) ;; *) printf '\\n%s%s\\n' ;; esac\nfi\n", name, ProviderConflictPrefix, name, name, name, ProviderConflictPrefix, name)
+			} else {
+				fmt.Fprintf(&b, "typeset -f %s >/dev/null || exit 21\n", name)
 			}
 		}
 	}
 	b.WriteString("echo FESTIVAL_INTEGRATION_READY\n")
 	return b.String()
+}
+
+const ProviderConflictPrefix = "FESTIVAL_PROVIDER_CONFLICT:"
+
+// ProviderConflicts reads only the known markers from a completed probe. The
+// probe inspects definitions without executing any provider command.
+func ProviderConflicts(output string) []string {
+	var conflicts []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(output, "\n") {
+		name, found := strings.CutPrefix(strings.TrimSpace(line), ProviderConflictPrefix)
+		if found && (name == "grok" || name == "claude" || name == "codex") && !seen[name] {
+			conflicts = append(conflicts, name)
+			seen[name] = true
+		}
+	}
+	return conflicts
 }
