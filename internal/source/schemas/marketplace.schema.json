@@ -57,6 +57,7 @@
               "asset_url": { "type": "string", "minLength": 1 },
               "checksums_url": { "type": "string", "minLength": 1 },
               "binary": { "type": "string" },
+              "tag_prefix": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
               "binaries": { "type": "array", "items": { "type": "string", "minLength": 1 } },
               "os": { "type": "object", "additionalProperties": { "type": "string" } },
               "arch": { "type": "object", "additionalProperties": { "type": "string" } }

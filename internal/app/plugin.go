@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/release"
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 	"github.com/Obedience-Corp/festival-installer/internal/state"
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 // PluginHost parses camp-*/fest-* selectors.
@@ -126,7 +128,7 @@ func pluginRuntimeRoot(name string) (string, error) {
 	return filepath.Join(home, ".obey", "plugins", name), nil
 }
 
-func stagePluginAssets(ctx context.Context, tx *installer.Transaction, extractDir, pluginName string) ([]string, error) {
+func stagePluginAssetsChecked(ctx context.Context, tx *installer.Transaction, extractDir, pluginName string, guard func(string) error) ([]string, error) {
 	srcRoot := filepath.Join(extractDir, "assets")
 	info, err := os.Stat(srcRoot)
 	if os.IsNotExist(err) {
@@ -170,6 +172,11 @@ func stagePluginAssets(ctx context.Context, tx *installer.Transaction, extractDi
 			return err
 		}
 		dst := filepath.Join(dstRoot, rel)
+		if guard != nil {
+			if err := guard(dst); err != nil {
+				return err
+			}
+		}
 		if err := tx.Stage(ctx, installer.StagedFile{
 			StagedPath: path,
 			DestPath:   dst,
@@ -278,7 +285,9 @@ func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, chann
 	execName := host + "-" + name
 	binIn := rs.Binary
 	if binIn == "" {
-		binIn = execName
+		binIn = executableName(execName)
+	} else if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(binIn), ".exe") {
+		binIn += ".exe"
 	}
 	return pluginSpec{
 		packageID:       bp.Package.ID,
@@ -341,7 +350,7 @@ func InstallPlugin(ctx context.Context, host, name string, opts InstallOptions) 
 	if err != nil {
 		return InstallResult{}, err
 	}
-	bp, err := FindPlugin(pkgs, host, name)
+	bp, err := findSelectedPlugin(pkgs, PluginTarget{Host: host, Name: name, PackageID: opts.PackageID})
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -416,13 +425,24 @@ func activatePlugin(ctx context.Context, spec pluginSpec, channel string, progre
 	if err != nil {
 		return InstallResult{}, err
 	}
-	dst := filepath.Join(binDir, spec.execName)
+	dst := filepath.Join(binDir, executableName(spec.execName))
+	receipt, err := receipts.Get(ctx, db.Raw(), spec.packageID)
+	if err != nil && !errors.Is(err, receipts.ErrNotFound) {
+		return InstallResult{}, err
+	}
+	if receipt.Version != "" && installer.VersionLess(spec.version, receipt.Version) {
+		return InstallResult{}, errpkg.New("E_PLUGIN_DOWNGRADE", "preserved newer plugin version "+receipt.Version+"; refusing implicit downgrade")
+	}
+	guard := func(path string) error { return checkPluginDestination(ctx, path, receipt) }
+	if err := guard(dst); err != nil {
+		return InstallResult{}, err
+	}
 	if err := tx.Stage(ctx, installer.StagedFile{StagedPath: binaryPath, DestPath: dst, Sha256: hash, Mode: 0o755}); err != nil {
 		return InstallResult{}, err
 	}
 	files := []string{dst}
 	if extractDir != "" {
-		assetFiles, err := stagePluginAssets(ctx, tx, extractDir, spec.pluginName)
+		assetFiles, err := stagePluginAssetsChecked(ctx, tx, extractDir, spec.pluginName, guard)
 		if err != nil {
 			return InstallResult{}, err
 		}

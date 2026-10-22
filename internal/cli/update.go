@@ -25,7 +25,7 @@ func NewUpdateCommand() *cobra.Command {
 	var force bool
 	var noRestart bool
 	cmd := &cobra.Command{
-		Use:   "update [festival|camp|fest|obey]",
+		Use:   "update [festival|camp|fest|obey|namespace/camp-plugin|namespace/fest-plugin]",
 		Short: "Update the installed festival suite to the channel-latest release",
 		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
@@ -55,7 +55,10 @@ func NewUpdateCommand() *cobra.Command {
 			case "obey":
 				return runUpdateObey(cmd, channel, vo, asJSON, noRestart)
 			default:
-				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected festival, camp, fest, or obey)")
+				if _, err := app.ParsePluginTarget(target); err == nil {
+					return runUpdatePlugin(cmd, target, channel, vo, asJSON)
+				}
+				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected suite, obey, or a camp-*/fest-* plugin)")
 			}
 			if channel != "" {
 				if err := app.ValidateChannel(channel); err != nil {
@@ -138,12 +141,21 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 			return err
 		}
 		return nil
+	case "repaired":
+		_, err := fmt.Fprintf(w, "repaired %s at %s\n", pkg, textsafe.Line(res.Version))
+		return err
 	case "current":
 		_, err := fmt.Fprintf(w, "%s is already current at %s\n", pkg, textsafe.Line(res.Version))
 		return err
 	case "unmanaged":
-		_, err := fmt.Fprintf(w, "%s is installed outside festival; left untouched\n", pkg)
-		return err
+		if _, err := fmt.Fprintf(w, "%s is installed outside festival; left untouched\n", pkg); err != nil {
+			return err
+		}
+		if res.Upgrade != "" {
+			_, err := fmt.Fprintln(w, textsafe.Block(res.Upgrade))
+			return err
+		}
+		return nil
 	case "package":
 		ver := textsafe.Line(res.Version)
 		latest := textsafe.Line(res.Latest)
@@ -157,6 +169,8 @@ func renderUpdateResult(w io.Writer, res app.UpdateResult) error {
 		target := "festival"
 		if res.Package == app.ObeyPackageID {
 			target = "obey"
+		} else if _, err := app.ParsePluginTarget(res.Package); err == nil {
+			target = res.Package
 		}
 		_, err := fmt.Fprintf(w, "%s is not installed; run `festival install %s`\n", pkg, target)
 		return err
@@ -196,4 +210,19 @@ func cmdStdioIsTTY(cmd *cobra.Command) bool {
 		return false
 	}
 	return term.IsTerminal(int(in.Fd())) && term.IsTerminal(int(out.Fd()))
+}
+
+func runUpdatePlugin(cmd *cobra.Command, target, channel string, vo source.VerifyOptions, asJSON bool) error {
+	result, warning, err := app.UpdatePlugin(cmd.Context(), target, app.UpdateOptions{ChannelOverride: channel, Verify: vo})
+	if err != nil {
+		return err
+	}
+	var warnings []string
+	if warning != "" {
+		warnings = append(warnings, warning)
+	}
+	if asJSON {
+		return jsonout.Success(cmd.OutOrStdout(), "update", result, warnings)
+	}
+	return renderUpdateResult(cmd.OutOrStdout(), result)
 }

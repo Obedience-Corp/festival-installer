@@ -60,6 +60,8 @@ func suiteBinaryNames(entry metadata.InstallEntry, goos string) (source, destina
 
 // InstallOptions configure a suite or plugin install.
 type InstallOptions struct {
+	PackageID string // optional exact marketplace identity for a plugin selector
+
 	// NoIntegrations remembers the user's advanced opt-out from shell setup.
 	NoIntegrations bool
 	Channel        string
@@ -261,6 +263,14 @@ func installFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 
 // InstallTarget installs festival suite or a camp-*/fest-* plugin.
 func InstallTarget(ctx context.Context, target string, opts InstallOptions) (InstallResult, error) {
+	if strings.Contains(target, "/") {
+		selected, err := ParsePluginTarget(target)
+		if err != nil {
+			return InstallResult{}, err
+		}
+		opts.PackageID = selected.PackageID
+		return InstallPlugin(ctx, selected.Host, selected.Name, opts)
+	}
 	if host, name, ok := PluginHost(target); ok {
 		return InstallPlugin(ctx, host, name, opts)
 	}
