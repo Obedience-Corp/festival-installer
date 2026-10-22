@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,7 +11,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+
+	"github.com/Obedience-Corp/festival-installer/internal/state/receipts"
 )
 
 const pluginMarketplaceRoot = `{
@@ -316,8 +320,15 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 	t.Setenv("OBEY_INSTALLER_HOME", home)
 
 	binBody := "#!/bin/sh\necho fest-demo\n"
+	var corrupt atomic.Bool
+	var served atomic.Value
+	served.Store([]byte(binBody))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(binBody))
+		if corrupt.Load() {
+			_, _ = w.Write([]byte("corrupt"))
+			return
+		}
+		_, _ = w.Write(served.Load().([]byte))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -376,6 +387,69 @@ func TestInstallFestPlugin_LandsDiscoverableAndUninstalls(t *testing.T) {
 	}
 	if !envelope.OK || envelope.Data.Package != "acme/fest-demo" || envelope.Data.Action != "current" || envelope.Data.Version != "0.1.0" || envelope.Data.Latest != "0.1.0" {
 		t.Fatalf("update envelope: %+v", envelope)
+	}
+
+	upgradedManifest := strings.Replace(pluginManifest(srv.URL+"/fest-demo", sha256Hex([]byte(binBody))), `"version": "0.1.0"`, `"version": "0.2.0"`, 1)
+	writeFile(t, filepath.Join(repo, "packages", "fest-demo", "obey-package.json"), upgradedManifest)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "fixture next release")
+	corrupt.Store(true)
+	stdout, stderr, err = runInstaller(t, "update", "acme/fest-demo", "--json", "--allow-unverified")
+	if err == nil {
+		t.Fatal("corrupt CLI update succeeded")
+	}
+	var failed struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &failed); err != nil || failed.OK || failed.Error.Code != "E_ARTIFACT_SHA256" {
+		t.Fatalf("failure envelope: %s %s %v", stdout, stderr, err)
+	}
+	if got, err := os.ReadFile(landed); err != nil || string(got) != binBody {
+		t.Fatalf("failed update changed working binary: %q %v", got, err)
+	}
+	corrupt.Store(false)
+	stdout, stderr, err = runInstaller(t, "update", "acme/fest-demo", "--json", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("CLI retry: %v %s", err, stderr)
+	}
+	envelope.OK = false
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil || !envelope.OK || envelope.Data.Action != "upgraded" || envelope.Data.Version != "0.2.0" {
+		t.Fatalf("retry envelope: %s %v", stdout, err)
+	}
+	stdout, stderr, err = runInstaller(t, "update", "acme/fest-demo", "--json", "--allow-unverified")
+	if err != nil {
+		t.Fatalf("CLI converged retry: %v %s", err, stderr)
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil || envelope.Data.Action != "current" {
+		t.Fatalf("retry did not converge: %s %v", stdout, err)
+	}
+
+	badArchive := buildSuiteTarGz(t, map[string]string{"README": "missing the declared executable"})
+	served.Store(badArchive)
+	malformedRelease := strings.Replace(pluginManifestArchive(srv.URL+"/fest-demo", sha256Hex(badArchive)), `"version": "0.1.0"`, `"version": "0.3.0"`, 1)
+	writeFile(t, filepath.Join(repo, "packages", "fest-demo", "obey-package.json"), malformedRelease)
+	git(t, repo, "add", ".")
+	git(t, repo, "commit", "-m", "fixture incomplete archive")
+	stdout, stderr, err = runInstaller(t, "update", "acme/fest-demo", "--json", "--allow-unverified")
+	if err == nil {
+		t.Fatal("incomplete archive CLI update succeeded")
+	}
+	if err := json.Unmarshal([]byte(stdout), &failed); err != nil || failed.OK || failed.Error.Code != "E_PLUGIN_BINARY_MISSING" {
+		t.Fatalf("missing member envelope: %s %s %v", stdout, stderr, err)
+	}
+	if got, err := os.ReadFile(landed); err != nil || string(got) != binBody {
+		t.Fatalf("incomplete archive changed prior binary: %q %v", got, err)
+	}
+	receipt, err := receipts.Get(context.Background(), mustDB(t, context.Background(), home), "acme/fest-demo")
+	if err != nil || receipt.Version != "0.2.0" {
+		t.Fatalf("incomplete archive changed receipt: %+v %v", receipt, err)
+	}
+	leftovers, err := filepath.Glob(filepath.Join(home, "staging-*"))
+	if err != nil || len(leftovers) != 0 {
+		t.Fatalf("failed update left staging: %v %v", leftovers, err)
 	}
 	if _, errOut, err := runInstaller(t, "uninstall", "fest-demo"); err != nil {
 		t.Fatalf("uninstall fest-demo: %v\n%s", err, errOut)
