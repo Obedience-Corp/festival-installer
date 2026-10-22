@@ -226,10 +226,7 @@ func SpecFromManifest(ctx context.Context, bp source.BrowsePackage, host, name, 
 		return pluginSpec{}, err
 	}
 	execName := entryExecutableName(entry)
-	binIn := entry.Source
-	if binIn == "" {
-		binIn = execName
-	}
+	binIn := manifestArchiveBinary(entry, art, runtime.GOOS)
 	return pluginSpec{
 		packageID:       bp.Package.ID,
 		pluginName:      host + "-" + name,
@@ -301,6 +298,23 @@ func SpecFromGit(ctx context.Context, bp source.BrowsePackage, host, name, chann
 		execName:        execName,
 		target:          selectTarget(bp.Package.Targets, host),
 	}, nil
+}
+
+// manifestArchiveBinary honors an explicitly declared Windows archive member
+// while keeping the install entry's logical command name portable.
+func manifestArchiveBinary(entry metadata.InstallEntry, artifact metadata.Artifact, goos string) string {
+	source := entry.Source
+	if source == "" {
+		source = entryExecutableName(entry)
+	}
+	if goos == "windows" && !strings.HasSuffix(source, ".exe") {
+		for _, member := range artifact.Binaries {
+			if member == source+".exe" {
+				return member
+			}
+		}
+	}
+	return source
 }
 
 func entryExecutableName(e metadata.InstallEntry) string {

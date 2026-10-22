@@ -34,13 +34,19 @@ file overwrite permission.
 
 ## Shared public binary repositories
 
-Signed marketplace release_source can declare `tag_prefix: "camp-app-v"` for the
-binary-only Obedience-Corp/obey-releases repository. Only that producer's matching
-stable/channel tags participate in resolution. Without a prefix, existing plain
-v-prefixed semantic tags remain compatible. Declare darwin/amd64 OS/arch token
-maps when producer filenames use those tokens instead of macOS/x86_64. Prefix,
-source URLs and checksum anchor are covered by the existing marketplace signature.
-Changing the prefix without a new valid signature is rejected.
+The shared official catalog must remain readable by released clients. Installer
+0.3.6 rejects unknown release_source fields for the whole catalog, so Camp App
+uses the existing signed static package-manifest format with exact product-tagged
+public URLs and hashes. Marketplace's prepare-camp-app command generates it only
+from actual public release bytes, preserving all existing discovery entries.
+Windows artifact.binaries can explicitly declare camp-app.exe while the install
+entry keeps the portable command name camp-app; custom source members are kept.
+
+The new tag_prefix extension is available only to catalogs whose consumers support
+it. Do not add it to the shared legacy catalog. In such a compatible catalog it
+filters a literal producer tag namespace; existing plain version tags remain
+compatible when absent. Prefix/source/checksum changes remain covered by the
+marketplace signature.
 
 Apple Developer ID/notarization is optional post-launch. This does not relax
 marketplace authenticity, artifact checksums or the App updater signature.
