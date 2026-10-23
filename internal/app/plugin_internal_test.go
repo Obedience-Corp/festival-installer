@@ -136,3 +136,25 @@ func TestSelectPluginArtifact_ExactThenAllFallback(t *testing.T) {
 		t.Fatal("expected error for an unsupported platform")
 	}
 }
+
+func TestManifestArchiveBinaryUsesDeclaredPlatformMember(t *testing.T) {
+	for _, test := range []struct {
+		name, goos, source, executable string
+		members                        []string
+		want                           string
+	}{
+		{"windows declared member", "windows", "camp-app", "camp-app", []string{"camp-app.exe"}, "camp-app.exe"},
+		{"windows absent declaration", "windows", "camp-app", "camp-app", []string{"camp-app"}, "camp-app"},
+		{"explicit source", "windows", "custom.exe", "camp-app", []string{"camp-app.exe"}, "custom.exe"},
+		{"custom archive member", "windows", "custom", "camp-app", []string{"camp-app.exe"}, "custom"},
+		{"logical name fallback", "windows", "", "camp-app", []string{"camp-app.exe"}, "camp-app.exe"},
+		{"nonwindows unchanged", "linux", "camp-app", "camp-app", []string{"camp-app.exe"}, "camp-app"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := manifestArchiveBinary(metadata.InstallEntry{Source: test.source, ExecutableName: test.executable}, metadata.Artifact{Binaries: test.members}, test.goos)
+			if got != test.want {
+				t.Fatalf("archive member=%q, want %q", got, test.want)
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ set dotenv-load := false
 
 mod release '.justfiles/build.just'
 mod testing '.justfiles/test.just'
+mod plugin-profile '.justfiles/plugin-profile.just'
 mod tools '.justfiles/tools.just'
 mod vhs '.justfiles/vhs.just'
 

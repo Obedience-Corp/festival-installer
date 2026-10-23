@@ -16,6 +16,7 @@ import (
 
 func NewStatusCommand() *cobra.Command {
 	var asJSON bool
+	var plugins []string
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Report where every suite tool resolves and what version it is",
@@ -28,7 +29,7 @@ func NewStatusCommand() *cobra.Command {
 			"failure. Run `festival doctor` for a pass or fail verdict.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rep, err := app.StatusReportFor(cmd.Context())
+			rep, err := app.StatusReportForPlugins(cmd.Context(), plugins)
 			if err != nil {
 				return err
 			}
@@ -39,6 +40,7 @@ func NewStatusCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
+	cmd.Flags().StringArrayVar(&plugins, "plugin", nil, "also report an explicitly selected namespace/camp-* or namespace/fest-* package (repeatable)")
 	return cmd
 }
 

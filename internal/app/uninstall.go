@@ -34,7 +34,13 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 
 func uninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
 	packageID := FestivalPackageID
-	if host, name, ok := PluginHost(target); ok {
+	if strings.Contains(target, "/") {
+		selected, err := ParsePluginTarget(target)
+		if err != nil {
+			return UninstallResult{}, "", err
+		}
+		packageID = selected.PackageID
+	} else if host, name, ok := PluginHost(target); ok {
 		// Uninstall resolves the package id from local marketplace metadata
 		// only to find the receipt key; it does not install anything, so the
 		// live-path default (no override) is the right, unsurprising choice.

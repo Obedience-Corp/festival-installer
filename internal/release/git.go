@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ const defaultHTTPTimeout = 30 * time.Second
 // AssetURL and ChecksumsURL are templates over {tag}, {version}, {os}, {arch}.
 type Source struct {
 	Type         string `json:"type"`
+	TagPrefix    string `json:"tag_prefix,omitempty"`
 	Repo         string `json:"repo"`
 	AssetURL     string `json:"asset_url"`
 	ChecksumsURL string `json:"checksums_url"`
@@ -63,7 +65,7 @@ func (r *Resolver) Resolve(ctx context.Context, src Source, channel, goos, goarc
 	if err := ctx.Err(); err != nil {
 		return Resolved{}, errpkg.Wrap("E_RELEASE_CTX", err, "context cancelled")
 	}
-	tag, version, err := r.latestTag(ctx, src.Repo, channel)
+	tag, version, err := r.latestTagForSource(ctx, src, channel)
 	if err != nil {
 		return Resolved{}, err
 	}
@@ -98,37 +100,67 @@ func (r *Resolver) LatestVersion(ctx context.Context, repo, channel string) (str
 	return ver, err
 }
 
+// LatestSourceVersion applies the same signed producer namespace as artifact resolution.
+func (r *Resolver) LatestSourceVersion(ctx context.Context, src Source, channel string) (string, error) {
+	if r == nil {
+		r = NewResolver()
+	}
+	_, version, err := r.latestTagForSource(ctx, src, channel)
+	return version, err
+}
+
 func (r *Resolver) latestTag(ctx context.Context, repo, channel string) (string, string, error) {
-	if err := gitsafe.ValidateRemote(repo); err != nil {
+	return r.latestTagForSource(ctx, Source{Repo: repo}, channel)
+}
+
+var releaseVersion = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
+var tagNamespace = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func (r *Resolver) latestTagForSource(ctx context.Context, src Source, channel string) (string, string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", errpkg.Wrap("E_RELEASE_CTX", err, "resolve producer tag")
+	}
+	if src.TagPrefix != "" && !tagNamespace.MatchString(src.TagPrefix) {
+		return "", "", errpkg.New("E_RELEASE_TAG_PREFIX", "tag_prefix must be a literal tag namespace")
+	}
+	if err := gitsafe.ValidateRemote(src.Repo); err != nil {
 		return "", "", err
 	}
-	args := append(gitsafe.ConfigArgs(), "ls-remote", "--tags", "--refs", "--", repo)
+	args := append(gitsafe.ConfigArgs(), "ls-remote", "--tags", "--refs", "--", src.Repo)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = gitsafe.Env()
 	cmd.Dir = os.TempDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", "", errpkg.Wrap("E_RELEASE_LS_REMOTE", err, "git ls-remote "+repo+": "+strings.TrimSpace(string(out)))
+		return "", "", errpkg.Wrap("E_RELEASE_LS_REMOTE", err, "git ls-remote "+src.Repo+": "+strings.TrimSpace(string(out)))
 	}
-	var best, bestVer string
-	for line := range strings.SplitSeq(string(out), "\n") {
+	return selectProducerTag(string(out), src.TagPrefix, channel)
+}
+
+func selectProducerTag(output, prefix, channel string) (string, string, error) {
+	var best, bestVersion string
+	for line := range strings.SplitSeq(output, "\n") {
 		_, after, ok := strings.Cut(line, "refs/tags/")
 		if !ok {
 			continue
 		}
 		tag := strings.TrimSpace(after)
-		ver := strings.TrimPrefix(tag, "v")
-		if !channelMatches(ver, channel) {
+		version, matches := strings.CutPrefix(tag, prefix)
+		if !matches {
 			continue
 		}
-		if best == "" || installer.VersionLess(bestVer, ver) {
-			best, bestVer = tag, ver
+		version = strings.TrimPrefix(version, "v")
+		if !releaseVersion.MatchString(version) || !channelMatches(version, channel) {
+			continue
+		}
+		if best == "" || installer.VersionLess(bestVersion, version) {
+			best, bestVersion = tag, version
 		}
 	}
 	if best == "" {
-		return "", "", errpkg.New("E_RELEASE_NO_TAG", "no "+channelOrStable(channel)+" tag in "+repo)
+		return "", "", errpkg.New("E_RELEASE_NO_TAG", "no "+channelOrStable(channel)+" release tag for producer namespace "+prefix)
 	}
-	return best, bestVer, nil
+	return best, bestVersion, nil
 }
 
 func channelMatches(version, channel string) bool {

@@ -20,13 +20,14 @@ func NewInstallCommand() *cobra.Command {
 	var noRestart bool
 	var noIntegrations bool
 	cmd := &cobra.Command{
-		Use:   "install <festival|camp|fest|obey>",
+		Use:   "install <festival|camp|fest|obey|namespace/camp-plugin|namespace/fest-plugin>",
 		Short: "Install the festival suite (camp, fest, and festival)",
 		Long: "install installs the festival suite (camp, fest, and festival).\n\n" +
 			"The target is required. festival, camp, and fest all install the suite bundle;\n" +
 			"camp and fest are not published independently, so passing either one still installs\n" +
 			"the whole suite and prints a notice saying so.\n\n" +
 			"obey installs the obey daemon and the ob developer CLI as their own package.\n\n" +
+			"A namespace/camp-* or namespace/fest-* target selects that exact marketplace plugin.\n\n" +
 			"--no-restart applies to obey only. Installing over a running daemon restarts it so the\n" +
 			"supervised process is the version that was just placed, which marks every live session\n" +
 			"failed; --no-restart installs the binaries, leaves the daemon alone, and reports the\n" +

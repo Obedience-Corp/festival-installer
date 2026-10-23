@@ -12,6 +12,8 @@ import (
 
 // StatusToolEntry is one tool's resolution and version for the app.
 type StatusToolEntry struct {
+	ProtocolMajor int      `json:"protocol_major,omitempty"`
+	Capabilities  []string `json:"capabilities,omitempty"`
 	// Tool is the bare binary name.
 	Tool string `json:"tool"`
 	// Path is the absolute path ResolveTool returns, empty when nothing resolves.
@@ -229,7 +231,7 @@ func probeToolVersion(ctx context.Context, tool, path string) (string, error) {
 // readStatusReceipts loads the receipts for every package a reported tool
 // belongs to. A missing database is an empty map, never an error, so a machine
 // that has never run the hub still gets a full report.
-func readStatusReceipts(ctx context.Context) map[string]receipts.Receipt {
+func readStatusReceipts(ctx context.Context, selected ...string) map[string]receipts.Receipt {
 	out := map[string]receipts.Receipt{}
 	home, err := state.Home(ctx)
 	if err != nil {
@@ -240,7 +242,7 @@ func readStatusReceipts(ctx context.Context) map[string]receipts.Receipt {
 		return out
 	}
 	defer func() { _ = db.Close(ctx) }()
-	for _, pkg := range []string{FestivalPackageID, ObeyPackageID} {
+	for _, pkg := range append([]string{FestivalPackageID, ObeyPackageID}, selected...) {
 		rec, gerr := receipts.Get(ctx, db.Raw(), pkg)
 		if gerr == nil {
 			out[pkg] = rec
