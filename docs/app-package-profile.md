@@ -14,6 +14,16 @@ festival uninstall obedience-corp/camp-app --json
 ```
 
 `status --plugin` is repeatable and read-only. Core status remains compatible.
+Core tool entries also expose an optional `bundle`: the suite release reported
+by that resolved binary during discovery. Camp and Fest component versions use
+their own release numbers; a Camp `version` of `0.9.1` can belong to suite
+`bundle` `v0.3.9`. Compare a suite minimum with its suite identity, not with a
+component version. Mixed installations can report different bundles per tool.
+The field is omitted when discovery has no metadata for the resolved path;
+it never borrows another copy's bundle or infers one from the Installer's own
+version. `receipt_version` still describes the package's stored receipt, which
+may differ from an externally resolved binary. Consumers must consider the
+resolved path and origin when interpreting that receipt.
 Selected plugin facts include live version, receipt version, path and origin.
 Camp App additionally reports its versioned control protocol and capabilities from
 `version --json`; an unsuccessful/malformed payload is an error, not a usable

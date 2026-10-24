@@ -25,6 +25,10 @@ type StatusToolEntry struct {
 	// Version is what the resolved binary reported, empty when it did not run
 	// or its output did not parse as a version.
 	Version string `json:"version,omitempty"`
+	// Bundle is the suite release reported by this resolved binary, not its
+	// component Version or a receipt belonging to another copy. Empty means
+	// discovery did not obtain bundle metadata for this path.
+	Bundle string `json:"bundle,omitempty"`
 	// Package is the marketplace package that owns this binary.
 	Package string `json:"package,omitempty"`
 	// ReceiptVersion and ReceiptChannel come from that package's receipt row,
@@ -184,6 +188,7 @@ func fillToolEntry(ctx context.Context, e *StatusToolEntry, suite SuiteOrigin) {
 	}
 	e.Path = path
 	e.Present = true
+	e.Bundle = suite.bundleAt(e.Tool, path)
 	if e.Managed != "" && samePath(path, e.Managed) {
 		e.Origin = OriginManaged
 	} else {
@@ -199,6 +204,20 @@ func fillToolEntry(ctx context.Context, e *StatusToolEntry, suite SuiteOrigin) {
 		return
 	}
 	e.Version = version
+}
+
+// bundleAt reuses discovery metadata only for the resolved tool and path.
+// A mixed installation may resolve a shadow copy or a managed binary that
+// discovery never saw; neither inherits the active suite's bundle identity.
+func (o SuiteOrigin) bundleAt(tool, path string) string {
+	for _, list := range [][]ToolLocation{o.Tools, o.Shadows} {
+		for _, copy := range list {
+			if copy.Tool == tool && samePath(copy.Path, path) {
+				return copy.Bundle
+			}
+		}
+	}
+	return ""
 }
 
 // probeToolVersion runs the tool's own version command and returns what it
