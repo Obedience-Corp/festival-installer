@@ -554,23 +554,26 @@ func (m model) installBrowseSelection(allowUnverified bool) (tea.Model, tea.Cmd)
 		return m, nil
 	}
 	entry := m.browseFlat[m.cursor]
-	// Map package ID segment to camp-/fest- selector when possible.
-	target := entry.ID
-	if i := strings.LastIndex(entry.ID, "/"); i >= 0 {
-		seg := entry.ID[i+1:]
-		if _, _, ok := app.PluginHost(seg); ok {
-			target = seg
-		} else if entry.Class == "bundle" || entry.Class == "product" || strings.Contains(entry.ID, "festival") {
-			target = "festival"
-		} else {
-			// try installing by plugin short name if looks like camp-X/fest-X
-			target = seg
-		}
-	}
+	target := browseInstallTarget(entry)
 	m, ps := m.beginProgress(app.ProgressEvent{Stage: "resolve", Percent: 0.1, Message: "installing " + entry.ID})
 	ctx, cancel := m.opContext()
 	m.opCancel = cancel
 	return m, tea.Batch(runTargetInstall(ctx, target, entry.ID, allowUnverified, ps), waitProgress(ps))
+}
+
+// Catalog class describes packaging, not product identity. Obey and Festival
+// are both products but must dispatch to their own installers.
+func browseInstallTarget(entry app.BrowseEntry) string {
+	target := entry.ID
+	if i := strings.LastIndex(target, "/"); i >= 0 {
+		target = target[i+1:]
+	}
+	switch target {
+	case "camp", "fest":
+		return "festival"
+	default:
+		return target
+	}
 }
 
 func runTargetInstall(ctx context.Context, target, entryID string, allowUnverified bool, ps *progressStream) tea.Cmd {
