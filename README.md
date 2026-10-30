@@ -31,7 +31,11 @@ installation can succeed while integration needs attention; inspect the report
 or retry setup. See [automatic setup](docs/automatic-setup.md) for the API,
 installation ownership, prerequisites, and removal behavior.
 
-## Demo
+## Earlier walkthroughs
+
+These recordings predate the compact home redesign. The tapes use the current
+shortcuts; the GIFs retain the earlier appearance. Current PR evidence records
+the new home and Obey screen from the real binary.
 
 Recorded against a real `./bin/festival` binary (VHS + PTY).
 
