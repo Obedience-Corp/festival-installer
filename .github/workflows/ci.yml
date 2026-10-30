@@ -30,6 +30,8 @@ jobs:
         run: go vet -tags notty ./internal/cli/...
       - name: Test
         run: go test ./...
+      - name: Prove signed plugin discovery and update all in a container
+        run: just testing updates-container
       - name: Prove non-Windows pwsh profile append in a container
         run: just testing pwsh-append-container-proof
       - name: Prove shell completion policy and app tool precedence

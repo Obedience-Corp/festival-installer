@@ -36,6 +36,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	case screenUpdate:
 		return m.startUpdate(false)
+	case screenUpdates:
+		return m.selectUpdate()
 	case screenList:
 		return m, nil
 	case screenBrowse:
@@ -194,8 +196,7 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 	case homeInstall:
 		return m.openInstallScreen()
 	case homeUpdate:
-		m.screen = screenUpdate
-		return m.startUpdate(false)
+		return m.openUpdates()
 	case homeList:
 		m.screen = screenList
 		return m, m.loadList()

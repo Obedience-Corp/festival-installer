@@ -104,5 +104,7 @@ func (m model) applyOpDone(msg opDoneMsg) (model, tea.Cmd) {
 	m.resultOK = msg.success
 	m.resultRestart = msg.restart
 	m.err = msg.err
-	return m, m.loadStatus()
+	m.updatesChecking = false
+	m, cmd := m.refreshUpdates()
+	return m, tea.Batch(m.loadStatus(), cmd)
 }

@@ -14,7 +14,7 @@ import (
 var homeEntryScreens = map[homeItemID]screen{
 	homeTour:        screenTour,
 	homeInstall:     screenInstall,
-	homeUpdate:      screenProgress,
+	homeUpdate:      screenUpdates,
 	homeList:        screenList,
 	homeBrowse:      screenBrowse,
 	homeUninstall:   screenUninstall,

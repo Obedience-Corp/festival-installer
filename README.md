@@ -166,6 +166,8 @@ export FESTIVAL_REDUCED_MOTION=1
 ```bash
 festival install festival --channel stable
 festival update festival
+festival outdated --json
+festival update --all
 festival list
 festival list --json
 festival browse --product fest --kind plugin
@@ -177,6 +179,20 @@ festival resolve camp
 festival which camp --show-all
 festival version
 ```
+
+The hub checks installed packages in the background. Open **Updates** to see
+installed and available versions, update one package, or update all eligible
+packages. Press `r` to refresh; failed or offline checks remain visible instead
+of reporting that packages are current. Installed and catalog rows also show
+available updates.
+
+`festival outdated` checks without installing. `festival update --all` keeps
+each installed source and channel, reports individual failures, and leaves
+external/package-manager installs on their existing upgrade path. Successful
+updates remain installed if another fails, so the same command can retry the
+remaining packages. Bulk updates and the Updates screen defer running Obey
+daemon restarts; the result names the restart command. Festival is updated last
+and prompts you to restart the hub when its executable was replaced.
 
 JSON envelopes use schema version `festival/v1alpha1`.
 
