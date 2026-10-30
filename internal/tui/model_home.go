@@ -43,7 +43,7 @@ func (m model) homeMenu() []homeItem {
 		{id: homeLaunchpad, label: "Open Camp & Fest", booth: 0},
 		{id: homeObey, label: "Obey agent sessions", booth: 0},
 		{id: homeBrowse, label: "Explore packages", booth: 1},
-		{id: homeUpdate, label: "Update Festival", booth: 0},
+		{id: homeUpdate, label: m.updatesLabel(), booth: 0},
 		{id: homeList, label: "Installed packages", booth: 1},
 		{id: homeInstall, label: "Install Festival suite", booth: 0},
 		{id: homeDoctor, label: "Check setup", booth: 3},
@@ -62,9 +62,6 @@ func (m model) homeMenu() []homeItem {
 	}
 	if m.status.Action == "package" || m.status.Dual {
 		items[m.indexOfIn(items, homeInstall)].label = "How you installed"
-	}
-	if m.updateAvailable() {
-		items[m.indexOfIn(items, homeUpdate)].label = "Update Festival · " + m.status.Latest + " available"
 	}
 	return items
 }
@@ -119,18 +116,4 @@ func (m model) defaultHomeCursor() int {
 		return m.homeIndexOf(homeInstall)
 	}
 	return 0
-}
-
-// moveToUpdateEntry parks the cursor on Update once a newer release is known,
-// but only when the user has not moved it off the entry the home screen opened
-// on. Nudging a cursor the user placed themselves would be rude.
-func (m model) moveToUpdateEntry(cursor int) int {
-	update := m.homeIndexOf(homeUpdate)
-	if update < 0 {
-		return cursor
-	}
-	if cursor == 0 || cursor == m.homeIndexOf(homeInstall) {
-		return update
-	}
-	return cursor
 }

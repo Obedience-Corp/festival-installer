@@ -74,7 +74,7 @@ func TestHomeStatusDoesNotMoveUserSelection(t *testing.T) {
 	cursor := m.cursor
 	next, _ = m.Update(statusMsg{sum: app.StatusSummary{Action: "managed", Version: "0.3.25"}})
 	m = next.(model)
-	next, _ = m.Update(latestMsg{latest: "0.3.26"})
+	next, _ = m.Update(updatesMsg{generation: m.updatesGeneration, result: app.UpdatesResult{Packages: []app.PackageUpdate{{Package: app.FestivalPackageID, Latest: "0.3.26", Status: app.UpdateAvailable}}}})
 	m = next.(model)
 	if m.cursor != cursor {
 		t.Fatal("asynchronous status moved the selected action")

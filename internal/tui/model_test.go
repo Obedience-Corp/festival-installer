@@ -456,7 +456,7 @@ func TestViewHomePackageShowsUpdateAvailable(t *testing.T) {
 	out := m.viewHome()
 	for _, want := range []string{
 		"0.3.3 available",
-		"Update Festival · 0.3.3 available",
+		"Updates",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("package home missing %q\n%s", want, out)
@@ -464,30 +464,30 @@ func TestViewHomePackageShowsUpdateAvailable(t *testing.T) {
 	}
 }
 
-func TestLatestMsgSelectsUpdateWhenAvailable(t *testing.T) {
+func TestUpdatesMsgKeepsHomeSelection(t *testing.T) {
 	m := newModel(Options{Version: "0.3.1"})
 	m.screen = screenHome
 	m.cursor = 0
 	m.status = app.StatusSummary{Action: "package", Version: "0.3.1"}
-	next, _ := m.Update(latestMsg{latest: "0.3.3"})
+	next, _ := m.Update(updatesMsg{generation: m.updatesGeneration, result: app.UpdatesResult{Packages: []app.PackageUpdate{{Package: app.FestivalPackageID, Latest: "0.3.3", Status: app.UpdateAvailable}}}})
 	nm := next.(model)
 	if nm.status.Latest != "0.3.3" {
 		t.Fatalf("Latest=%q", nm.status.Latest)
 	}
-	if want := nm.homeIndexOf(homeUpdate); nm.cursor != want {
-		t.Fatalf("cursor=%d, want %d (Update Festival)", nm.cursor, want)
+	if nm.cursor != 0 {
+		t.Fatalf("background check moved cursor to %d", nm.cursor)
 	}
-	if got := homeLabel(t, nm, homeUpdate); got != "Update Festival · 0.3.3 available" {
+	if got := homeLabel(t, nm, homeUpdate); got != "Updates · 1 available" {
 		t.Fatalf("update label = %q", got)
 	}
 }
 
-func TestStatusMsgPackageChecksLatest(t *testing.T) {
+func TestStatusMsgDoesNotDuplicateBackgroundDiscovery(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
 	_, cmd := m.Update(statusMsg{sum: app.StatusSummary{Action: "package", Version: "0.3.1"}})
-	if cmd == nil {
-		t.Fatal("package status must kick off a latest-version check")
+	if cmd != nil {
+		t.Fatal("status must not duplicate the background update check started by Init")
 	}
 }
 

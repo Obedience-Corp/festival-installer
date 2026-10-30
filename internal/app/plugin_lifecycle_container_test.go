@@ -53,6 +53,7 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	browseSeedGit(t, git, "tag", "camp-app-v0.1.0")
 	var downloads atomic.Int32
 	var corrupt atomic.Bool
+	var incomplete atomic.Bool
 	payload := func(version string) []byte { return []byte("#!/bin/sh\necho 'camp-app " + version + "'\n") }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
@@ -65,6 +66,13 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 		if parts[1] == "checksums.txt" {
 			sum := sha256.Sum256(data)
 			_, _ = fmt.Fprintf(w, "%s  camp-app-%s-%s-%s\n", hex.EncodeToString(sum[:]), version, runtime.GOOS, runtime.GOARCH)
+			return
+		}
+		if incomplete.Load() {
+			http.NotFound(w, request)
+			return
+		}
+		if request.Method == http.MethodHead {
 			return
 		}
 		downloads.Add(1)
@@ -184,9 +192,26 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	browseSeedGit(t, git, "tag", "camp-app-v0.2.0")
-	result, _, err = UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
-	if err != nil || result.Action != "upgraded" || result.Version != "0.2.0" {
-		t.Fatalf("upgrade: %+v %v", result, err)
+	incomplete.Store(true)
+	checked, err := CheckUpdates(ctx, vo)
+	if err != nil || !checked.Failed() || checked.Available() != 0 {
+		t.Fatalf("incomplete release advertised: %+v %v", checked, err)
+	}
+	incomplete.Store(false)
+	checked, err = CheckUpdates(ctx, vo)
+	if err != nil || checked.Failed() || checked.Available() != 1 {
+		t.Fatalf("new plugin not discovered: %+v %v", checked, err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != string(payload("0.1.0")) {
+		t.Fatal("discovery installed plugin")
+	}
+	all, err := UpdateAll(ctx, UpdateOptions{Verify: vo})
+	if err != nil || all.Failed() {
+		t.Fatalf("update all: %+v %v", all, err)
+	}
+	updated, found, err := pluginReceipt(ctx, "obedience-corp/camp-app")
+	if err != nil || !found || updated.Version != "0.2.0" || updated.Source != owned.Source || updated.Channel != owned.Channel {
+		t.Fatalf("update receipt readback: %+v %v", updated, err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -238,6 +263,15 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(foreign) {
 		t.Fatalf("foreign changed: %q %v", got, err)
+	}
+	checked, err = CheckUpdates(ctx, vo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range checked.Packages {
+		if p.Package == "obedience-corp/camp-app" && p.Status != UpdateExternal {
+			t.Fatalf("foreign file offered for update: %+v", p)
+		}
 	}
 	clone, err := source.CloneDir(ctx, "profile-fixture")
 	if err != nil {

@@ -15,7 +15,7 @@ var homeEntryScreens = map[homeItemID]screen{
 	homeObey:        screenObey,
 	homeTour:        screenTour,
 	homeInstall:     screenDoctor,
-	homeUpdate:      screenProgress,
+	homeUpdate:      screenUpdates,
 	homeList:        screenList,
 	homeBrowse:      screenBrowse,
 	homeUninstall:   screenUninstall,

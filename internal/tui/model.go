@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -38,6 +37,7 @@ const (
 	screenTour
 	screenDiscord
 	screenObey
+	screenUpdates
 )
 
 type tickMsg time.Time
@@ -45,10 +45,6 @@ type tickMsg time.Time
 type statusMsg struct {
 	sum app.StatusSummary
 	err error
-}
-
-type latestMsg struct {
-	latest string
 }
 
 // packageUpgradeMsg means Update found a newer package-manager suite and the
@@ -96,6 +92,9 @@ type opDoneMsg struct {
 	// restart is true when the result screen should offer a hub restart
 	// (the update just replaced the running festival binary).
 	restart bool
+	// Bulk results lead with each package's outcome; verification warnings
+	// remain available below the summary in the scrollable result view.
+	warningsAfter bool
 }
 
 // consentNeededMsg is returned when a strict install/update hit E_UNVERIFIED_REFUSED.
@@ -127,26 +126,30 @@ type childExitMsg launch.Result
 type model struct {
 	// ctx is the RunLoop program context. Every tea.Cmd that performs network
 	// or git work derives from it so quitting cancels in-flight operations.
-	ctx           context.Context
-	opts          Options
-	styles        theme.Styles
-	reduced       bool
-	width         int
-	height        int
-	screen        screen
-	cursor        int
-	frame         int
-	bootLeft      int // frames remaining on splash
-	status        app.StatusSummary
-	statusErr     error
-	homeNavigated bool
-	obeyInventory app.ListResult
-	obeyLoading   bool
-	obeyLoadErr   error
-	obeyLoadID    uint64
-	err           error
-	quitErr       error
-	help          bool
+	ctx               context.Context
+	opts              Options
+	styles            theme.Styles
+	reduced           bool
+	width             int
+	height            int
+	screen            screen
+	cursor            int
+	frame             int
+	bootLeft          int // frames remaining on splash
+	status            app.StatusSummary
+	statusErr         error
+	updates           app.UpdatesResult
+	updatesErr        error
+	updatesChecking   bool
+	updatesGeneration uint64
+	err               error
+	quitErr           error
+	help              bool
+	homeNavigated     bool
+	obeyInventory     app.ListResult
+	obeyLoading       bool
+	obeyLoadErr       error
+	obeyLoadID        uint64
 
 	// install
 	channelIdx   int
@@ -256,18 +259,20 @@ func newModel(opts Options) model {
 	ti.CharLimit = 256
 	ti.Width = 48
 	m := model{
-		ctx:           context.Background(),
-		opts:          opts,
-		styles:        theme.New(),
-		reduced:       theme.ReducedMotion(),
-		screen:        screenHome,
-		bootLeft:      12, // ~1.2s at 100ms
-		channels:      []string{"stable", "rc", "dev"},
-		channelIdx:    0,
-		addInput:      ti,
-		width:         80,
-		height:        24,
-		launchEntries: launch.Catalog(),
+		ctx:               context.Background(),
+		opts:              opts,
+		styles:            theme.New(),
+		reduced:           theme.ReducedMotion(),
+		screen:            screenHome,
+		bootLeft:          12, // ~1.2s at 100ms
+		channels:          []string{"stable", "rc", "dev"},
+		channelIdx:        0,
+		addInput:          ti,
+		width:             80,
+		height:            24,
+		launchEntries:     launch.Catalog(),
+		updatesChecking:   true,
+		updatesGeneration: 1,
 	}
 	if m.reduced {
 		m.bootLeft = 1
@@ -276,7 +281,7 @@ func newModel(opts Options) model {
 }
 
 func (m model) Init() tea.Cmd {
-	cmds := []tea.Cmd{tickCmd(), m.loadStatus()}
+	cmds := []tea.Cmd{tickCmd(), m.loadStatus(), m.loadUpdates()}
 	if m.screen == screenTour {
 		// The hub resumed onto the tour after handing the terminal to a child,
 		// and that child is exactly what may have finished a step. Without this
@@ -299,25 +304,6 @@ func (m model) loadStatus() tea.Cmd {
 	return func() tea.Msg {
 		sum, err := app.Status(ctx)
 		return statusMsg{sum: sum, err: err}
-	}
-}
-
-func (m model) shouldCheckLatest() bool {
-	return m.status.Action == "package" || m.status.Action == "managed" || m.status.Dual
-}
-
-func (m model) loadLatest() tea.Cmd {
-	ctx := m.ctx
-	channel := m.status.Channel
-	if channel == "" {
-		channel = "stable"
-	}
-	return func() tea.Msg {
-		latest, err := app.LookupLatestSuite(ctx, channel)
-		if err != nil {
-			return latestMsg{}
-		}
-		return latestMsg{latest: latest}
 	}
 }
 
@@ -427,19 +413,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusMsg:
 		m.status = msg.sum
+		for _, p := range m.updates.Packages {
+			if p.Package == app.FestivalPackageID && p.Status != app.UpdateCheckFailed {
+				m.status.Latest = p.Latest
+			}
+		}
 		m.statusErr = msg.err
 		if (m.screen == screenBoot || m.screen == screenHome) && !m.homeNavigated {
 			m.cursor = m.defaultHomeCursor()
 		}
-		if m.shouldCheckLatest() {
-			return m, m.loadLatest()
-		}
 		return m, nil
 
-	case latestMsg:
-		m.status.Latest = strings.TrimPrefix(msg.latest, "v")
-		if (m.screen == screenHome || m.screen == screenBoot) && m.updateAvailable() && !m.homeNavigated {
-			m.cursor = m.moveToUpdateEntry(m.cursor)
+	case updatesMsg:
+		if msg.generation != m.updatesGeneration {
+			return m, nil
+		}
+		m.updates, m.updatesErr, m.updatesChecking = msg.result, msg.err, false
+		m.status.Latest = ""
+		for _, p := range msg.result.Packages {
+			if p.Package == app.FestivalPackageID && p.Status != app.UpdateCheckFailed {
+				m.status.Latest = p.Latest
+			}
+		}
+		if m.screen == screenUpdates {
+			m.cursor = min(m.cursor, len(m.updates.Packages))
 		}
 		return m, nil
 
@@ -673,11 +670,15 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "r":
+		if m.screen == screenUpdates {
+			return m.refreshUpdates()
+		}
 		if m.screen == screenObey {
 			return m.openObey()
 		}
 		if m.screen == screenHome {
-			return m, m.loadStatus()
+			m, cmd := m.refreshUpdates()
+			return m, tea.Batch(m.loadStatus(), cmd)
 		}
 		if m.screen == screenMarketplace {
 			return m, m.loadMarkets()
@@ -695,6 +696,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.restartHub()
 		}
 	case "a":
+		if m.screen == screenUpdates && !m.updatesChecking && m.updatesErr == nil && m.updates.Available() > 0 {
+			return m.startPackageUpdates("")
+		}
 		if m.screen == screenMarketplace {
 			m.marketMode = "add"
 			m.addInput.SetValue("")
@@ -707,6 +711,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.screen == screenTour {
 			return m.skipTourStep()
+		}
+	case "u":
+		if m.screen == screenHome || m.screen == screenList || m.screen == screenBrowse {
+			return m.openUpdates()
 		}
 	case "d":
 		if m.screen == screenTour {
@@ -787,6 +795,8 @@ func (m model) maxCursor() int {
 	switch m.screen {
 	case screenHome:
 		return len(m.homeItems()) - 1
+	case screenUpdates:
+		return len(m.updates.Packages)
 	case screenList, screenUninstall:
 		n := len(m.list.Packages)
 		if n == 0 {

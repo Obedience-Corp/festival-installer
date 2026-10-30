@@ -24,9 +24,10 @@ func NewUpdateCommand() *cobra.Command {
 	var allowUnverified bool
 	var force bool
 	var noRestart bool
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "update [festival|camp|fest|obey|namespace/camp-plugin|namespace/fest-plugin]",
-		Short: "Update the installed festival suite to the channel-latest release",
+		Short: "Update an installed package, or all managed packages with --all",
 		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
 			"suite. camp and fest are accepted as aliases: they are not published independently, so\n" +
@@ -43,6 +44,12 @@ func NewUpdateCommand() *cobra.Command {
 		ValidArgs: []string{"festival", "camp", "fest", "obey"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if all {
+				if len(args) != 0 || channel != "" || force {
+					return errpkg.New("E_UPDATE_ALL_OPTIONS", "--all cannot be combined with a target, --channel or --force; each package retains its channel and owner")
+				}
+				return runUpdateAll(cmd, source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified), asJSON)
+			}
 			target := "festival"
 			if len(args) == 1 {
 				target = args[0]
@@ -89,6 +96,7 @@ func NewUpdateCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&channel, "channel", "", "override the release channel (default: the installed channel)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON output")
+	cmd.Flags().BoolVar(&all, "all", false, "update all eligible installed packages, retaining channels and deferring Obey restarts")
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "allow updating from unsigned content without prompting")
 	cmd.Flags().BoolVar(&force, "force", false, "update/install a hub copy even when a package-manager suite is already on PATH")
 	cmd.Flags().BoolVar(&noRestart, "no-restart", false,

@@ -23,6 +23,14 @@ coverage-html:
 verbose:
     go test -v ./...
 
+# Prove signed release discovery, missing assets, bulk update and receipt readback.
+updates-container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bin
+    CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/updates.test ./internal/app
+    docker run --rm -v "$PWD/bin/updates.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache git bash >/dev/null && su nobody -s /bin/sh -c "/proof -test.v -test.run TestPluginProfileSignedLifecyclePreservesState"'
+
 # Run benchmarks (single iteration; use -count=N for more)
 bench:
     go test -bench=. -benchtime=1x -run=^$ ./...

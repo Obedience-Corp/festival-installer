@@ -56,11 +56,15 @@ func (m model) View() string {
 	case screenList:
 		title = "installed"
 		body = m.viewList()
-		footer = "r refresh  esc back"
+		footer = "u updates  r refresh  esc back"
+	case screenUpdates:
+		title = "updates"
+		body = m.viewUpdates()
+		footer = "↑↓ select  enter update  a update all  r refresh  esc back"
 	case screenBrowse:
 		title = "browse"
 		body = m.viewBrowse()
-		footer = "f product  c class  enter install  r refresh  esc back"
+		footer = "f product  c class  enter install  u updates  r refresh  esc back"
 	case screenUninstall:
 		title = "uninstall"
 		body = m.viewList()
@@ -427,6 +431,7 @@ func (m model) viewList() string {
 			paren = p.Source
 		}
 		items[i] = fmt.Sprintf("%s  %s  (%s)", textsafe.Line(p.PackageID), textsafe.Line(p.Version), textsafe.Line(paren))
+		items[i] += textsafe.Line(m.updateAnnotation(p.PackageID))
 	}
 	return components.Menu(items, m.cursor, s)
 }
@@ -441,6 +446,7 @@ func (m model) viewBrowse() string {
 	items := make([]string, len(m.browseFlat))
 	for i, p := range m.browseFlat {
 		items[i] = fmt.Sprintf("%s  [%s]  %s", textsafe.Line(p.ID), textsafe.Line(p.Class), textsafe.Line(p.Source))
+		items[i] += textsafe.Line(m.updateAnnotation(p.ID))
 	}
 	return filt + "\n\n" + components.Menu(items, m.cursor, s)
 }

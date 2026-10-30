@@ -62,6 +62,7 @@ Scripts and agents can use subcommands with --json for machine-readable output.`
 	root.AddCommand(cli.NewInstallCommand())
 	root.AddCommand(cli.NewSetupCommand())
 	root.AddCommand(cli.NewUpdateCommand())
+	root.AddCommand(cli.NewOutdatedCommand())
 	root.AddCommand(cli.NewUninstallCommand())
 	root.AddCommand(cli.NewListCommand())
 	root.AddCommand(cli.NewShellInitCommand())

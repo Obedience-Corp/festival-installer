@@ -101,7 +101,7 @@ func homeDescription(id homeItemID) string {
 	case homeBrowse:
 		return "Add tools and plugins from your marketplaces. The Festival suite and Obey are separate products."
 	case homeUpdate:
-		return "Check for a newer Festival suite. Camp, Fest and this hub update together through your existing installation method."
+		return "Check installed tools and plugins for updates. Update one package or all eligible packages; keep existing sources, channels and running Obey sessions."
 	case homeInstall:
 		return "Check how your suite is installed. A missing suite can be installed here; an existing suite stays in place."
 	case homeList:
