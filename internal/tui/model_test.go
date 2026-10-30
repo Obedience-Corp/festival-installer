@@ -304,8 +304,8 @@ func TestHomeItemsLengthAndRelabel(t *testing.T) {
 	if got, want := len(m.homeItems()), len(m.homeMenu()); got != want {
 		t.Fatalf("len(homeItems)=%d, want %d", got, want)
 	}
-	if got := homeLabel(t, m, homeInstall); got != "Install Festival suite" {
-		t.Fatalf("absent install label = %q", got)
+	if got := homeLabel(t, m, homeInstall); got != "Check suite installation" {
+		t.Fatalf("loading install label = %q", got)
 	}
 	if got := homeLabel(t, m, homeQuit); got != "Quit" {
 		t.Fatalf("quit label = %q, want Quit", got)
@@ -357,8 +357,8 @@ func TestHomeDefaultCursor(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
 	next, _ := m.Update(statusMsg{sum: app.StatusSummary{Action: "managed"}})
-	if want := next.(model).homeIndexOf(homeUpdate); next.(model).cursor != want {
-		t.Fatalf("managed cursor=%d, want %d (Update)", next.(model).cursor, want)
+	if want := next.(model).homeIndexOf(homeLaunchpad); next.(model).cursor != want {
+		t.Fatalf("managed cursor=%d, want %d (Open tools)", next.(model).cursor, want)
 	}
 
 	m = newModel(Options{Version: "test"})
@@ -426,11 +426,7 @@ func TestViewHomePackageChannelCard(t *testing.T) {
 		t.Fatal("package home must not recommend festival shell-init")
 	}
 	for _, want := range []string{
-		"festival 0.3.1 · AUR (festival-bin)",
-		"suite on PATH · /usr/bin",
-		"helper: source /usr/share/festival/shell/festival.zsh",
-		"upgrade: yay -Syu festival-bin",
-		"do not run festival install",
+		"Festival suite 0.3.1 · installed",
 		"How you installed",
 	} {
 		if !strings.Contains(out, want) {
@@ -459,9 +455,8 @@ func TestViewHomePackageShowsUpdateAvailable(t *testing.T) {
 	}
 	out := m.viewHome()
 	for _, want := range []string{
-		"update available: 0.3.1 → 0.3.3",
+		"0.3.3 available",
 		"Update Festival · 0.3.3 available",
-		"upgrade: yay -Syu festival-bin",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("package home missing %q\n%s", want, out)
@@ -520,7 +515,7 @@ func TestViewHomeLeftoverDoesNotRelabel(t *testing.T) {
 	if strings.Contains(out, "do not run festival install") {
 		t.Fatal("leftover home must not tell the user not to install")
 	}
-	if !strings.Contains(out, "/home/lancer/local/bin/camp  (v0.5.0, no bundle)") {
+	if !strings.Contains(out, "Multiple installations found") {
 		t.Fatalf("leftover home missing leftover path\n%s", out)
 	}
 }
@@ -545,13 +540,13 @@ func TestViewHomePackageLeftoverShadows(t *testing.T) {
 		},
 	}
 	out := m.viewHome()
-	if !strings.Contains(out, "leftover binaries ahead of /usr/bin") {
+	if !strings.Contains(out, "Multiple installations found") {
 		t.Fatalf("missing leftover PATH warn\n%s", out)
 	}
 	if strings.Contains(out, "eval \"$(festival shell-init zsh)\"") {
 		t.Fatal("shadowed package home must not recommend festival shell-init")
 	}
-	if !strings.Contains(out, "remove those two files; keep /home/lancer/local/bin on PATH") {
+	if !strings.Contains(out, "Check setup before making changes") {
 		t.Fatalf("missing leftover cleanup hint\n%s", out)
 	}
 }

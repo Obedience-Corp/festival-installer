@@ -27,17 +27,8 @@ Type "festival" Sleep 300ms Enter
 Sleep 5s
 
 # Getting started is selected. Discord sits immediately before Quit.
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Down Sleep 180ms
-Sleep 2s
+Down 20
+Up
 Enter
 Sleep 5s
 Escape

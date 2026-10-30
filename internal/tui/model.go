@@ -37,6 +37,7 @@ const (
 	// screenTour is appended last so no existing screen constant renumbers.
 	screenTour
 	screenDiscord
+	screenObey
 )
 
 type tickMsg time.Time
@@ -126,21 +127,26 @@ type childExitMsg launch.Result
 type model struct {
 	// ctx is the RunLoop program context. Every tea.Cmd that performs network
 	// or git work derives from it so quitting cancels in-flight operations.
-	ctx       context.Context
-	opts      Options
-	styles    theme.Styles
-	reduced   bool
-	width     int
-	height    int
-	screen    screen
-	cursor    int
-	frame     int
-	bootLeft  int // frames remaining on splash
-	status    app.StatusSummary
-	statusErr error
-	err       error
-	quitErr   error
-	help      bool
+	ctx           context.Context
+	opts          Options
+	styles        theme.Styles
+	reduced       bool
+	width         int
+	height        int
+	screen        screen
+	cursor        int
+	frame         int
+	bootLeft      int // frames remaining on splash
+	status        app.StatusSummary
+	statusErr     error
+	homeNavigated bool
+	obeyInventory app.ListResult
+	obeyLoading   bool
+	obeyLoadErr   error
+	obeyLoadID    uint64
+	err           error
+	quitErr       error
+	help          bool
 
 	// install
 	channelIdx   int
@@ -169,10 +175,11 @@ type model struct {
 	shellBin     string
 
 	// progress / result
-	progress    app.ProgressEvent
-	resultTitle string
-	resultBody  string
-	resultOK    bool
+	progress     app.ProgressEvent
+	resultScroll int
+	resultTitle  string
+	resultBody   string
+	resultOK     bool
 	// warnText is unverified-content (and similar) warnings captured from the
 	// in-flight operation's WarnWriter. Shown on the working screen and
 	// copied onto the result screen. Never written to stderr while the
@@ -253,7 +260,7 @@ func newModel(opts Options) model {
 		opts:          opts,
 		styles:        theme.New(),
 		reduced:       theme.ReducedMotion(),
-		screen:        screenBoot,
+		screen:        screenHome,
 		bootLeft:      12, // ~1.2s at 100ms
 		channels:      []string{"stable", "rc", "dev"},
 		channelIdx:    0,
@@ -367,6 +374,13 @@ func (m model) seedOfficialMarketplace() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(obeyInventoryMsg); ok {
+		if msg.id == m.obeyLoadID {
+			m.obeyLoading = false
+			m.obeyInventory, m.obeyLoadErr = msg.res, msg.err
+		}
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -414,7 +428,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusMsg:
 		m.status = msg.sum
 		m.statusErr = msg.err
-		if m.screen == screenBoot || m.screen == screenHome {
+		if (m.screen == screenBoot || m.screen == screenHome) && !m.homeNavigated {
 			m.cursor = m.defaultHomeCursor()
 		}
 		if m.shouldCheckLatest() {
@@ -424,7 +438,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case latestMsg:
 		m.status.Latest = strings.TrimPrefix(msg.latest, "v")
-		if (m.screen == screenHome || m.screen == screenBoot) && m.updateAvailable() {
+		if (m.screen == screenHome || m.screen == screenBoot) && m.updateAvailable() && !m.homeNavigated {
 			m.cursor = m.moveToUpdateEntry(m.cursor)
 		}
 		return m, nil
@@ -516,6 +530,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.screen == screenHome {
+		m.homeNavigated = true
+	}
+
 	if m.help && msg.String() != "?" && msg.String() != "esc" {
 		m.help = false
 		return m, nil
@@ -576,6 +594,26 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnter()
 	}
 
+	if m.screen == screenResult {
+		switch msg.String() {
+		case "up", "k":
+			m.resultScroll--
+		case "down", "j":
+			m.resultScroll++
+		case "pgup":
+			m.resultScroll -= max(1, m.height-6)
+		case "pgdown":
+			m.resultScroll += max(1, m.height-6)
+		case "home":
+			m.resultScroll = 0
+		case "end":
+			m.resultScroll = len(m.resultLines())
+		}
+		m.resultScroll = max(0, min(m.resultScroll, max(0, len(m.resultLines())-m.resultRows())))
+		if msg.String() != "r" {
+			return m, nil
+		}
+	}
 	// Capture screen: remaining keys scroll the output viewport.
 	if m.screen == screenChildOutput {
 		var cmd tea.Cmd
@@ -635,6 +673,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "r":
+		if m.screen == screenObey {
+			return m.openObey()
+		}
+		if m.screen == screenHome {
+			return m, m.loadStatus()
+		}
 		if m.screen == screenMarketplace {
 			return m, m.loadMarkets()
 		}

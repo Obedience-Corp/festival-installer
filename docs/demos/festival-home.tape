@@ -36,17 +36,7 @@ Sleep 1800ms
 Sleep 3200ms
 
 # walk the menu so booths heat with the cursor, down to Doctor (row 8)
-Down Sleep 350ms
-Down Sleep 350ms
-Down Sleep 350ms
-Down Sleep 350ms
-Down Sleep 350ms
-Down Sleep 350ms
-Down Sleep 400ms
-
-# linger on doctor, then open it
-Sleep 900ms
-Enter
+Type "7"
 Sleep 2200ms
 
 # back home, show the tagline once more

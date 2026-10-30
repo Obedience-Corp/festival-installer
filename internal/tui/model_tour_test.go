@@ -32,12 +32,12 @@ func tourStepsWith(states ...app.TourStepState) []app.TourStep {
 	return steps
 }
 
-func TestTour_DigitOneOpensTheTour(t *testing.T) {
+func TestTour_DigitNineOpensTheTour(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
 	m.cursor = 0
 
-	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}})
 	nm := next.(model)
 	if nm.screen != screenTour {
 		t.Fatalf("screen = %v, want screenTour", nm.screen)

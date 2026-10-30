@@ -38,7 +38,7 @@ Sleep 1800ms
 Sleep 3000ms
 
 # Getting started is home row 1
-Type "1"
+Type "9"
 Sleep 3000ms
 
 # four steps, all still to do

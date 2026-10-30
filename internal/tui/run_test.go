@@ -147,26 +147,22 @@ func TestHomeDigitZeroQuits(t *testing.T) {
 
 	m2 := newModel(Options{Version: "test"})
 	m2.screen = screenHome
-	next2, _ := m2.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}})
+	next2, _ := m2.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'8'}})
 	nm2 := next2.(model)
 	if nm2.screen != screenShell {
-		t.Fatalf("digit 9 screen=%v want shell", nm2.screen)
+		t.Fatalf("digit 8 screen=%v want shell", nm2.screen)
 	}
 }
 
-// TestLaunchpadHasNoDigit records a consequence of putting Getting started
-// first: the home menu now has twelve entries, digits 1 through 9 address the
-// first nine, 0 stays Quit, and Launchpad is reached with the arrow keys. The
-// alternative was leaving the tour off the home screen entirely.
-func TestLaunchpadHasNoDigit(t *testing.T) {
-	m := newModel(Options{Version: "test"})
-	if got := m.homeIndexOf(homeLaunchpad); got < 9 {
-		t.Fatalf("launchpad index = %d: it is inside the digit range, so this note is stale", got)
+func TestHomePrimaryActionsHaveVisibleShortcuts(t *testing.T) {
+	m := newModel(Options{})
+	if m.homeIndexOf(homeLaunchpad) != 0 || m.homeIndexOf(homeObey) != 1 {
+		t.Fatal("work tools and Obey must lead the home menu")
 	}
-	if got, want := m.homeIndexOf(homeTour), 0; got != want {
-		t.Fatalf("Getting started index = %d, want %d (first)", got, want)
+	if m.homeIndexOf(homeTour) >= 9 {
+		t.Fatal("getting started must retain a digit shortcut")
 	}
-	if got, want := m.homeIndexOf(homeQuit), len(m.homeMenu())-1; got != want {
-		t.Fatalf("Quit index = %d, want %d (last, so digit 0 keeps its meaning)", got, want)
+	if m.homeIndexOf(homeQuit) != len(m.homeMenu())-1 {
+		t.Fatal("Quit must remain last")
 	}
 }

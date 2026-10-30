@@ -37,17 +37,7 @@ Type "festival" Sleep 300ms Enter
 Sleep 2600ms
 
 # walk down to Launchpad, the tenth row
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 220ms
-Down Sleep 400ms
-Sleep 700ms
-Enter
+Type "1"
 Sleep 1800ms
 
 # move to "Camp version" (catalog index 4)

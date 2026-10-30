@@ -93,6 +93,7 @@ func (m model) applyProgress(msg progressMsg) (model, tea.Cmd) {
 }
 
 func (m model) applyOpDone(msg opDoneMsg) (model, tea.Cmd) {
+	m.resultScroll = 0
 	m.busy = false
 	m.opCancel = nil
 	if msg.stream == m.progressStream {

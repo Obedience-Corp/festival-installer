@@ -32,7 +32,7 @@ Sleep 2000ms
 Sleep 2400ms
 
 # doctor (menu row 8): path_shadowing warn lists leftover paths
-Type "8"
+Type "7"
 Sleep 2400ms
 Escape
 Sleep 700ms
