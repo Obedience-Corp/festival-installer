@@ -2,7 +2,7 @@
 
 `festival` installs, updates, and launches the Festival CLI suite (`camp` and
 `fest`) and their plugins, pulling packages from a signed marketplace. Bare
-`festival` opens a fire-themed TUI; the same binary answers to CLI
+`festival` opens a terminal hub; the same binary answers to CLI
 subcommands for scripts and agents.
 
 > _All your work, where you can find it._
@@ -141,7 +141,9 @@ just build          # → bin/festival
 
 The TUI home screen lets you:
 
-- Install / update the Festival suite (camp + fest)
+- Open Camp and Fest, with the installed suite version visible
+- View suite ownership and check for updates; install only when the suite is missing
+- Open **Obey agent sessions** to install `obey` + `ob` or check for updates
 - List installed packages
 - Browse the catalog and install plugins
 - Uninstall receipt-owned packages
@@ -154,17 +156,21 @@ The TUI home screen lets you:
   subprocesses; quit the tool to return to the hub without relaunching `festival`
   (suspend → child → resume)
 
-**Animations:** boot splash, ambient multi-activity “booths”, progress flame, and
-a short success burst. Disable ambient motion with:
+The home screen opens immediately. It shows installed-suite status, numbered
+navigation, and descriptions beside the menu in wide terminals. Short terminals
+scroll the menu to keep the selected action visible. Obey's screen reads its
+installation receipt before offering install or update; an unavailable read
+shows a retry action. Obey updates from this screen defer a running daemon's
+restart and report the command needed to activate the new version.
 
-```bash
-export FESTIVAL_REDUCED_MOTION=1
-```
+Progress animations respect `FESTIVAL_REDUCED_MOTION=1`.
 
 ## CLI (scripts / agents)
 
 ```bash
 festival install festival --channel stable
+festival install obey                    # agent daemon + ob client
+festival update obey --no-restart        # defer restart of an active daemon
 festival update festival
 festival list
 festival list --json
@@ -185,6 +191,7 @@ JSON envelopes use schema version `festival/v1alpha1`.
 | Target                       | Effect                                                           |
 | ---------------------------- | ---------------------------------------------------------------- |
 | `festival`, `camp`, `fest`   | Install the suite bundle `obedience-corp/festival` (camp + fest) |
+| `obey` | Install the Obey daemon and `ob` client as a separate package |
 | `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces                    |
 
 Plugin release archives may include a top-level `assets/` directory. Festival

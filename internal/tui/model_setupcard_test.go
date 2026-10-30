@@ -1,212 +1,155 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/Obedience-Corp/festival-installer/internal/app"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-func homeModelWithSetup(setup app.SetupState, action string) model {
-	m := newModel(Options{Version: "test"})
-	m.reduced = true
-	m.screen = screenHome
-	m.status.Action = action
-	m.status.Setup = setup
-	m.status.ManagedBin = setup.ManagedBin
-	m.status.ManagedBinOnPath = setup.ManagedBinOnPath
-	return m
-}
-
-func TestViewHome_SetupCardVisibility(t *testing.T) {
-	tests := []struct {
-		name     string
-		setup    app.SetupState
-		action   string
-		wantCard bool
+func TestHomeReflectsSuiteState(t *testing.T) {
+	for _, tc := range []struct {
+		name, action, want string
+		unknown            bool
 	}{
-		{
-			name:     "fresh home shows the card",
-			setup:    app.SetupState{ManagedBin: "/home/u/.obey/installer/bin"},
-			action:   "absent",
-			wantCard: true,
-		},
-		{
-			name:     "installed but PATH not wired still shows the card",
-			setup:    app.SetupState{HasReceipts: true, HasMarketplaces: true, ManagedBin: "/home/u/.obey/installer/bin"},
-			action:   "managed",
-			wantCard: true,
-		},
-		{
-			name: "fully set up hides the card",
-			setup: app.SetupState{
-				HasReceipts:      true,
-				HasMarketplaces:  true,
-				ManagedBinOnPath: true,
-				ManagedBin:       "/home/u/.obey/installer/bin",
-			},
-			action:   "managed",
-			wantCard: false,
-		},
-		{
-			name:     "package install hides the card",
-			setup:    app.SetupState{ManagedBin: "/home/u/.obey/installer/bin"},
-			action:   "package",
-			wantCard: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := homeModelWithSetup(tt.setup, tt.action).viewHome()
-			if strings.Contains(got, "Setup") != tt.wantCard {
-				t.Fatalf("card present = %v, want %v:\n%s", !tt.wantCard, tt.wantCard, got)
-			}
-		})
-	}
-}
-
-func TestViewHome_SetupCardMarksFinishedSteps(t *testing.T) {
-	setup := app.SetupState{HasReceipts: true, ManagedBin: "/home/u/.obey/installer/bin"}
-	got := homeModelWithSetup(setup, "managed").viewHome()
-
-	for _, want := range []string{"Install the suite", "Put the managed bin on PATH", "Browse the catalog"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("card missing step %q:\n%s", want, got)
-		}
-	}
-	if !strings.Contains(got, "✓ 1. Install the suite") {
-		t.Fatalf("a finished step must be marked done:\n%s", got)
-	}
-	if !strings.Contains(got, "· 2. Put the managed bin on PATH") {
-		t.Fatalf("an unfinished step must be marked pending:\n%s", got)
-	}
-}
-
-// TestViewHome_SetupCardFitsEightyColumns keeps the card inside the width the
-// VHS tapes record at. Every line of the rendered home is checked, not only the
-// card, because a card that pushes the home past 80 columns is the same bug.
-func TestViewHome_SetupCardFitsEightyColumns(t *testing.T) {
-	setup := app.SetupState{ManagedBin: "/home/u/.obey/installer/bin"}
-	for _, line := range strings.Split(homeModelWithSetup(setup, "absent").viewHome(), "\n") {
-		if width := lipgloss.Width(line); width > 80 {
-			t.Fatalf("home line is %d columns wide, over 80:\n%q", width, line)
-		}
-	}
-}
-
-// TestHome_UnknownSignalsShowADiagnosticNotTheChecklist is the regression test
-// for a home screen that offered "install the suite" to a user whose installed
-// home had simply become unreadable, turning an incident into onboarding.
-func TestHome_UnknownSignalsShowADiagnosticNotTheChecklist(t *testing.T) {
-	tests := []struct {
-		name         string
-		setup        app.SetupState
-		action       string
-		wantCard     bool
-		wantNotice   bool
-		wantMenuRows int
-	}{
-		{
-			name:         "an empty home gets the checklist",
-			setup:        app.SetupState{},
-			action:       "absent",
-			wantCard:     true,
-			wantMenuRows: 12,
-		},
-		{
-			name:         "unreadable signals get one diagnostic line",
-			setup:        app.SetupState{SignalsIncomplete: true},
-			action:       "absent",
-			wantNotice:   true,
-			wantMenuRows: 12,
-		},
-		{
-			name:         "unreadable signals on a home that did read as installed",
-			setup:        app.SetupState{SignalsIncomplete: true, HasReceipts: true},
-			action:       "managed",
-			wantNotice:   true,
-			wantMenuRows: 12,
-		},
-		{
-			// The card is hidden for package installs because its advice does
-			// not apply. The diagnostic is not advice, so it still shows.
-			name:         "a package install still gets the diagnostic",
-			setup:        app.SetupState{SignalsIncomplete: true},
-			action:       "package",
-			wantNotice:   true,
-			wantMenuRows: 12,
-		},
-		{
-			name:         "a readable package install gets neither",
-			setup:        app.SetupState{HasReceipts: true},
-			action:       "package",
-			wantMenuRows: 12,
-		},
-	}
-
-	for _, tc := range tests {
+		{"fresh", "absent", "Festival suite not installed", false},
+		{"managed", "managed", "Festival suite 0.3.26 · installed", false},
+		{"package", "package", "installed via", false},
+		{"unreadable", "absent", "Suite status unavailable", true},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := homeModelWithSetup(tc.setup, tc.action)
-			m.width, m.height = 80, 40
+			m := newModel(Options{})
+			m.status = app.StatusSummary{Action: tc.action, Version: "0.3.26", Setup: app.SetupState{SignalsIncomplete: tc.unknown}}
 			out := m.View()
-
-			hasCard := strings.Contains(out, "Install the suite")
-			if hasCard != tc.wantCard {
-				t.Fatalf("setup card present = %v, want %v:\n%s", hasCard, tc.wantCard, out)
+			if !strings.Contains(out, tc.want) {
+				t.Fatalf("missing %q:\n%s", tc.want, out)
 			}
-			hasNotice := strings.Contains(out, "could not read the installer home")
-			if hasNotice != tc.wantNotice {
-				t.Fatalf("diagnostic present = %v, want %v:\n%s", hasNotice, tc.wantNotice, out)
+			if (tc.action == "managed" || tc.action == "package" || tc.unknown) && strings.Contains(out, "Install Festival suite") {
+				t.Fatal("existing or unknown installation offered reinstall")
 			}
-			if tc.wantNotice {
-				if strings.Contains(out, "Put the managed bin on PATH") {
-					t.Fatal("the checklist must be gone entirely, not just its first row")
+			if !strings.Contains(out, "Obey agent sessions") {
+				t.Fatal("Obey missing from home")
+			}
+			if tc.unknown {
+				m.cursor = m.homeIndexOf(homeInstall)
+				next, _ := m.openHomeItem()
+				if next.(model).screen != screenDoctor {
+					t.Fatal("unknown status must diagnose, not install")
 				}
-				if !strings.Contains(out, "festival doctor") {
-					t.Fatal("the diagnostic must name the command that explains the incident")
-				}
-			}
-
-			// The menu rows sequence 03 records must not move.
-			rows := 0
-			for _, item := range m.homeItems() {
-				if strings.Contains(out, item) {
-					rows++
-				}
-			}
-			if rows != tc.wantMenuRows {
-				t.Fatalf("menu rows visible = %d, want %d", rows, tc.wantMenuRows)
 			}
 		})
 	}
 }
 
-// TestHome_TheDiagnosticIsOneLine keeps the notice from growing into a second
-// card and pushing the menu down.
-func TestHome_TheDiagnosticIsOneLine(t *testing.T) {
-	m := homeModelWithSetup(app.SetupState{SignalsIncomplete: true}, "absent")
-	m.width, m.height = 80, 40
+func TestHomeFitsAndScrollsWithSelection(t *testing.T) {
+	for _, size := range [][2]int{{48, 18}, {80, 24}, {120, 32}} {
+		m := newModel(Options{})
+		m.width, m.height = size[0], size[1]
+		for _, cursor := range []int{0, len(m.homeMenu()) - 1} {
+			m.cursor = cursor
+			out := m.View()
+			if lipgloss.Height(out) > m.height {
+				t.Fatalf("%v: height %d\n%s", size, lipgloss.Height(out), out)
+			}
+			for _, line := range strings.Split(out, "\n") {
+				if lipgloss.Width(line) > m.width {
+					t.Fatalf("%v: wide line %q", size, line)
+				}
+			}
+			item, _ := m.homeItemAt(cursor)
+			if !strings.Contains(out, item.label) {
+				t.Fatalf("selection %q hidden", item.label)
+			}
+		}
+	}
+}
 
-	notice := m.setupNotice()
-	if notice == "" {
-		t.Fatal("expected a diagnostic")
+func TestHomeStatusDoesNotMoveUserSelection(t *testing.T) {
+	m := newModel(Options{})
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	m = next.(model)
+	cursor := m.cursor
+	next, _ = m.Update(statusMsg{sum: app.StatusSummary{Action: "managed", Version: "0.3.25"}})
+	m = next.(model)
+	next, _ = m.Update(latestMsg{latest: "0.3.26"})
+	m = next.(model)
+	if m.cursor != cursor {
+		t.Fatal("asynchronous status moved the selected action")
 	}
-	pkg := homeModelWithSetup(app.SetupState{SignalsIncomplete: true}, "package")
-	if pkg.setupNotice() == "" {
-		t.Fatal("a package install with an unreadable home must still get the diagnostic")
+}
+
+func TestObeyUnknownStatusCannotInstall(t *testing.T) {
+	m := newModel(Options{})
+	next, _ := m.openObey()
+	m = next.(model)
+	if _, cmd := m.startObey(false); cmd != nil {
+		t.Fatal("install started while loading")
 	}
-	if pkg.setupCard() != "" {
-		t.Fatal("a package install must still not get the checklist")
+	next, _ = m.Update(obeyInventoryMsg{id: m.obeyLoadID, err: errors.New("receipt read failed")})
+	m = next.(model)
+	if _, cmd := m.startObey(false); cmd != nil {
+		t.Fatal("install started after failed read")
 	}
-	if strings.Contains(notice, "\n") {
-		t.Fatalf("the diagnostic must be one line, got:\n%s", notice)
+	if !strings.Contains(m.viewObey(), "Installation status unavailable") {
+		t.Fatal("error presented as missing package")
 	}
-	if got := lipgloss.Width(notice); got > 80 {
-		t.Fatalf("the diagnostic is %d columns wide, over 80", got)
+	next, _ = m.openObey()
+	m = next.(model)
+	next, _ = m.Update(obeyInventoryMsg{id: m.obeyLoadID - 1})
+	m = next.(model)
+	if !m.obeyLoading {
+		t.Fatal("stale inventory replaced new request")
 	}
-	if m.setupCard() != "" {
-		t.Fatal("the card and the diagnostic must never both render")
+}
+
+func TestObeyInstalledAndMissingActions(t *testing.T) {
+	m := newModel(Options{})
+	m.screen = screenObey
+	if !strings.Contains(m.viewObey(), "Enter to install Obey") {
+		t.Fatal("missing install action")
+	}
+	m.obeyInventory = app.ListResult{Packages: []app.ListEntry{{PackageID: app.ObeyPackageID, Version: "0.4.0"}}}
+	out := m.viewObey()
+	if !strings.Contains(out, "Installed · 0.4.0") || !strings.Contains(out, "Enter to check for updates") {
+		t.Fatal(out)
+	}
+	if !strings.Contains(out, "restart is deferred") {
+		t.Fatal("running-session policy missing")
+	}
+	next, cmd := m.startObey(false)
+	n := next.(model)
+	if cmd == nil || n.opCancel == nil || n.screen != screenProgress {
+		t.Fatal("update must use cancellable progress")
+	}
+	n.opCancel()
+}
+
+func TestObeyScreenFitsShortTerminals(t *testing.T) {
+	for _, size := range [][2]int{{48, 18}, {80, 24}} {
+		m := newModel(Options{})
+		m.width, m.height = size[0], size[1]
+		m.screen = screenObey
+		if lipgloss.Height(m.View()) > m.height {
+			t.Fatalf("%v: clipped Obey view\n%s", size, m.View())
+		}
+	}
+}
+
+func TestResultWarningsRemainReachable(t *testing.T) {
+	m := newModel(Options{})
+	m.screen = screenResult
+	m.width, m.height = 48, 18
+	m.resultOK = true
+	m.resultBody = strings.Repeat("A long setup warning that wraps in a narrow terminal.\n", 20) + "obey service restart"
+	if lipgloss.Height(m.View()) > m.height {
+		t.Fatal("result overflow")
+	}
+	next, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnd})
+	m = next.(model)
+	if !strings.Contains(m.View(), "obey service restart") {
+		t.Fatal("restart instruction unreachable")
 	}
 }

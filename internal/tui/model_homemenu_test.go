@@ -12,8 +12,9 @@ import (
 // rather than position. A new entry that is not listed here fails the tests
 // below rather than shipping unaddressed.
 var homeEntryScreens = map[homeItemID]screen{
+	homeObey:        screenObey,
 	homeTour:        screenTour,
-	homeInstall:     screenInstall,
+	homeInstall:     screenDoctor,
 	homeUpdate:      screenProgress,
 	homeList:        screenList,
 	homeBrowse:      screenBrowse,
@@ -147,9 +148,9 @@ func TestDefaultHomeCursor_PrefersUpdateByIdentity(t *testing.T) {
 		status app.StatusSummary
 		wantID homeItemID
 	}{
-		{name: "managed home lands on update", status: app.StatusSummary{Action: "managed"}, wantID: homeUpdate},
+		{name: "managed home opens tools", status: app.StatusSummary{Action: "managed"}, wantID: homeLaunchpad},
 		{name: "package home lands on the first entry", status: app.StatusSummary{Action: "package"}},
-		{name: "absent home lands on the first entry", status: app.StatusSummary{Action: "absent"}},
+		{name: "absent home selects install", status: app.StatusSummary{Action: "absent"}, wantID: homeInstall},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

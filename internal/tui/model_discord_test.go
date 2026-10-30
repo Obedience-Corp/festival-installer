@@ -30,7 +30,7 @@ func TestDiscordMenuOpensInviteAndReturnsHome(t *testing.T) {
 	m := newModel(Options{Version: "test"})
 	m.screen = screenHome
 	m.cursor = m.homeIndexOf(homeDiscord)
-	if !strings.Contains(m.View(), "Join our Discord") {
+	if !strings.Contains(m.View(), "Community") {
 		t.Fatal("home must advertise the Discord entry")
 	}
 	next, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})

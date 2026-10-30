@@ -26,7 +26,7 @@ func (m model) View() string {
 	s := m.styles
 	var body string
 	title := "home"
-	footer := "↑↓ navigate  enter select  1-9 menus  0/q quit  ? help"
+	footer := "↑↓ navigate  enter select  1-9 open  r refresh  q quit  ? help"
 
 	switch m.screen {
 	case screenBoot:
@@ -34,6 +34,10 @@ func (m model) View() string {
 	case screenHome:
 		title = "home"
 		body = m.viewHome()
+	case screenObey:
+		title = "Obey"
+		body = m.viewObey()
+		footer = "enter install / update  r refresh  esc home"
 	case screenInstall:
 		title = "install"
 		body = m.viewInstall()
@@ -96,9 +100,9 @@ func (m model) View() string {
 	case screenResult:
 		title = "result"
 		body = m.viewResult()
-		footer = "enter continue  esc home"
+		footer = "↑↓ scroll  enter continue  esc home"
 		if m.resultRestart {
-			footer = "r restart  enter continue  esc home"
+			footer = "↑↓ scroll  r restart  enter continue  esc home"
 		}
 	}
 
@@ -118,90 +122,6 @@ func (m model) View() string {
 	}
 	parts = append(parts, foot)
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
-}
-
-func (m model) viewHome() string {
-	s := m.styles
-	status, pathLine, extras := m.homeChannelCard()
-
-	var flame string
-	if m.reduced {
-		flame = anim.StaticFlame(s)
-	} else {
-		flame = anim.Flame(m.frame, 1, s)
-	}
-	booths := anim.RenderBooths(anim.DefaultHomeBooths(m.homeBoothIndex()), m.animationFrame(), s)
-	card := m.setupCard()
-	notice := m.setupNotice()
-	// The blank line between the flame and the booths is ambient breathing room.
-	// It is the first thing to give up when the setup card needs the rows, since
-	// the card is the only part of this screen a new user has to read.
-	centerParts := []string{flame, "", booths}
-	if card != "" {
-		centerParts = []string{flame, booths}
-	}
-	center := lipgloss.JoinVertical(lipgloss.Center, centerParts...)
-	menu := components.Menu(m.homeItems(), m.cursor, s)
-	tag := s.Tagline.Render(anim.Tagline)
-
-	var b strings.Builder
-	b.WriteString(status)
-	b.WriteByte('\n')
-	b.WriteString(pathLine)
-	if extras != "" {
-		b.WriteByte('\n')
-		b.WriteString(extras)
-	}
-	if card != "" {
-		b.WriteString("\n")
-		b.WriteString(card)
-	}
-	if notice != "" {
-		b.WriteString("\n")
-		b.WriteString(notice)
-	}
-	b.WriteString("\n\n")
-	b.WriteString(center)
-	b.WriteString("\n\n")
-	b.WriteString(menu)
-	b.WriteByte('\n')
-	b.WriteString(tag)
-	return b.String()
-}
-
-// setupCard is the home checklist, shown while this home still needs setup and
-// gone once it does not, so a finished setup leaves no clutter behind. A
-// package-manager install is excluded: for those users neither "install the
-// suite" nor "put the managed bin on PATH" is the right advice, and the package
-// status line already says where the suite came from.
-func (m model) setupCard() string {
-	setup := m.status.Setup
-	if m.status.Action == "package" || !setup.NeedsSetup() {
-		return ""
-	}
-	steps := []components.SetupStep{
-		{Label: "Install the suite", Done: setup.HasReceipts},
-		{Label: "Put the managed bin on PATH", Done: setup.ManagedBinOnPath},
-		{Label: "Browse the catalog", Done: setup.HasMarketplaces},
-	}
-	return components.SetupCard("Setup", steps, m.styles)
-}
-
-// setupNotice is what the home screen says instead of the setup card when the
-// hub could not read this installer home. The checklist would be a lie there:
-// an unreadable database reads as nothing installed, and offering onboarding to
-// someone in the middle of an incident hides the incident. One line, so it does
-// not push the menu down the way the card does.
-//
-// Unlike the card, this is not hidden for a package-manager install. The card
-// is hidden there because its advice does not apply to those users. An
-// unreadable home is not advice, it is a fact about the machine, and it is
-// just as true when the suite came from a package manager.
-func (m model) setupNotice() string {
-	if !m.status.Setup.Unknown() {
-		return ""
-	}
-	return components.StatusLine("could not read the installer home, run festival doctor", "warn", m.styles)
 }
 
 func (m model) homeChannelCard() (status, pathLine, extras string) {
@@ -569,20 +489,22 @@ func (m model) viewShell() string {
 		s.FireTip.Render(m.shellSnippet)
 }
 
-func (m model) viewResult() string {
-	s := m.styles
-	title := s.Title.Render(m.resultTitle)
-	body := textsafe.Block(m.resultBody)
+func (m model) resultRows() int { return max(3, m.height-6) }
+
+func (m model) resultLines() []string {
+	status := m.styles.Err.Render("Needs attention")
 	if m.resultOK {
-		if !m.reduced {
-			return title + "\n\n" + anim.Celebrate(m.frame, s) + "\n\n" + s.Normal.Render(body)
-		}
-		return title + "\n\n" + s.OK.Render("done") + "\n\n" + s.Normal.Render(body)
+		status = m.styles.OK.Render("Complete")
 	}
-	// Failure bodies are prose a user has to act on, and the seed failure names a
-	// command. Wrapping to the terminal width keeps the end of that command on
-	// screen instead of clipped at the right edge.
-	return title + "\n\n" + s.Err.Width(max(20, m.width)).Render(body)
+	body := m.styles.Normal.UnsetPadding().Width(max(20, m.width-4)).Render(textsafe.Block(m.resultBody))
+	return strings.Split(m.styles.Title.Render(m.resultTitle)+"\n"+status+"\n\n"+body, "\n")
+}
+
+func (m model) viewResult() string {
+	lines := m.resultLines()
+	start := max(0, min(m.resultScroll, max(0, len(lines)-m.resultRows())))
+	end := min(len(lines), start+m.resultRows())
+	return strings.Join(lines[start:end], "\n")
 }
 
 func short(s string, n int) string {
