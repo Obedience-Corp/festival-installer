@@ -35,7 +35,7 @@ Sleep 2600ms
 
 # Install Festival suite is menu row 2 now that Getting started is row 1.
 # Open the channel picker, cycle it, and leave without a network install.
-Type "2"
+Type "6"
 Sleep 1600ms
 Right Sleep 500ms
 Right Sleep 500ms
@@ -45,13 +45,13 @@ Escape
 Sleep 800ms
 
 # shell / PATH guidance (menu row 9)
-Type "9"
+Type "8"
 Sleep 2200ms
 Escape
 Sleep 700ms
 
 # installed packages list (menu row 4)
-Type "4"
+Type "5"
 Sleep 1800ms
 Escape
 Sleep 900ms

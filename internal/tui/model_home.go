@@ -13,6 +13,7 @@ import (
 type homeItemID string
 
 const (
+	homeObey        homeItemID = "obey"
 	homeTour        homeItemID = "tour"
 	homeInstall     homeItemID = "install"
 	homeUpdate      homeItemID = "update"
@@ -39,18 +40,25 @@ type homeItem struct {
 
 func (m model) homeMenu() []homeItem {
 	items := []homeItem{
-		{id: homeTour, label: "Getting started", booth: 0},
-		{id: homeInstall, label: "Install Festival suite", booth: 0},
+		{id: homeLaunchpad, label: "Open Camp & Fest", booth: 0},
+		{id: homeObey, label: "Obey agent sessions", booth: 0},
+		{id: homeBrowse, label: "Explore packages", booth: 1},
 		{id: homeUpdate, label: m.updatesLabel(), booth: 0},
 		{id: homeList, label: "Installed packages", booth: 1},
-		{id: homeBrowse, label: "Browse catalog", booth: 1},
-		{id: homeUninstall, label: "Uninstall package", booth: 1},
+		{id: homeInstall, label: "Install Festival suite", booth: 0},
+		{id: homeDoctor, label: "Check setup", booth: 3},
+		{id: homeShell, label: "Terminal setup", booth: 4},
+		{id: homeTour, label: "Getting started", booth: 0},
 		{id: homeMarketplace, label: "Marketplaces", booth: 2},
-		{id: homeDoctor, label: "Doctor", booth: 3},
-		{id: homeShell, label: "Shell / PATH setup", booth: 4},
-		{id: homeLaunchpad, label: "Launchpad (camp / fest tools)", booth: 0},
-		{id: homeDiscord, label: "Join our Discord", booth: 0},
+		{id: homeUninstall, label: "Uninstall package", booth: 1},
+		{id: homeDiscord, label: "Community", booth: 0},
 		{id: homeQuit, label: "Quit", booth: 0},
+	}
+	if m.status.Action == "managed" {
+		items[m.indexOfIn(items, homeInstall)].label = "Festival suite details"
+	}
+	if m.statusErr != nil || m.status.Setup.Unknown() || m.status.Action == "" {
+		items[m.indexOfIn(items, homeInstall)].label = "Check suite installation"
 	}
 	if m.status.Action == "package" || m.status.Dual {
 		items[m.indexOfIn(items, homeInstall)].label = "How you installed"
@@ -99,10 +107,13 @@ func (m model) updateAvailable() bool {
 }
 
 func (m model) defaultHomeCursor() int {
-	if m.updateAvailable() || (m.status.Action == "managed" && !m.status.Dual) {
+	if m.updateAvailable() {
 		if i := m.homeIndexOf(homeUpdate); i >= 0 {
 			return i
 		}
+	}
+	if m.status.Action == "absent" && !m.status.Setup.Unknown() && m.statusErr == nil {
+		return m.homeIndexOf(homeInstall)
 	}
 	return 0
 }

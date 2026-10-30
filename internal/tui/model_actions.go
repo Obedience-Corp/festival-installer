@@ -21,6 +21,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case screenHome:
 		return m.openHomeItem()
+	case screenObey:
+		return m.startObey(false)
 	case screenInstall:
 		switch m.installKind {
 		case "package":
@@ -92,6 +94,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			return m, nil
 		case "uninstall":
 			return m.startUninstall(m.confirmArg)
+		case "obey-unverified":
+			return m.startObey(true)
 		case "install-unverified":
 			return m.startInstall(true)
 		case "update-unverified":
@@ -193,7 +197,22 @@ func (m model) openHomeItem() (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.err = nil
 		return m, m.loadTour()
+	case homeObey:
+		return m.openObey()
 	case homeInstall:
+		if m.statusErr != nil || m.status.Setup.Unknown() || m.status.Action == "" {
+			m.screen = screenDoctor
+			return m, m.loadDoctor()
+		}
+		if m.status.Action == "managed" && !m.status.Dual {
+			m.screen = screenResult
+			m.resultOK = true
+			m.resultScroll = 0
+			m.resultTitle = "Festival suite is installed"
+			status, path, extra := m.homeChannelCard()
+			m.resultBody = status + "\n" + path + "\n" + extra + "\n\nCamp, Fest and Festival are installed together.\nUse Update Festival to check for a newer suite.\nUse Open Camp & Fest to start working."
+			return m, nil
+		}
 		return m.openInstallScreen()
 	case homeUpdate:
 		return m.openUpdates()

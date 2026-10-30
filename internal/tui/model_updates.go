@@ -76,7 +76,13 @@ func (m model) viewUpdates() string {
 	lines = append(lines, "Update all preserves installed channels and running Obey sessions.")
 	rows := []string{fmt.Sprintf("Update all (%d available)", m.updates.Available())}
 	for _, p := range m.updates.Packages {
-		line := fmt.Sprintf("%s  %s", p.Package, p.Installed)
+		name := p.Package
+		if width < 68 {
+			if _, short, ok := strings.Cut(name, "/"); ok {
+				name = short
+			}
+		}
+		line := fmt.Sprintf("%s  %s", name, p.Installed)
 		if p.Latest != "" {
 			line += " → " + p.Latest
 		}
@@ -98,7 +104,7 @@ func (m model) viewUpdates() string {
 	}
 	if m.cursor > 0 && m.cursor <= len(m.updates.Packages) {
 		p := m.updates.Packages[m.cursor-1]
-		detail := p.Source + " · " + p.Channel
+		detail := p.Package + " · " + p.Channel + "\n" + p.Source
 		if p.Detail != "" {
 			detail += "\n" + textsafe.Line(p.Detail)
 		}
@@ -174,7 +180,7 @@ func (m model) startPackageUpdates(packageID string) (tea.Model, tea.Cmd) {
 		if restart {
 			body.WriteString("Restart Festival to use the updated installer.\n")
 		}
-		return opDoneMsg{stream: ps, title: title, body: body.String(), success: !result.Failed(), restart: restart}
+		return opDoneMsg{stream: ps, title: title, body: body.String(), success: !result.Failed(), restart: restart, warningsAfter: true}
 	}, waitProgress(ps))
 }
 

@@ -35,25 +35,25 @@ Sleep 1800ms
 Sleep 2200ms
 
 # doctor (menu row 8, one lower since Getting started took row 1)
-Type "8"
+Type "7"
 Sleep 2200ms
 Escape
 Sleep 600ms
 
 # shell / PATH (menu row 9)
-Type "9"
+Type "8"
 Sleep 2000ms
 Escape
 Sleep 600ms
 
 # installed packages (menu row 4)
-Type "4"
+Type "5"
 Sleep 1600ms
 Escape
 Sleep 500ms
 
 # How you installed (menu row 2). Do not confirm a network install.
-Type "2"
+Type "6"
 Sleep 1800ms
 Escape
 Sleep 700ms

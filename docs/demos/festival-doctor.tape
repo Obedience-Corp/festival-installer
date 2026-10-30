@@ -19,8 +19,6 @@ Set Theme {"name":"termcast","background":"#0d0d11","foreground":"#f8f8f2","curs
 
 Hide
 Type ". docs/demos/vhs-fake-prefix.sh shadow" Enter
-# The prefix script enables reduced motion, which collapses the splash to one
-# frame. Leave the splash up so Enter skips it instead of opening the first
 # home row.
 Type "unset FESTIVAL_REDUCED_MOTION" Enter
 Type "clear" Enter
@@ -31,7 +29,7 @@ Sleep 4s
 
 Type "festival" Sleep 300ms Enter
 Sleep 1600ms
-Type "8"
+Type "7"
 Sleep 4s
 
 Type "q"

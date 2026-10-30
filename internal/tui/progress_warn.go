@@ -93,6 +93,7 @@ func (m model) applyProgress(msg progressMsg) (model, tea.Cmd) {
 }
 
 func (m model) applyOpDone(msg opDoneMsg) (model, tea.Cmd) {
+	m.resultScroll = 0
 	m.busy = false
 	m.opCancel = nil
 	if msg.stream == m.progressStream {
@@ -101,6 +102,9 @@ func (m model) applyOpDone(msg opDoneMsg) (model, tea.Cmd) {
 	m.screen = screenResult
 	m.resultTitle = msg.title
 	m.resultBody = withCapturedWarn(msg.body, warnFrom(msg.stream, m.warnText))
+	if msg.warningsAfter {
+		m.resultBody = withCapturedWarn(warnFrom(msg.stream, m.warnText), msg.body)
+	}
 	m.resultOK = msg.success
 	m.resultRestart = msg.restart
 	m.err = msg.err

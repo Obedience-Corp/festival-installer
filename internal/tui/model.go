@@ -36,6 +36,7 @@ const (
 	// screenTour is appended last so no existing screen constant renumbers.
 	screenTour
 	screenDiscord
+	screenObey
 	screenUpdates
 )
 
@@ -91,6 +92,9 @@ type opDoneMsg struct {
 	// restart is true when the result screen should offer a hub restart
 	// (the update just replaced the running festival binary).
 	restart bool
+	// Bulk results lead with each package's outcome; verification warnings
+	// remain available below the summary in the scrollable result view.
+	warningsAfter bool
 }
 
 // consentNeededMsg is returned when a strict install/update hit E_UNVERIFIED_REFUSED.
@@ -141,6 +145,11 @@ type model struct {
 	err               error
 	quitErr           error
 	help              bool
+	homeNavigated     bool
+	obeyInventory     app.ListResult
+	obeyLoading       bool
+	obeyLoadErr       error
+	obeyLoadID        uint64
 
 	// install
 	channelIdx   int
@@ -169,10 +178,11 @@ type model struct {
 	shellBin     string
 
 	// progress / result
-	progress    app.ProgressEvent
-	resultTitle string
-	resultBody  string
-	resultOK    bool
+	progress     app.ProgressEvent
+	resultScroll int
+	resultTitle  string
+	resultBody   string
+	resultOK     bool
 	// warnText is unverified-content (and similar) warnings captured from the
 	// in-flight operation's WarnWriter. Shown on the working screen and
 	// copied onto the result screen. Never written to stderr while the
@@ -253,7 +263,7 @@ func newModel(opts Options) model {
 		opts:              opts,
 		styles:            theme.New(),
 		reduced:           theme.ReducedMotion(),
-		screen:            screenBoot,
+		screen:            screenHome,
 		bootLeft:          12, // ~1.2s at 100ms
 		channels:          []string{"stable", "rc", "dev"},
 		channelIdx:        0,
@@ -350,6 +360,13 @@ func (m model) seedOfficialMarketplace() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if msg, ok := msg.(obeyInventoryMsg); ok {
+		if msg.id == m.obeyLoadID {
+			m.obeyLoading = false
+			m.obeyInventory, m.obeyLoadErr = msg.res, msg.err
+		}
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -402,7 +419,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.statusErr = msg.err
-		if m.screen == screenBoot || m.screen == screenHome {
+		if (m.screen == screenBoot || m.screen == screenHome) && !m.homeNavigated {
 			m.cursor = m.defaultHomeCursor()
 		}
 		return m, nil
@@ -510,6 +527,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.screen == screenHome {
+		m.homeNavigated = true
+	}
+
 	if m.help && msg.String() != "?" && msg.String() != "esc" {
 		m.help = false
 		return m, nil
@@ -570,6 +591,26 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleEnter()
 	}
 
+	if m.screen == screenResult {
+		switch msg.String() {
+		case "up", "k":
+			m.resultScroll--
+		case "down", "j":
+			m.resultScroll++
+		case "pgup":
+			m.resultScroll -= max(1, m.height-6)
+		case "pgdown":
+			m.resultScroll += max(1, m.height-6)
+		case "home":
+			m.resultScroll = 0
+		case "end":
+			m.resultScroll = len(m.resultLines())
+		}
+		m.resultScroll = max(0, min(m.resultScroll, max(0, len(m.resultLines())-m.resultRows())))
+		if msg.String() != "r" {
+			return m, nil
+		}
+	}
 	// Capture screen: remaining keys scroll the output viewport.
 	if m.screen == screenChildOutput {
 		var cmd tea.Cmd
@@ -631,6 +672,13 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		if m.screen == screenUpdates {
 			return m.refreshUpdates()
+		}
+		if m.screen == screenObey {
+			return m.openObey()
+		}
+		if m.screen == screenHome {
+			m, cmd := m.refreshUpdates()
+			return m, tea.Batch(m.loadStatus(), cmd)
 		}
 		if m.screen == screenMarketplace {
 			return m, m.loadMarkets()
