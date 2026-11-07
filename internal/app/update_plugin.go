@@ -9,8 +9,8 @@ import (
 	"github.com/Obedience-Corp/festival-installer/internal/source"
 )
 
-// UpdatePlugin reconciles only the explicitly selected receipt-owned plugin.
-// Foreign replacements and standalone installs are reported, never adopted.
+// UpdatePlugin reconciles the explicitly selected plugin. App-managed setup may
+// create a separate managed copy; standalone files are never adopted or replaced.
 func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (UpdateResult, string, error) {
 	target, err := ParsePluginTarget(selector)
 	if err != nil {
@@ -31,6 +31,9 @@ func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (Upd
 	}
 	result := UpdateResult{Package: target.PackageID, Action: "absent"}
 	if !found {
+		if managedToolchain(ctx) {
+			return installManagedPluginUpdate(ctx, target, opts)
+		}
 		if path, _, resolveErr := resolveToolFrom(ctx, target.Host+"-"+target.Name, SuiteOrigin{}); resolveErr == nil {
 			result.Action = "unmanaged"
 			result.Upgrade = "preserved " + path + "; update it through its existing installer"
@@ -60,14 +63,8 @@ func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (Upd
 	if err := ValidateChannel(channel); err != nil {
 		return UpdateResult{}, "", err
 	}
-	views, err := source.RefreshMarketplaces(ctx, receipt.Source, opts.Verify)
-	if err != nil {
+	if err := refreshPluginSource(ctx, receipt.Source, opts.Verify); err != nil {
 		return UpdateResult{}, "", err
-	}
-	for _, view := range views {
-		if view.Err != "" {
-			return UpdateResult{}, "", errpkg.New("E_PLUGIN_SOURCE", view.Err)
-		}
 	}
 	pkgs, err := source.SourcePackages(ctx, receipt.Source, opts.Verify)
 	if err != nil {
@@ -110,4 +107,35 @@ func UpdatePlugin(ctx context.Context, selector string, opts UpdateOptions) (Upd
 		result.Action = "repaired"
 	}
 	return result, "", nil
+}
+
+func installManagedPluginUpdate(ctx context.Context, target PluginTarget, opts UpdateOptions) (UpdateResult, string, error) {
+	pkgs, err := source.AllPackages(ctx, opts.Verify)
+	if err != nil {
+		return UpdateResult{}, "", err
+	}
+	pkg, err := findSelectedPlugin(pkgs, target)
+	if err != nil {
+		return UpdateResult{}, "", err
+	}
+	// A first managed copy has no receipt naming its source. Resolve that source
+	// from the verified catalog and refresh it before selecting a release, just
+	// as receipt-owned updates do. An old cached manifest may be below App's floor.
+	if err := refreshPluginSource(ctx, pkg.Source, opts.Verify); err != nil {
+		return UpdateResult{}, "", err
+	}
+	return installManagedUpdate(ctx, target.PackageID, opts)
+}
+
+func refreshPluginSource(ctx context.Context, name string, vo source.VerifyOptions) error {
+	views, err := source.RefreshMarketplaces(ctx, name, vo)
+	if err != nil {
+		return err
+	}
+	for _, view := range views {
+		if view.Err != "" {
+			return errpkg.New("E_PLUGIN_SOURCE", view.Err)
+		}
+	}
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +55,9 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	var downloads atomic.Int32
 	var corrupt atomic.Bool
 	var incomplete atomic.Bool
-	payload := func(version string) []byte { return []byte("#!/bin/sh\necho 'camp-app " + version + "'\n") }
+	payload := func(version string) []byte {
+		return []byte(fmt.Sprintf("#!/bin/sh\nif [ \"$2\" = --json ]; then\n echo '{\"ok\":true,\"data\":{\"version\":\"%s\",\"protocolMajor\":1,\"capabilities\":[\"status\",\"open\"]}}'\nelse\n echo 'camp-app %s'\nfi\n", version, version))
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		parts := strings.Split(strings.Trim(request.URL.Path, "/"), "/")
 		if len(parts) != 2 {
@@ -90,35 +93,113 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	browseSeedGit(t, catalog, "init", "-b", "main")
 	market := source.Marketplace{ID: "fixture/signed", Name: "Signed plugin fixture", SchemaVersion: "1", Namespace: "obedience-corp", Packages: []source.PackageRef{{
 		ID: "obedience-corp/camp-app", DisplayName: "Camp App", Class: "plugin", HostRuntimes: []string{"camp-cli"}, Channels: []string{"stable"},
-		ReleaseSource: &release.Source{Type: "git", Repo: git, TagPrefix: "camp-app-v", AssetURL: server.URL + "/{tag}/camp-app-{version}-{os}-{arch}", ChecksumsURL: server.URL + "/{tag}/checksums.txt", OS: map[string]string{runtime.GOOS: runtime.GOOS}, Arch: map[string]string{runtime.GOARCH: runtime.GOARCH}},
+		ReleaseSource: &release.Source{Type: "git", Repo: git, TagPrefix: "camp-app-old-v", AssetURL: server.URL + "/{tag}/camp-app-{version}-{os}-{arch}", ChecksumsURL: server.URL + "/{tag}/checksums.txt", OS: map[string]string{runtime.GOOS: runtime.GOOS}, Arch: map[string]string{runtime.GOARCH: runtime.GOARCH}},
 	}}}
-	raw, err := json.Marshal(market)
-	if err != nil {
-		t.Fatal(err)
+	publishCatalog := func() {
+		t.Helper()
+		raw, err := json.Marshal(market)
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonical, err := verify.CanonicalizeJSON(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signature, err := verify.MarshalDetachedSignature(verify.Signature{KeyID: "fixture", Algorithm: verify.AlgorithmEd25519, Bytes: ed25519.Sign(private, canonical)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(catalog, "obey-marketplace.json"), canonical, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(catalog, "obey-marketplace.json.sig"), signature, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		browseSeedGit(t, catalog, "add", ".")
+		browseSeedGit(t, catalog, "commit", "-m", "signed fixture catalog")
 	}
-	canonical, err := verify.CanonicalizeJSON(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signature, err := verify.MarshalDetachedSignature(verify.Signature{KeyID: "fixture", Algorithm: verify.AlgorithmEd25519, Bytes: ed25519.Sign(private, canonical)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(catalog, "obey-marketplace.json"), canonical, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(catalog, "obey-marketplace.json.sig"), signature, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	browseSeedGit(t, catalog, "add", ".")
-	browseSeedGit(t, catalog, "commit", "-m", "signed fixture catalog")
+	publishCatalog()
 	vo := source.VerifyOptions{KeyStore: verify.NewStaticStore(map[string]ed25519.PublicKey{"fixture": pub})}
 	if _, err := source.AddMarketplace(ctx, catalog, "profile-fixture", vo); err != nil {
 		t.Fatal(err)
 	}
-	installed, err := InstallTarget(ctx, "obedience-corp/camp-app", InstallOptions{Verify: vo})
-	if err != nil || installed.Version != "0.1.0" {
-		t.Fatalf("initial: %+v %v", installed, err)
+	// A newer signed catalog exists upstream, but the cached catalog still points
+	// to a retired release namespace. Managed update must refresh before install.
+	market.Packages[0].ReleaseSource.TagPrefix = "camp-app-v"
+	publishCatalog()
+	// Reproduce App setup finding an old standalone installation with its own
+	// receipt and PATH symlink, but no Festival Installer ownership receipt.
+	standaloneRoot := filepath.Join(home, ".obey", "plugins", "camp-app")
+	standaloneBinary := filepath.Join(standaloneRoot, "bin", "camp-app")
+	if err := os.MkdirAll(filepath.Dir(standaloneBinary), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldBytes := payload("0.0.1")
+	if err := os.WriteFile(standaloneBinary, oldBytes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	standaloneReceipt := filepath.Join(standaloneRoot, "receipt.json")
+	receiptBytes := []byte(`{"schemaVersion":"camp.app.install/v1","version":"0.0.1"}`)
+	if err := os.WriteFile(standaloneReceipt, receiptBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	standaloneLink := filepath.Join(tools, "camp-app")
+	if err := os.Symlink(standaloneBinary, standaloneLink); err != nil {
+		t.Fatal(err)
+	}
+	ordinary, _, err := UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
+	if err != nil || ordinary.Action != "unmanaged" || downloads.Load() != 0 {
+		t.Fatalf("ordinary update must preserve standalone ownership: %+v %v", ordinary, err)
+	}
+	managedContext := WithManagedToolchain(ctx)
+	cancelledRepair, cancelRepair := context.WithCancel(managedContext)
+	cancelRepair()
+	if _, _, err := UpdatePlugin(cancelledRepair, "obedience-corp/camp-app", UpdateOptions{Verify: vo}); !errors.Is(err, context.Canceled) || downloads.Load() != 0 {
+		t.Fatalf("cancelled managed repair: %v, downloads %d", err, downloads.Load())
+	}
+	managedPath := filepath.Join(home, "installer", "bin", "camp-app")
+	if err := os.MkdirAll(filepath.Dir(managedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedPath, oldBytes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := UpdatePlugin(managedContext, "obedience-corp/camp-app", UpdateOptions{Verify: vo}); errpkg.Code(err) != "E_PLUGIN_FOREIGN" {
+		t.Fatalf("managed repair adopted an unowned destination: %v", err)
+	}
+	if got, err := os.ReadFile(managedPath); err != nil || string(got) != string(oldBytes) {
+		t.Fatalf("unowned destination changed: %q %v", got, err)
+	}
+	if err := os.Remove(managedPath); err != nil {
+		t.Fatal(err)
+	}
+	corrupt.Store(true)
+	if _, _, err := UpdatePlugin(managedContext, "obedience-corp/camp-app", UpdateOptions{Verify: vo}); err == nil {
+		t.Fatal("managed repair accepted a corrupt download")
+	}
+	if _, found, err := pluginReceipt(ctx, "obedience-corp/camp-app"); err != nil || found {
+		t.Fatalf("failed repair created an ownership receipt: %v %v", found, err)
+	}
+	corrupt.Store(false)
+	installed, warning, err := UpdatePlugin(managedContext, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
+	if err != nil || installed.Action != "upgraded" || installed.Version != "0.1.0" || warning == "" {
+		t.Fatalf("managed repair: %+v %q %v", installed, warning, err)
+	}
+	if got, err := os.ReadFile(standaloneBinary); err != nil || string(got) != string(oldBytes) {
+		t.Fatalf("standalone bytes changed: %q %v", got, err)
+	}
+	if got, err := os.ReadFile(standaloneReceipt); err != nil || string(got) != string(receiptBytes) {
+		t.Fatalf("standalone receipt changed: %q %v", got, err)
+	}
+	if got, err := os.Readlink(standaloneLink); err != nil || got != standaloneBinary {
+		t.Fatalf("standalone link changed: %q %v", got, err)
+	}
+	if rec, found, err := pluginReceipt(ctx, "obedience-corp/camp-app"); err != nil || !found || rec.Version != "0.1.0" {
+		t.Fatalf("managed receipt readback: %+v %v", rec, err)
+	}
+	// Only the test fixture changes PATH for the later newer-standalone checks.
+	if err := os.Remove(standaloneLink); err != nil {
+		t.Fatal(err)
 	}
 	bin, err := state.BinDir(ctx)
 	if err != nil {
@@ -133,7 +214,6 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	if err := os.WriteFile(standalone, standaloneBytes, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	managedContext := WithManagedToolchain(ctx)
 	selected, err := ResolveTool(managedContext, "camp-app")
 	if err != nil || selected != path {
 		t.Fatalf("selected managed path: %s %v", selected, err)
@@ -143,7 +223,7 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	pluginStatus := status.Tools[len(status.Tools)-1]
-	if pluginStatus.Path != path || pluginStatus.Managed != path || pluginStatus.Origin != OriginManaged {
+	if pluginStatus.Path != path || pluginStatus.Managed != path || pluginStatus.Origin != OriginManaged || pluginStatus.Version != "0.1.0" || pluginStatus.Error != "" {
 		t.Fatalf("status disagrees with resolve: %+v", pluginStatus)
 	}
 	t.Cleanup(func() {
@@ -260,6 +340,10 @@ func TestPluginProfileSignedLifecyclePreservesState(t *testing.T) {
 	result, _, err = UpdatePlugin(ctx, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
 	if err != nil || result.Action != "unmanaged" {
 		t.Fatalf("foreign: %+v %v", result, err)
+	}
+	result, _, err = UpdatePlugin(managedContext, "obedience-corp/camp-app", UpdateOptions{Verify: vo})
+	if err != nil || result.Action != "unmanaged" {
+		t.Fatalf("managed update adopted foreign replacement: %+v %v", result, err)
 	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != string(foreign) {
 		t.Fatalf("foreign changed: %q %v", got, err)
