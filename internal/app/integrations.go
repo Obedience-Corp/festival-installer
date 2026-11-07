@@ -27,13 +27,14 @@ type IntegrationCheck struct {
 }
 
 type IntegrationReport struct {
-	Schema      string             `json:"schema"`
-	Shell       string             `json:"shell"`
-	Ready       bool               `json:"ready"`
-	Changed     bool               `json:"changed"`
-	NewTerminal bool               `json:"new_terminal"`
-	Disabled    bool               `json:"disabled"`
-	Checks      []IntegrationCheck `json:"checks"`
+	Schema       string             `json:"schema"`
+	Capabilities []string           `json:"capabilities,omitempty"`
+	Shell        string             `json:"shell"`
+	Ready        bool               `json:"ready"`
+	Changed      bool               `json:"changed"`
+	NewTerminal  bool               `json:"new_terminal"`
+	Disabled     bool               `json:"disabled"`
+	Checks       []IntegrationCheck `json:"checks"`
 }
 
 type IntegrationOptions struct {
@@ -59,7 +60,7 @@ func ReconcileIntegrations(ctx context.Context, opts IntegrationOptions) (Integr
 }
 
 func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid int) (IntegrationReport, error) {
-	r := IntegrationReport{Schema: IntegrationSchema, Ready: true, Checks: []IntegrationCheck{}}
+	r := IntegrationReport{Schema: IntegrationSchema, Capabilities: []string{"linux_terminal_input_setup"}, Ready: true, Checks: []IntegrationCheck{}}
 	if err := ctx.Err(); err != nil {
 		return r, err
 	}
@@ -142,9 +143,13 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 	} else {
 		reconcileShellTargets(ctx, &r, &settings, home, opts.Check, targets)
 	}
+	shellChanged := r.Changed
 	// Provider hooks remain useful for observation and explicit wrapped launches
 	// even when startup integration is disabled.
 	reconcileBridge(ctx, &r, opts.Check)
+	if !settings.Disabled {
+		reconcileTerminalInput(ctx, &r, opts.Check)
+	}
 	if !opts.Check {
 		data, err := json.MarshalIndent(settings, "", "  ")
 		if err != nil {
@@ -156,7 +161,7 @@ func reconcileIntegrations(ctx context.Context, opts IntegrationOptions, euid in
 		}
 		r.Changed = r.Changed || changed
 	}
-	r.NewTerminal = r.Changed && !r.Disabled
+	r.NewTerminal = shellChanged && !r.Disabled
 	return r, ctx.Err()
 }
 

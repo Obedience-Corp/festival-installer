@@ -199,6 +199,9 @@ func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, e
 	// Validate the complete receipt before removing anything. A corrupt path
 	// must not turn uninstall into a partial destructive operation.
 	for _, f := range rec.OwnedFiles {
+		if packageID == ObeyPackageID && isTerminalInputPayloadPath(f.Path, binDir) {
+			continue
+		}
 		if err := assertWithinManagedRoots(f.Path, binDir, pluginRoot); err != nil {
 			return UninstallResult{}, err
 		}

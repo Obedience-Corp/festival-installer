@@ -33,6 +33,9 @@ install_help() {
 __RESTART_FLAG__  echo "  -h, --help   help for install"
 }
 answer_help() {
+  # These service fixtures model releases predating terminal-input setup.
+  # Refuse that command without recording it as a service mutation.
+  if [ "$1" = "terminal-input" ]; then echo "unknown command: terminal-input" >&2; exit 1; fi
   if [ "$1" = "wrap" ] && [ "$2" = "shell-init" ]; then echo "# shell integration fixture"; exit 0; fi
   if [ "$1" = "bridge" ]; then
     echo '[{"provider":"claude-code","installed":true,"install_status":"current"},{"provider":"codex","installed":true,"install_status":"current"},{"provider":"grok","installed":true,"install_status":"current"}]'

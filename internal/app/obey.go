@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -29,11 +30,12 @@ const obDeveloperBinary = "ob"
 // productResolved is one product release ready to place: where the archive is,
 // what it hashes to, and which executables it carries.
 type productResolved struct {
-	version  string
-	url      string
-	sha256   string
-	archive  bool
-	binaries []string
+	version                string
+	url                    string
+	sha256                 string
+	archive                bool
+	binaries               []string
+	requireTerminalPayload bool
 }
 
 // findProductPackage refreshes sourceName and returns the marketplace entry for
@@ -261,7 +263,7 @@ func installObey(ctx context.Context, opts InstallOptions) (InstallResult, error
 
 	svc := obeyServiceSwap(ctx, daemon, opts.NoRestart)
 
-	report(progress, ProgressEvent{Stage: "done", Package: ObeyPackageID, Percent: 1, Message: "obey ready"})
+	report(progress, ProgressEvent{Stage: "done", Package: ObeyPackageID, Percent: 1, Message: "Obey binaries installed; terminal integration is checked separately"})
 	return InstallResult{
 		Package: ObeyPackageID,
 		Version: resolved.version,
@@ -388,6 +390,14 @@ func placeProduct(ctx context.Context, home, packageID, sourceName, channel stri
 		files = append(files, dst)
 	}
 
+	payloadFiles, err := stageTerminalInputPayload(ctx, tx, packageID, extractDir, binDir)
+	if err != nil {
+		return nil, err
+	}
+	if r.requireTerminalPayload && len(payloadFiles) == 0 {
+		return nil, fmt.Errorf("current Obey archive does not contain the terminal input payload required for repair")
+	}
+	files = append(files, payloadFiles...)
 	if _, err := tx.Commit(ctx, installer.ReceiptInfo{
 		PackageID:   packageID,
 		Version:     r.version,
@@ -464,6 +474,18 @@ func updateObey(ctx context.Context, opts UpdateOptions) (UpdateResult, string, 
 	}
 
 	if !installer.VersionLess(installedVersion, resolved.version) {
+		if installedVersion == resolved.version && needsTerminalInputPayloadRepair(ctx) {
+			home, err := state.Home(ctx)
+			if err != nil {
+				return UpdateResult{}, warning, err
+			}
+			resolved.requireTerminalPayload = true
+			if _, err := placeProduct(ctx, home, ObeyPackageID, rec.Source, channel, resolved, opts.Progress); err != nil {
+				return UpdateResult{}, warning, err
+			}
+			warning = appendWarning(warning, "Repaired the Linux terminal input payload. The daemon and provider sessions were left running.")
+			return UpdateResult{Package: ObeyPackageID, Action: "repaired", Version: installedVersion, From: installedVersion}, warning, nil
+		}
 		return UpdateResult{Package: ObeyPackageID, Action: "current", Version: installedVersion}, warning, nil
 	}
 

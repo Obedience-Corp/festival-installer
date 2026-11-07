@@ -295,3 +295,23 @@ The JSON install/update result includes `starter` with an action and optional
 path/message. A failed starter step leaves the successfully installed binaries
 available and reports how to retry. Older Camp versions without `setup` report
 a pending step until the suite is upgraded.
+
+### Linux terminal input
+
+Obey installs and updates retain the optional Linux acquisition helper and its
+installer under `bin/libexec/obey`, with both files in the managed receipt.
+Incomplete payload pairs are refused before activation. An update can repair a
+missing payload even when the installed Obey version is current, without a
+daemon restart. Uninstall removes the user-owned payload, not a system helper
+shared with other users.
+
+`festival setup integrations` delegates administrator authorization to
+`obey terminal-input setup --authorize`. The operating system owns the prompt;
+background `--check` never prompts. Declined authorization remains a repairable
+integration state. Already running provider processes can stay running.
+
+The integration report advertises `linux_terminal_input_setup`. Festival App
+uses this capability to reject a bundled installer that predates the complete
+Linux install path. Publish the corresponding Obey release first, then this
+installer, then update the App's sidecar pin. Development source staging is not
+a substitute for updating the published pin.

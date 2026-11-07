@@ -58,6 +58,7 @@ func integrationFixture(t *testing.T, shell string) (string, string) {
 		}
 		script := "#!/bin/sh\ncase \"$*\" in\n*shell-init*) cat <<'HELPERS'\n" + snippet + "HELPERS\n;;\n"
 		if tool == "obey" {
+			script += "'terminal-input setup --json --check'|'terminal-input setup --json --authorize') echo '{\"schema\":\"obey-terminal-input/v1\",\"status\":\"installed\",\"ready\":true,\"detail\":\"Existing-terminal input is installed.\"}';;\n"
 			marker := shellsetup.Quote("sh", filepath.Join(home, "hooks-current"))
 			script += "'bridge install all --scope user') touch " + marker + ";;\n'bridge status --json')\nif [ -f " + marker + " ]; then state=current; installed=true; else state=absent; installed=false; fi\nprintf '[{\"provider\":\"claude-code\",\"installed\":%s,\"install_status\":\"%s\"},{\"provider\":\"codex\",\"installed\":%s,\"install_status\":\"%s\"},{\"provider\":\"grok\",\"installed\":%s,\"install_status\":\"%s\"}]\\n' \"$installed\" \"$state\" \"$installed\" \"$state\" \"$installed\" \"$state\"\n;;\n"
 		}
