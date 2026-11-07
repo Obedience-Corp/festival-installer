@@ -35,10 +35,17 @@ checksums, and reuses the existing adapter and transaction journal. Results are
 owned files can be repaired at the same version. Current/newer intact installs
 are kept; implicit downgrades are refused, including inside the activation lock.
 
+With `--managed`, updating a selected plugin without an Installer receipt creates
+a separate verified copy in the Installer's bin directory. This lets App setup
+repair an outdated standalone Camp App without requiring a terminal command. The
+selected marketplace is refreshed and verified first so a cached release does not
+keep the App below its minimum. Subsequent managed status/resolve calls select the
+new copy; the original binary, symlink, receipt and configuration remain intact.
+Without `--managed`, an unowned plugin still returns `unmanaged` with guidance.
+
 An existing destination must still match the owning receipt's hash before it is
-replaced. Foreign files/symlinks, user-edited runtime assets and standalone installs
-retain ownership and receive an explicit next action. A compatible standalone
-Camp App can coexist without changing its receipt/configuration. Uninstall still
+replaced, even with `--managed`. Foreign files/symlinks and user-edited runtime
+assets retain ownership and receive an explicit next action. Uninstall still
 removes only recorded identities. No `--force` flag grants plugins blanket foreign
 file overwrite permission.
 
@@ -66,8 +73,9 @@ marketplace authenticity, artifact checksums or the App updater signature.
 Run `just plugin-profile container`. The full default vet/race suite and targeted
 filesystem profile tests run as an unprivileged disposable container user. The
 signed local-catalog lifecycle exercises actual artifact downloads, receipt/file
-readback, repeat skip, upgrade, missing-file repair, newer-version preservation,
-corrupt download rollback, foreign replacement preservation and namespace tampering.
+readback, standalone-to-managed repair, stale catalog refresh, repeat skip, upgrade,
+missing-file repair, newer-version preservation, corrupt download rollback/retry,
+cancelled repair, foreign replacement preservation and namespace tampering.
 The fixture signing key is generated for the test; it is not official production
 marketplace acceptance. Separate PowerShell/native-platform lanes remain separate
 claims and are not implied by these Linux tests.
