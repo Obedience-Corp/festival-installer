@@ -118,3 +118,7 @@ container tests, including the NSIS flow against a fake installer. The `app_nati
 hosted macOS, Windows and Ubuntu runners and place the real 0.1.7 artifacts: the macOS code signature and
 quarantine state, the real NSIS installer and uninstaller, the real deb through pkexec, and the real AppImage.
 
+**Deb install is verified as root.** `pkexec` runs one fixed shell script (a constant in `internal/app/app_deb.go`; the package path, the signed sha256 and the apt-get path are positional arguments). The script copies the package into a root-owned `0700` directory made by `mktemp -d`, hashes that copy, exits 97 on a mismatch (`E_APP_SIGNATURE`, nothing installed), installs from the copy, and removes the directory on every exit. The polkit prompt therefore names the shell, not apt-get. Verified copies kept for the manual `sudo apt-get install` hint live in `festival-app-deb-*` directories under the system temp dir and are pruned after 24 hours.
+
+**Windows staging.** The `0700` mode on `app-downloads` has no meaning on Windows; its privacy relies on the per-user ACL that `%FESTIVAL_HOME%` inherits from the user profile.
+

@@ -34,6 +34,9 @@ type debEnv struct {
 	onRun     func(name string, args []string)
 	writes    int
 	pkexec    bool
+	realExec  bool   // run the elevated script for real, with a stub apt-get
+	aptStub   string // the stub's path
+	beforeRun func() // runs just before the elevated command
 	d         debPlacer
 }
 
@@ -61,8 +64,16 @@ func newDebEnv(t *testing.T) *debEnv {
 	e.d = debPlacer{
 		run: func(_ context.Context, _ time.Duration, _ string, _ io.Writer, name string, args ...string) (appCommandResult, error) {
 			e.calls = append(e.calls, append([]string{name}, args...))
+			if e.beforeRun != nil {
+				e.beforeRun()
+			}
 			if e.onRun != nil {
 				e.onRun(name, args)
+			}
+			if e.realExec {
+				real := append([]string{}, args[1:]...)
+				real[len(real)-1] = e.aptStub // the last positional argument is the apt-get path
+				return runAppCommand(context.Background(), time.Minute, "", nil, args[0], real...)
 			}
 			return e.res, e.runErr
 		},
@@ -112,46 +123,133 @@ func (e *debEnv) assertNextInstallStarts(tx appTxn) {
 	}
 }
 
-func TestAppDebCopyIsReadableAndRehashed(t *testing.T) {
+func TestAppDebInstallRunsTheFixedScriptWithVerifiedArguments(t *testing.T) {
 	e := newDebEnv(t)
-	var debPath string
-	e.onRun = func(_ string, args []string) {
-		debPath = args[len(args)-1]
-		fi, err := os.Stat(debPath)
-		if err != nil || fi.Mode().Perm() != 0o644 {
-			t.Errorf("deb mode: %v %v", fi, err)
-		}
-		di, err := os.Stat(filepath.Dir(debPath))
-		if err != nil || di.Mode().Perm() != 0o755 {
-			t.Errorf("dir mode: %v %v", di, err)
-		}
-		b, _ := os.ReadFile(debPath)
-		sum := sha256.Sum256(b)
-		if hex.EncodeToString(sum[:]) != e.rel.Artifact.Sha256 {
-			t.Error("copy hash differs")
-		}
-		e.installed, e.version = true, "0.2.0"
-	}
+	e.onRun = func(string, []string) { e.installed, e.version = true, "0.2.0" }
 	_, tx, err := e.place()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Close(context.Background()) }()
-	if !strings.HasPrefix(debPath, e.tempRoot+string(filepath.Separator)) {
-		t.Fatalf("copy %s is not under %s", debPath, e.tempRoot)
+	got := e.calls[0]
+	want := []string{"/usr/bin/pkexec", "/bin/sh", "-c", debInstallScript, "festival-app-install", e.artifact, e.rel.Artifact.Sha256, "/usr/bin/apt-get"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("elevated command = %q\nwant %q", got, want)
+	}
+	if e.tempEntries() != 0 {
+		t.Fatal("the happy path must not leave a user-owned copy for root to read")
 	}
 }
 
-func TestAppDebHashMismatchStopsBeforePkexec(t *testing.T) {
-	e := newDebEnv(t)
-	if err := os.WriteFile(e.artifact, []byte("tampered"), 0o600); err != nil {
+// writeAptStub makes a stand-in apt-get that records the file it was asked to install.
+func (e *debEnv) writeAptStub(t *testing.T) (marker string) {
+	t.Helper()
+	dir := t.TempDir()
+	marker = filepath.Join(dir, "apt-ran")
+	e.aptStub = filepath.Join(dir, "apt-get")
+	script := "#!/bin/sh\nset -eu\n[ \"$1 $2\" = \"install --yes\" ]\nstat -c '%a' \"$(dirname \"$3\")\" > " + marker + "\ncat \"$3\" >> " + marker + "\n"
+	if err := os.WriteFile(e.aptStub, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	e.realExec = true
+	return marker
+}
+
+func TestAppDebElevatedScriptInstallsFromARootOwnedCopy(t *testing.T) {
+	e := newDebEnv(t)
+	marker := e.writeAptStub(t)
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	e.onRun = func(string, []string) { e.installed, e.version = true, "0.2.0" }
 	_, tx, err := e.place()
-	if errpkg.Code(err) != "E_APP_SIGNATURE" || len(e.calls) != 0 || e.tempEntries() != 0 {
-		t.Fatalf("err=%v calls=%d temp=%d", err, len(e.calls), e.tempEntries())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Close(context.Background()) }()
+	got, rerr := os.ReadFile(marker)
+	if rerr != nil || string(got) != "700\ndeb payload" {
+		t.Fatalf("apt-get saw %q (%v), want a 0700 directory and the verified bytes", got, rerr)
+	}
+	if entries, _ := os.ReadDir(scratch); len(entries) != 0 {
+		t.Fatalf("the script left %d entries in its temp dir", len(entries))
+	}
+}
+
+func TestAppDebSwapBeforeTheElevatedStepIsRefused(t *testing.T) {
+	e := newDebEnv(t)
+	marker := e.writeAptStub(t)
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	// The user-owned file is replaced after it was verified and before root reads it.
+	e.beforeRun = func() {
+		if err := os.WriteFile(e.artifact, []byte("different bytes"), 0o600); err != nil {
+			t.Error(err)
+		}
+	}
+	_, tx, err := e.place()
+	if errpkg.Code(err) != "E_APP_SIGNATURE" || e.writes != 0 {
+		t.Fatalf("err=%v writes=%d", err, e.writes)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatal("apt-get ran on bytes that did not match the signed hash")
+	}
+	if entries, _ := os.ReadDir(scratch); len(entries) != 0 {
+		t.Fatalf("the script left %d entries behind", len(entries))
 	}
 	e.assertNextInstallStarts(tx)
+}
+
+func TestAppDebPrunesStaleKeptCopies(t *testing.T) {
+	e := newDebEnv(t)
+	for _, n := range []string{"festival-app-deb-old", "festival-app-deb-recent", "unrelated-old"} {
+		if err := os.MkdirAll(filepath.Join(e.tempRoot, n), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-25 * time.Hour)
+	for _, n := range []string{"festival-app-deb-old", "unrelated-old"} {
+		if err := os.Chtimes(filepath.Join(e.tempRoot, n), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.res = appCommandResult{ExitCode: 126}
+	_, tx, _ := e.place() // the dismissed prompt keeps a fresh copy and prunes the stale ones
+	defer func() { _ = tx.Close(context.Background()) }()
+	if _, err := os.Stat(filepath.Join(e.tempRoot, "festival-app-deb-old")); !os.IsNotExist(err) {
+		t.Fatalf("stale kept copy not pruned: %v", err)
+	}
+	for _, n := range []string{"festival-app-deb-recent", "unrelated-old"} {
+		if _, err := os.Stat(filepath.Join(e.tempRoot, n)); err != nil {
+			t.Fatalf("%s must stay: %v", n, err)
+		}
+	}
+}
+
+func TestAppDebManualHintQuotesAPathWithSpaces(t *testing.T) {
+	e := newDebEnv(t)
+	spaced := filepath.Join(filepath.Dir(e.tempRoot), "tmp with space")
+	if err := os.MkdirAll(spaced, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.d.tempRoot = spaced
+	e.res = appCommandResult{ExitCode: 126}
+	_, tx, err := e.place()
+	defer func() { _ = tx.Close(context.Background()) }()
+	if errpkg.Code(err) != "E_APP_ELEVATION" {
+		t.Fatalf("err = %v", err)
+	}
+	entries, _ := os.ReadDir(spaced)
+	if len(entries) != 1 {
+		t.Fatalf("want one kept copy, got %d", len(entries))
+	}
+	files, _ := os.ReadDir(filepath.Join(spaced, entries[0].Name()))
+	if len(files) != 1 {
+		t.Fatalf("want one file in the kept copy, got %d", len(files))
+	}
+	quoted := "sudo apt-get install --yes '" + filepath.Join(spaced, entries[0].Name(), files[0].Name()) + "', then"
+	if !strings.Contains(err.Error(), quoted) {
+		t.Fatalf("hint does not quote the path:\n%v\nwant it to contain %s", err, quoted)
+	}
 }
 
 func TestAppDebInstallCommitsAfterProbe(t *testing.T) {
@@ -164,7 +262,7 @@ func TestAppDebInstallCommitsAfterProbe(t *testing.T) {
 	if p.Location != "dpkg:festival-app" || p.Executable != e.exe || e.writes != 1 || e.tempEntries() != 0 {
 		t.Fatalf("%+v writes=%d temp=%d", p, e.writes, e.tempEntries())
 	}
-	if len(e.calls) != 1 || strings.Join(e.calls[0][:4], " ") != "/usr/bin/pkexec /usr/bin/apt-get install --yes" {
+	if len(e.calls) != 1 || strings.Join(e.calls[0][:3], " ") != "/usr/bin/pkexec /bin/sh -c" {
 		t.Fatalf("calls = %v", e.calls)
 	}
 	e.assertNextInstallStarts(tx)

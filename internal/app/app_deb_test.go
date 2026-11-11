@@ -41,9 +41,29 @@ func TestLinuxPackageManagerDetection(t *testing.T) {
 }
 
 func TestAppDebInstallArgvIsFixed(t *testing.T) {
-	got := strings.Join(debInstallArgv("/tmp/x/Festival.App_0.2.0_amd64.deb"), " ")
-	if got != "/usr/bin/pkexec /usr/bin/apt-get install --yes /tmp/x/Festival.App_0.2.0_amd64.deb" {
+	got := debInstallArgv("/tmp/x/Festival.App_0.2.0_amd64.deb", "ABCDEF0123")
+	want := []string{"/usr/bin/pkexec", "/bin/sh", "-c", debInstallScript, "festival-app-install", "/tmp/x/Festival.App_0.2.0_amd64.deb", "abcdef0123", "/usr/bin/apt-get"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("argv = %q", got)
+	}
+	// The script is a constant: the path and hash are positional, never spliced in.
+	if strings.Contains(debInstallScript, "/tmp/x") || strings.Contains(debInstallScript, "abcdef") {
+		t.Fatal("the script must not embed its inputs")
+	}
+}
+
+func TestAppShellQuote(t *testing.T) {
+	cases := map[string]string{
+		"/tmp/festival-app-deb-1/festival-app.deb": "/tmp/festival-app-deb-1/festival-app.deb",
+		"/tmp/with space/f.deb":                    "'/tmp/with space/f.deb'",
+		"/tmp/it's/f.deb":                          `'/tmp/it'\''s/f.deb'`,
+		"/tmp/$HOME/f.deb":                         "'/tmp/$HOME/f.deb'",
+		"":                                         "''",
+	}
+	for in, want := range cases {
+		if got := shellQuote(in); got != want {
+			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

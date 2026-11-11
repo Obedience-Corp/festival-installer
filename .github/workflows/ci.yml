@@ -207,7 +207,7 @@ jobs:
           set -o pipefail
           go test -tags app_native -count=1 -v -timeout 15m -run '^TestAppNativeDebElevationWithoutAgent$' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-elevation.log"
           bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-elevation.log"
-      - name: Allow this runner user to run apt-get through pkexec
+      - name: Allow this runner user to run the installer's fixed shell script through pkexec
         if: matrix.format == 'deb'
         run: |
           user="$(id -un)"
@@ -216,14 +216,14 @@ jobs:
           polkit.addRule(function (action, subject) {
             if (action.id == "org.freedesktop.policykit.exec" &&
                 subject.user == "${user}" &&
-                action.lookup("program") == "/usr/bin/apt-get") {
+                ["/bin/sh", "/usr/bin/sh", "/bin/dash", "/usr/bin/dash"].indexOf(action.lookup("program")) >= 0) {
               return polkit.Result.YES;
             }
           });
           EOF
           sudo chmod 0644 /etc/polkit-1/rules.d/49-festival-installer-ci.rules
           sudo systemctl restart polkit
-          pkexec /usr/bin/apt-get --version | head -n 1
+          pkexec /bin/sh -c 'echo polkit rule ok'
       - name: CLI journey (deb) - install, status, adopt, uninstall the real App 0.1.7
         if: matrix.format == 'deb'
         run: |

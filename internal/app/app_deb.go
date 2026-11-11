@@ -27,7 +27,66 @@ const (
 	aptGetPath     = "/usr/bin/apt-get"
 	debAptTimeout  = 9 * time.Minute
 	debElevateHint = "Install the AppImage instead with: festival install app --format appimage. Or install the package yourself with: sudo apt-get install --yes %s, then run festival install app to record it."
+
+	shPath          = "/bin/sh"
+	debCopyPrefix   = "festival-app-deb-"
+	debCopyStale    = 24 * time.Hour
+	debExitMismatch = 97 // the script's exit code when the package hash differs
 )
+
+// debInstallScript is the one thing pkexec runs. It is a constant: the package
+// path, the expected sha256 and the apt-get path arrive as positional arguments
+// and are never spliced into the text. The package is copied into a root-owned
+// 0700 directory, hashed there, and installed from there, so the bytes that are
+// checked are the bytes root installs. The directory is removed on every exit.
+const debInstallScript = `set -eu
+src=$1
+want=$2
+apt=$3
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT HUP INT TERM
+chmod 700 "$dir"
+cp -- "$src" "$dir/package.deb"
+got=$(sha256sum "$dir/package.deb")
+got=${got%% *}
+if [ "$got" != "$want" ]; then
+  echo "package sha256 differs from the verified value" >&2
+  exit 97
+fi
+"$apt" install --yes "$dir/package.deb"
+`
+
+// shellQuote quotes s for a POSIX shell only when it needs it.
+func shellQuote(s string) string {
+	safe := s != ""
+	for _, r := range s {
+		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_./:@%+=,-", r)
+		if !ok {
+			safe = false
+			break
+		}
+	}
+	if safe {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// pruneStaleDebCopies removes kept manual-install copies older than a day.
+func pruneStaleDebCopies(root string, now time.Time) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), debCopyPrefix) {
+			continue
+		}
+		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > debCopyStale {
+			_ = os.RemoveAll(filepath.Join(root, e.Name()))
+		}
+	}
+}
 
 type debPlacer struct {
 	run        appCommandRunner                              // pkexec apt-get
@@ -37,14 +96,16 @@ type debPlacer struct {
 	executable string // "/usr/bin/festival-app" in production; tests point it at a temp file
 }
 
-func debInstallArgv(debPath string) []string {
-	return []string{pkexecPath, aptGetPath, "install", "--yes", debPath}
+// debInstallArgv is the whole elevated command: pkexec runs the fixed script
+// with the verified download, its signed sha256 and the apt-get path.
+func debInstallArgv(debPath, sha256 string) []string {
+	return []string{pkexecPath, shPath, "-c", debInstallScript, "festival-app-install", debPath, strings.ToLower(sha256), aptGetPath}
 }
 
 // debElevationError maps a pkexec start failure or exit code to the D008 errors.
 // Exit 0 with no start error returns nil.
 func debElevationError(exitCode int, startErr error, debPath string) error {
-	hint := " " + fmt.Sprintf(debElevateHint, debPath)
+	hint := " " + fmt.Sprintf(debElevateHint, shellQuote(debPath))
 	switch {
 	case startErr != nil && (errors.Is(startErr, exec.ErrNotFound) || errors.Is(startErr, fs.ErrNotExist)):
 		return errpkg.New("E_APP_ELEVATION", "pkexec is not installed."+hint)
@@ -84,7 +145,8 @@ func (d debPlacer) discover(ctx context.Context, existing *appReceipt) (appCopy,
 // root and the _apt user can read it. It returns the directory and the copy.
 func (d debPlacer) copyDeb(ctx context.Context, req appPlaceRequest) (dir, dst string, err error) {
 	rel := req.Release
-	dir, err = os.MkdirTemp(d.tempRoot, "festival-app-deb-")
+	pruneStaleDebCopies(d.tempRoot, time.Now())
+	dir, err = os.MkdirTemp(d.tempRoot, debCopyPrefix)
 	if err != nil {
 		return "", "", errpkg.Wrap("E_APP_INSTALLER_FAILED", err, "create a directory for the package")
 	}
@@ -140,25 +202,24 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 	if err != nil {
 		return appPlacement{}, err
 	}
-	dir, dst, err := d.copyDeb(ctx, req)
-	if err != nil {
-		return appPlacement{}, err
-	}
-	argv := debInstallArgv(dst)
+	argv := debInstallArgv(req.Artifact.Path, rel.Artifact.Sha256)
 	res, err := d.run(ctx, debAptTimeout, "", req.Output, argv[0], argv[1:]...)
 	switch {
 	case err != nil && errpkg.Code(err) == "E_INSTALL_CTX":
-		_ = os.RemoveAll(dir)
 		return appPlacement{}, err
-	case err != nil:
-		return appPlacement{}, debElevationError(-1, err, dst) // the copy stays for the manual install
-	case res.ExitCode == 126 || res.ExitCode == 127:
-		return appPlacement{}, debElevationError(res.ExitCode, nil, dst)
+	case err != nil || res.ExitCode == 126 || res.ExitCode == 127:
+		// The download is removed when this call returns, so the manual hint
+		// names a verified copy that is kept for the user's own command.
+		_, kept, cerr := d.copyDeb(ctx, req)
+		if cerr != nil {
+			return appPlacement{}, cerr
+		}
+		return appPlacement{}, debElevationError(res.ExitCode, err, kept)
+	case res.ExitCode == debExitMismatch:
+		return appPlacement{}, errpkg.New("E_APP_SIGNATURE", "the Festival App package changed after it was verified; nothing was installed")
 	case res.ExitCode != 0:
-		_ = os.RemoveAll(dir)
 		return appPlacement{}, errpkg.New("E_APP_INSTALLER_FAILED", fmt.Sprintf("apt-get exited %d: %s", res.ExitCode, lastLine(res.Stderr)))
 	}
-	_ = os.RemoveAll(dir)
 
 	inst, err := d.probe(ctx)
 	if err != nil {

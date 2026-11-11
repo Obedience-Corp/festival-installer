@@ -249,7 +249,7 @@ points to fest.build/app.
 | --- | --- | --- |
 | macOS (Apple silicon or Intel) | The app bundle | `/Applications/Festival App.app`. An existing copy is replaced where it is. An account that cannot write to `/Applications` gets `~/Applications`, and the output says so. A copy that belongs to another account is never touched; this account gets its own copy in `~/Applications`. |
 | Windows x64 | The App's own installer, run silently | `%LOCALAPPDATA%\Festival App`, with the Start menu entry and the Add or Remove Programs entry the App's installer creates |
-| Debian and Ubuntu family | The `.deb`, through `apt-get` | Owned by dpkg, so `apt` can remove it. The system asks for your password. |
+| Debian and Ubuntu family | The `.deb`, through `apt-get` | Owned by dpkg, so `apt` can remove it. The system asks for your password. The prompt names `/bin/sh` because festival runs one fixed script as root that copies the package into a root-owned directory, checks its sha256 against the signed value, and only then runs `apt-get install` on that copy. |
 | Other Linux x64 | The AppImage | `~/.local/bin/festival-app`, with a menu entry and icon under your XDG data directory. No password. |
 
 On Debian and Ubuntu, `--format appimage` installs the AppImage instead and needs no password. An existing
@@ -260,6 +260,8 @@ and the App's own update signature (key id `A0880EE086F129E5`). Any mismatch sto
 `E_APP_SIGNATURE`. On macOS festival also checks the bundle's identifier and code signature. festival does not
 add a quarantine mark to the files it downloads, never re-signs the App, and never removes quarantine marks from
 files it did not download.
+
+**Download staging.** Verified downloads are staged under `$FESTIVAL_HOME/app-downloads` and removed after the install. On macOS and Linux that directory is mode `0700`. Windows has no such mode: its privacy relies on the per-user ACL that `%FESTIVAL_HOME%` (under your profile) inherits.
 
 **Windows.** Smart App Control blocks unsigned installers no matter how they were downloaded. On a PC where it is
 on, `festival install app` reports that Windows blocked the installer (`E_APP_INSTALLER_FAILED`).
