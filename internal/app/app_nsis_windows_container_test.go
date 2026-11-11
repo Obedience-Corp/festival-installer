@@ -111,7 +111,7 @@ func newNSISEnv(t *testing.T, version string) *nsisEnv {
 		},
 		download: func(_ context.Context, _ string, rel appRelease, _ appDownloadOptions) (verifiedAppArtifact, error) {
 			e.runs++
-			return verifiedAppArtifact{Path: e.setup, Dir: root, Release: rel}, nil
+			return verifiedAppArtifact{Path: e.setup, Dir: "", Release: rel}, nil
 		},
 		begin: func(ctx context.Context, db *sql.DB, home string) (appTxn, error) {
 			tx, err := beginAppTxn(ctx, db, home)

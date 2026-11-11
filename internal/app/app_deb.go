@@ -175,6 +175,3 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 	}
 	return placement, nil
 }
-
-// Keeps the placer reachable for the unused linter until 03_platforms/04 wires it.
-var _ = debPlacer.place

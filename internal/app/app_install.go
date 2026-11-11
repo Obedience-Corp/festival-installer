@@ -294,3 +294,11 @@ func versionOrUnknown(v string) string {
 	}
 	return v
 }
+
+// Every platform implements appPlatform on every GOOS, so the platform code
+// that only one host's hostAppPlatform constructs still counts as used.
+var (
+	_ appPlatform = bundlePlatform{}
+	_ appPlatform = nsisPlatform{}
+	_ appPlatform = linuxPlatform{}
+)
