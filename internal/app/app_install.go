@@ -46,6 +46,7 @@ type appReceipt struct { // in-memory D006 receipt; 04_lifecycle/01 maps it to r
 type appReceiptStore interface {
 	Read(ctx context.Context) (*appReceipt, error) // nil, nil when absent
 	Write(ctx context.Context, r appReceipt) error
+	Delete(ctx context.Context) error // absent is not an error
 }
 
 type appCopy struct {
@@ -85,6 +86,10 @@ type appPlatform interface { // one implementation per format family
 	place(ctx context.Context, txn appTxn, req appPlaceRequest) (appPlacement, error)
 	// onDisk reports the receipt's copy as it is now (status and update); no discovery.
 	onDisk(ctx context.Context, rec appReceipt, latest appLatest) (appCopy, error)
+	// remove deletes the recorded copy. removed is false when it was already gone
+	// (removed outside festival); notes explain anything left in place. It never
+	// deletes the receipt.
+	remove(ctx context.Context, rec appReceipt, out io.Writer) (removed bool, notes []string, err error)
 }
 
 // appLatest is the newest stable release from the cached catalog; zero when unknown.

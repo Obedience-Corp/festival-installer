@@ -42,7 +42,7 @@ func nsisGet(t *testing.T, name, dest string) {
 
 // TestAppNSISNativeRealInstallerRegisters runs the real 0.1.7 setup.exe on a
 // fresh hosted VM through nsisPlatform with the production registry key.
-func TestAppNSISNativeRealInstallerRegisters(t *testing.T) {
+func nativeInstallNSIS(t *testing.T) (appInstaller, string) {
 	apptest.RequireHostedRunner(t)
 	const asset = "Festival.App_0.1.7_x64-setup.exe"
 	dir := t.TempDir()
@@ -98,5 +98,31 @@ func TestAppNSISNativeRealInstallerRegisters(t *testing.T) {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("missing %s: %v", p, err)
 		}
+	}
+	return ai, filepath.Join(local, "Festival App")
+}
+
+func TestAppNSISNativeRealInstallerRegisters(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	nativeInstallNSIS(t)
+}
+
+// TestAppNSISNativeRealUninstall runs the real uninstaller on what it just installed.
+func TestAppNSISNativeRealUninstall(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	ai, dir := nativeInstallNSIS(t)
+	removed, notes, err := ai.platform.remove(context.Background(), appReceipt{Version: "0.1.7", Format: "nsis", Location: dir}, os.Stderr)
+	if err != nil || !removed {
+		t.Fatalf("remove: %v %v %v", removed, notes, err)
+	}
+	if _, ok, rerr := readNSISRegistration(nsisUninstallKey); rerr != nil || ok {
+		t.Fatalf("registry key still present: ok=%v err=%v", ok, rerr)
+	}
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Fatalf("install dir still present: %v", statErr)
+	}
+	lnk := filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Festival App.lnk")
+	if _, statErr := os.Stat(lnk); !os.IsNotExist(statErr) {
+		t.Fatalf("Start menu shortcut still present: %v", statErr)
 	}
 }

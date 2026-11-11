@@ -302,3 +302,36 @@ func (a appImagePlacer) place(ctx context.Context, txn appTxn, req appPlaceReque
 	}
 	return placement, nil
 }
+
+func (a appImagePlacer) remove(_ context.Context, rec appReceipt, _ io.Writer) (bool, []string, error) {
+	if rec.Location != a.target() {
+		return false, nil, foreignAppError(rec.Location, "festival manages only "+a.target())
+	}
+	var notes []string
+	removed := false
+	fi, err := os.Lstat(a.target())
+	switch {
+	case os.IsNotExist(err):
+		notes = append(notes, removedOutsideNote2)
+	case err != nil:
+		return false, nil, errpkg.Wrap("E_APP_PROBE", err, "inspect "+a.target())
+	case !fi.Mode().IsRegular():
+		return false, nil, foreignAppError(a.target(), "not a regular file")
+	default:
+		if err := os.Remove(a.target()); err != nil {
+			return false, nil, errpkg.Wrap("E_INSTALL_STAGING", err, "remove "+a.target())
+		}
+		removed = true
+	}
+	if raw, err := os.ReadFile(a.desktopPath()); err == nil {
+		if strings.Contains(string(raw), appDesktopMark) {
+			_ = os.Remove(a.desktopPath())
+		} else {
+			notes = append(notes, "Left your "+a.desktopPath()+" because festival did not write it.")
+		}
+	}
+	if fi, err := os.Lstat(a.iconPath()); err == nil && fi.Mode().IsRegular() {
+		_ = os.Remove(a.iconPath())
+	}
+	return removed, notes, nil
+}

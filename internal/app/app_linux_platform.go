@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 
@@ -111,4 +112,11 @@ func (p linuxPlatform) onDisk(ctx context.Context, rec appReceipt, latest appLat
 		cp.UpdatedByApp = true
 	}
 	return cp, nil
+}
+
+func (p linuxPlatform) remove(ctx context.Context, rec appReceipt, out io.Writer) (bool, []string, error) {
+	if rec.Format == metadata.ArtifactKindDeb {
+		return p.deb.remove(ctx, rec, out)
+	}
+	return p.appimage.remove(ctx, rec, out)
 }

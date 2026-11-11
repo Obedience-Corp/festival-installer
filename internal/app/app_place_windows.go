@@ -17,6 +17,7 @@ func hostAppPlatform(context.Context) (appPlatform, error) {
 	return nsisPlatform{
 		readReg:      func() (nsisRegistration, bool, error) { return readNSISRegistration(nsisUninstallKey) },
 		run:          runAppCommand,
+		uninstall:    runNSISUninstaller,
 		localAppData: local,
 	}, nil
 }

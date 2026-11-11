@@ -44,7 +44,7 @@ func nativeGet(t *testing.T, name, dest string) {
 
 // TestAppBundleNativeRealBundleKeepsSignature places the real 0.1.7 bundle with
 // real codesign into roots under t.TempDir() on a fresh hosted VM.
-func TestAppBundleNativeRealBundleKeepsSignature(t *testing.T) {
+func nativeInstallBundle(t *testing.T) (appInstaller, string) {
 	apptest.RequireHostedRunner(t)
 	asset := "Festival.App_0.1.7_aarch64.app.tar.gz"
 	if runtime.GOARCH == "amd64" {
@@ -113,6 +113,31 @@ func TestAppBundleNativeRealBundleKeepsSignature(t *testing.T) {
 		t.Fatalf("second run: %+v %v", again, err)
 	}
 	entries, _ := os.ReadDir(sysApps)
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".festival-") {
+			t.Fatalf("sibling left: %s", e.Name())
+		}
+	}
+	return ai, dest
+}
+
+func TestAppBundleNativeRealBundleKeepsSignature(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	nativeInstallBundle(t)
+}
+
+// TestAppBundleNativeRemove removes the real 0.1.7 bundle it just placed.
+func TestAppBundleNativeRemove(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	ai, dest := nativeInstallBundle(t)
+	removed, notes, err := ai.platform.remove(context.Background(), appReceipt{Version: "0.1.7", Format: "app-bundle", Location: dest}, nil)
+	if err != nil || !removed || len(notes) != 0 {
+		t.Fatalf("remove: %v %v %v", removed, notes, err)
+	}
+	if _, statErr := os.Lstat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("bundle still present: %v", statErr)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(dest))
 	for _, e := range entries {
 		if strings.Contains(e.Name(), ".festival-") {
 			t.Fatalf("sibling left: %s", e.Name())

@@ -40,6 +40,13 @@ func (f *fakeAppStore) Write(_ context.Context, r appReceipt) error {
 	return nil
 }
 
+func (f *fakeAppStore) Delete(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.r = nil
+	return nil
+}
+
 func (f *fakeAppStore) factory() func(*sql.DB) appReceiptStore {
 	return func(*sql.DB) appReceiptStore { return f }
 }

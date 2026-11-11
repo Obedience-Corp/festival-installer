@@ -97,6 +97,15 @@ func underRoot(path, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// Delete removes the receipt and its rows.
+func (s dbAppReceiptStore) Delete(ctx context.Context) error {
+	err := receipts.Delete(ctx, s.db, AppPackageID)
+	if errors.Is(err, receipts.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 // Write refuses an executable v0.3.12's TUI uninstall would delete unchecked.
 func (s dbAppReceiptStore) Write(ctx context.Context, r appReceipt) error {
 	if underRoot(r.Executable, s.binDir) || underRoot(r.Executable, s.pluginsRoot) {

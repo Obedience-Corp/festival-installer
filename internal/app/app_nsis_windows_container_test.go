@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
@@ -27,11 +28,16 @@ const (
 	envFakeDir     = "FESTIVAL_TEST_FAKE_NSIS_DIR"
 	envFakeVersion = "FESTIVAL_TEST_FAKE_NSIS_VERSION"
 	envFakeExit    = "FESTIVAL_TEST_FAKE_NSIS_EXIT"
+	envFakeLog     = "FESTIVAL_TEST_FAKE_NSIS_LOG"
 )
 
 // init lets a copy of the test binary act as setup.exe. It runs before TestMain.
 func init() {
-	if os.Getenv(envFakeNSIS) != "install" {
+	mode := os.Getenv(envFakeNSIS)
+	if mode == "uninstall" {
+		runFakeUninstall()
+	}
+	if mode != "install" {
 		return
 	}
 	dir, exit := os.Getenv(envFakeDir), 0
@@ -61,6 +67,23 @@ func writeFakeRegistration(dir, version string) {
 			os.Exit(91)
 		}
 	}
+}
+
+// runFakeUninstall plays uninstall.exe: it records its raw command line, removes
+// the registration and festival-app.exe, and exits with the requested code.
+func runFakeUninstall() {
+	dir, exit := os.Getenv(envFakeDir), 0
+	if v := os.Getenv(envFakeExit); v != "" {
+		exit, _ = strconv.Atoi(v)
+	}
+	if log := os.Getenv(envFakeLog); log != "" {
+		_ = os.WriteFile(log, []byte(windows.UTF16PtrToString(windows.GetCommandLine())), 0o644)
+	}
+	if exit == 0 {
+		_ = registry.DeleteKey(registry.CURRENT_USER, fakeNSISKey)
+		_ = os.Remove(filepath.Join(dir, "festival-app.exe"))
+	}
+	os.Exit(exit)
 }
 
 type recordingTxn struct {
@@ -101,6 +124,7 @@ func newNSISEnv(t *testing.T, version string) *nsisEnv {
 		readReg:      func() (nsisRegistration, bool, error) { return readNSISRegistration(fakeNSISKey) },
 		run:          runAppCommand,
 		localAppData: root,
+		uninstall:    runNSISUninstaller,
 	}
 	e.ai = appInstaller{
 		goos: "windows", euid: func() int { return 1 }, platform: plat,
@@ -260,5 +284,65 @@ func TestAppNSISContainerRefusesRunningAppBeforeInstaller(t *testing.T) {
 	_, err := e.install()
 	if errpkg.Code(err) != "E_APP_RUNNING" || e.marker() != "" {
 		t.Fatalf("err=%v marker=%q", err, e.marker())
+	}
+}
+
+// setupFakeInstall lays out an installed App whose uninstall.exe is the fake.
+func setupFakeInstall(t *testing.T, e *nsisEnv, uninstallExit string) (cmdlineLog string) {
+	t.Helper()
+	if err := os.MkdirAll(e.installD, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	copyFile(t, os.Args[0], filepath.Join(e.installD, "uninstall.exe"))
+	if err := os.WriteFile(filepath.Join(e.installD, "festival-app.exe"), []byte("fake app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFakeRegistrationForTest(t, e.installD, "0.1.0")
+	e.store.r = &appReceipt{Version: "0.1.0", Format: "nsis", Location: e.installD, Source: "official-obey", Channel: "stable", BundleID: AppBundleID, Executable: e.installD + `\festival-app.exe`, Mode: 0o666}
+	home := os.Getenv("FESTIVAL_HOME")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := (dbAppReceiptStore{db: openTestDB(t, home)}).Write(context.Background(), *e.store.r); err != nil {
+		t.Fatal(err)
+	}
+	cmdlineLog = filepath.Join(e.root, "uninstall-cmdline.txt")
+	t.Setenv(envFakeNSIS, "uninstall")
+	t.Setenv(envFakeLog, cmdlineLog)
+	t.Setenv(envFakeExit, uninstallExit)
+	prev := appPlatformFor
+	appPlatformFor = func(context.Context) (appPlatform, error) { return e.ai.platform, nil }
+	t.Cleanup(func() { appPlatformFor = prev })
+	return cmdlineLog
+}
+
+func TestAppNSISContainerUninstallRunsInPlaceAndCleansUp(t *testing.T) {
+	e := newNSISEnv(t, "0.2.0")
+	logPath := setupFakeInstall(t, e, "0")
+	got, err := UninstallApp(context.Background(), nil)
+	if err != nil || !got.Changed {
+		t.Fatalf("%+v %v", got, err)
+	}
+	raw, _ := os.ReadFile(logPath)
+	if !strings.HasSuffix(string(raw), " /S _?="+e.installD) || strings.Contains(string(raw), `_?="`) {
+		t.Fatalf("command line = %q", raw)
+	}
+	if _, statErr := os.Stat(e.installD); !os.IsNotExist(statErr) {
+		t.Fatalf("install dir still present: %v", statErr)
+	}
+	if rec, rerr := readAppReceipt(context.Background()); rerr != nil || rec != nil {
+		t.Fatalf("receipt still present: %+v %v", rec, rerr)
+	}
+}
+
+func TestAppNSISContainerUninstallNonZeroKeepsReceipt(t *testing.T) {
+	e := newNSISEnv(t, "0.2.0")
+	setupFakeInstall(t, e, "3")
+	_, err := UninstallApp(context.Background(), nil)
+	if errpkg.Code(err) != "E_APP_INSTALLER_FAILED" || !strings.Contains(err.Error(), "exited 3") {
+		t.Fatalf("err = %v", err)
+	}
+	if rec, rerr := readAppReceipt(context.Background()); rerr != nil || rec == nil {
+		t.Fatalf("receipt must be kept: %+v %v", rec, rerr)
 	}
 }

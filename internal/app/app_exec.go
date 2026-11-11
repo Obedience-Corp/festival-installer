@@ -26,12 +26,17 @@ type appCommandRunner func(ctx context.Context, timeout time.Duration, dir strin
 func runAppCommand(ctx context.Context, timeout time.Duration, dir string, out io.Writer, name string, args ...string) (appCommandResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	return executeAppCommand(ctx, cmd, out, name)
+}
+
+// executeAppCommand runs a prepared command that was built with ctx.
+func executeAppCommand(ctx context.Context, cmd *exec.Cmd, out io.Writer, name string) (appCommandResult, error) {
 	if out == nil {
 		out = io.Discard
 	}
 	stdout, stderr := &cappedBuffer{limit: appCommandCap}, &cappedBuffer{limit: appCommandCap}
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
 	cmd.WaitDelay = time.Second
 	cmd.Stdout = io.MultiWriter(stdout, out)
 	cmd.Stderr = io.MultiWriter(stderr, out)

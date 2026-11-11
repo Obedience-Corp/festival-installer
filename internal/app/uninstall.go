@@ -33,6 +33,10 @@ func UninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 }
 
 func uninstallTarget(ctx context.Context, target string) (UninstallResult, string, error) {
+	if IsAppTarget(target) {
+		res, err := UninstallApp(ctx, nil)
+		return res.uninstallResult(), "", err
+	}
 	packageID := FestivalPackageID
 	if strings.Contains(target, "/") {
 		selected, err := ParsePluginTarget(target)
@@ -55,7 +59,7 @@ func uninstallTarget(ctx context.Context, target string) (UninstallResult, strin
 		case "obey":
 			return uninstallObey(ctx)
 		default:
-			return UninstallResult{}, "", errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
+			return UninstallResult{}, "", errpkg.New("E_UNINSTALL_TARGET", "unknown uninstall target "+target+" (expected festival, camp, fest, obey, app, or a camp-*/fest-* plugin)")
 		}
 	}
 	res, err := UninstallPackage(ctx, packageID)
@@ -114,6 +118,10 @@ func uninstallObey(ctx context.Context) (UninstallResult, string, error) {
 func UninstallPackage(ctx context.Context, packageID string) (UninstallResult, error) {
 	if err := ctx.Err(); err != nil {
 		return UninstallResult{}, errpkg.Wrap("E_UNINSTALL_CTX", err, "context cancelled")
+	}
+	if packageID == AppPackageID {
+		res, err := UninstallApp(ctx, nil)
+		return res.uninstallResult(), err
 	}
 	origin, _ := DetectSuite(ctx)
 	if packageID == FestivalPackageID && origin.Kind == OriginPackage {

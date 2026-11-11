@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,8 @@ type nsisPlatform struct {
 	readReg      func() (nsisRegistration, bool, error) // production: readNSISRegistration(nsisUninstallKey)
 	run          appCommandRunner
 	localAppData string // %LOCALAPPDATA%
+	// uninstall runs <location>\uninstall.exe /S _?=<location> and waits.
+	uninstall func(ctx context.Context, uninstaller, dir string, out io.Writer) (appCommandResult, error)
 }
 
 // nsisPolicyErrnos are the OS errors Windows returns when an application
@@ -169,4 +172,72 @@ func (p nsisPlatform) onDisk(_ context.Context, rec appReceipt, _ appLatest) (ap
 		Found: true, FromReceipt: true, Location: reg.InstallLocation, Version: reg.DisplayVersion,
 		UpdatedByApp: installer.VersionLess(rec.Version, reg.DisplayVersion),
 	}, nil
+}
+
+var (
+	nsisPollInterval = 250 * time.Millisecond
+	nsisPollLimit    = 30 * time.Second
+)
+
+// nsisUninstallCmdLine is the raw command line: the uninstaller quoted, then
+// /S and _?=<dir> last and unquoted (NSIS: _?= must not contain quotes).
+func nsisUninstallCmdLine(uninstaller, dir string) string {
+	return `"` + uninstaller + `" /S _?=` + dir
+}
+
+func (p nsisPlatform) remove(ctx context.Context, rec appReceipt, out io.Writer) (bool, []string, error) {
+	dir := rec.Location
+	uninstaller := dir + `\uninstall.exe`
+	reg, ok, err := p.readReg()
+	if err != nil {
+		return false, nil, err
+	}
+	if !ok {
+		notes := []string{removedOutsideNote2}
+		notes = append(notes, nsisCleanup(dir, uninstaller)...)
+		return false, notes, nil
+	}
+	if !sameInstallDir(reg.InstallLocation, dir) {
+		return false, nil, foreignAppError(reg.InstallLocation, "the registered install location differs from festival's record "+dir)
+	}
+	if !strings.EqualFold(reg.UninstallString, uninstaller) {
+		return false, nil, foreignAppError(reg.UninstallString, "the registered uninstaller is not "+uninstaller)
+	}
+	res, err := p.uninstall(ctx, uninstaller, dir, out)
+	if err != nil {
+		if errpkg.Code(err) == "E_INSTALL_CTX" {
+			return false, nil, err
+		}
+		return false, nil, errpkg.Wrap("E_APP_INSTALLER_FAILED", err, "could not start the Festival App uninstaller")
+	}
+	if res.ExitCode != 0 {
+		return false, nil, errpkg.New("E_APP_INSTALLER_FAILED", fmt.Sprintf("the Festival App uninstaller exited %d", res.ExitCode))
+	}
+	deadline := time.Now().Add(nsisPollLimit)
+	for {
+		_, still, rerr := p.readReg()
+		_, statErr := os.Stat(filepath.Join(dir, nsisMainBinary))
+		if rerr == nil && !still && os.IsNotExist(statErr) {
+			break
+		}
+		if time.Now().After(deadline) {
+			return false, nil, errpkg.New("E_APP_INSTALLER_FAILED", "the Festival App uninstaller exited 0 but Festival App is still registered or installed")
+		}
+		select {
+		case <-ctx.Done():
+			return false, nil, errpkg.Wrap("E_INSTALL_CTX", ctx.Err(), "uninstall cancelled")
+		case <-time.After(nsisPollInterval):
+		}
+	}
+	return true, nsisCleanup(dir, uninstaller), nil
+}
+
+// nsisCleanup removes the uninstaller left behind by _?= and then the directory,
+// never recursively.
+func nsisCleanup(dir, uninstaller string) []string {
+	_ = os.Remove(uninstaller)
+	if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+		return []string{"Left " + dir + " because it still holds files."}
+	}
+	return nil
 }

@@ -43,7 +43,7 @@ func debGet(t *testing.T, name, dest string) {
 // TestAppDebNativeRealPackageInstalls places the real 0.1.7 deb with the real
 // pkexec and apt-get on a fresh hosted ubuntu runner whose polkit rule
 // authorizes the runner user.
-func TestAppDebNativeRealPackageInstalls(t *testing.T) {
+func nativeInstallDeb(t *testing.T) debPlacer {
 	apptest.RequireHostedRunner(t)
 	const asset = "Festival.App_0.1.7_amd64.deb"
 	dir := t.TempDir()
@@ -102,5 +102,25 @@ func TestAppDebNativeRealPackageInstalls(t *testing.T) {
 	}
 	if _, err := os.Stat("/usr/bin/festival-app"); err != nil {
 		t.Fatal(err)
+	}
+	return d
+}
+
+func TestAppDebNativeRealPackageInstalls(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	nativeInstallDeb(t)
+}
+
+// TestAppDebNativeRemove removes the real package it just installed.
+func TestAppDebNativeRemove(t *testing.T) {
+	apptest.RequireHostedRunner(t)
+	d := nativeInstallDeb(t)
+	removed, _, err := d.remove(context.Background(), appReceipt{Version: "0.1.7", Format: "deb", Location: "dpkg:festival-app"}, os.Stderr)
+	if err != nil || !removed {
+		t.Fatalf("remove: %v %v", removed, err)
+	}
+	inst, err := probeDeb(context.Background(), runDpkgQuery)
+	if err != nil || inst.Installed {
+		t.Fatalf("dpkg still lists festival-app: %+v %v", inst, err)
 	}
 }

@@ -175,3 +175,59 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 	}
 	return placement, nil
 }
+
+const debRemoveHint = " Or remove it yourself with: sudo apt-get remove --yes festival-app, then run festival uninstall app to clear the record."
+
+func debRemoveArgv() []string {
+	return []string{pkexecPath, aptGetPath, "remove", "--yes", debPackage}
+}
+
+// debRemoveElevationError maps a pkexec start failure or exit code for uninstall.
+func debRemoveElevationError(exitCode int, startErr error) error {
+	switch {
+	case startErr != nil && (errors.Is(startErr, exec.ErrNotFound) || errors.Is(startErr, fs.ErrNotExist)):
+		return errpkg.New("E_APP_ELEVATION", "pkexec is not installed."+debRemoveHint)
+	case startErr != nil:
+		return errpkg.Wrap("E_APP_INSTALLER_FAILED", startErr, "could not start pkexec")
+	case exitCode == 126:
+		return errpkg.New("E_APP_ELEVATION", "The password prompt was dismissed."+debRemoveHint)
+	case exitCode == 127:
+		return errpkg.New("E_APP_ELEVATION", "No password prompt is available in this session."+debRemoveHint)
+	}
+	return nil
+}
+
+func (d debPlacer) remove(ctx context.Context, _ appReceipt, out io.Writer) (bool, []string, error) {
+	inst, err := d.probe(ctx)
+	if err != nil {
+		return false, nil, errpkg.Wrap("E_APP_PROBE", err, "ask dpkg about "+debPackage)
+	}
+	if !inst.Installed {
+		return false, []string{removedOutsideNote2}, nil
+	}
+	if !d.exists(pkexecPath) {
+		return false, nil, debRemoveElevationError(-1, exec.ErrNotFound)
+	}
+	argv := debRemoveArgv()
+	res, err := d.run(ctx, debAptTimeout, "", out, argv[0], argv[1:]...)
+	if err != nil {
+		if errpkg.Code(err) == "E_INSTALL_CTX" {
+			return false, nil, err
+		}
+		return false, nil, debRemoveElevationError(-1, err)
+	}
+	if e := debRemoveElevationError(res.ExitCode, nil); e != nil {
+		return false, nil, e
+	}
+	if res.ExitCode != 0 {
+		return false, nil, errpkg.New("E_APP_INSTALLER_FAILED", fmt.Sprintf("apt-get exited %d: %s", res.ExitCode, lastLine(res.Stderr)))
+	}
+	after, err := d.probe(ctx)
+	if err != nil {
+		return false, nil, errpkg.Wrap("E_APP_PROBE", err, "ask dpkg about "+debPackage)
+	}
+	if after.Installed {
+		return false, nil, errpkg.New("E_APP_INSTALLER_FAILED", "apt-get finished but dpkg still lists "+debPackage+" "+after.Version)
+	}
+	return true, nil, nil
+}

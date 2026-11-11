@@ -2,7 +2,10 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,4 +215,50 @@ func (b bundlePlatform) onDisk(_ context.Context, rec appReceipt, _ appLatest) (
 	cp.Version = info.ShortVersion
 	cp.UpdatedByApp = installer.VersionLess(rec.Version, info.ShortVersion)
 	return cp, nil
+}
+
+const removedOutsideNote2 = "Festival App was removed outside festival; removed festival's record of it."
+
+func (b bundlePlatform) remove(_ context.Context, rec appReceipt, _ io.Writer) (bool, []string, error) {
+	loc := rec.Location
+	parent := filepath.Dir(loc)
+	if !filepath.IsAbs(loc) || filepath.Clean(loc) != loc || filepath.Base(loc) != appBundleName ||
+		(parent != filepath.Clean(b.systemApps) && parent != filepath.Clean(b.userApps)) {
+		return false, nil, foreignAppError(loc, "not a Festival App location festival manages")
+	}
+	fi, err := os.Lstat(loc)
+	if os.IsNotExist(err) {
+		return false, []string{removedOutsideNote2}, nil
+	}
+	if err != nil {
+		return false, nil, errpkg.Wrap("E_APP_PROBE", err, "inspect "+loc)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+		return false, nil, foreignAppError(loc, "not an app bundle directory")
+	}
+	info, err := b.info(loc)
+	if err != nil {
+		return false, nil, foreignAppError(loc, "no readable Info.plist")
+	}
+	if info.ID != AppBundleID {
+		return false, nil, foreignAppError(loc, "bundle id "+info.ID)
+	}
+	if !b.ownedByThisAccount(loc) {
+		return false, nil, errpkg.New("E_APP_ELEVATION", "Festival App at "+loc+" belongs to another account; festival leaves it alone")
+	}
+	var suffix [6]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return false, nil, errpkg.Wrap("E_INSTALL_STAGING", err, "name the old copy")
+	}
+	old := filepath.Join(parent, "."+appBundleName+".festival-old-"+hex.EncodeToString(suffix[:]))
+	if err := os.Rename(loc, old); err != nil {
+		if os.IsPermission(err) {
+			return false, nil, errpkg.Wrap("E_APP_ELEVATION", err, "macOS blocked removing "+loc+". Allow your terminal under System Settings > Privacy & Security > App Management, then run the command again.")
+		}
+		return false, nil, errpkg.Wrap("E_INSTALL_STAGING", err, "set aside "+loc)
+	}
+	if err := os.RemoveAll(old); err != nil {
+		return true, []string{"Could not delete " + old + "; delete it yourself."}, nil
+	}
+	return true, nil, nil
 }
