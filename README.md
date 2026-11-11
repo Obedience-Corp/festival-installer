@@ -174,7 +174,10 @@ Progress animations respect `FESTIVAL_REDUCED_MOTION=1`.
 ```bash
 festival install festival --channel stable
 festival install obey                    # agent daemon + ob client
-festival install app                     # Festival App, the desktop app
+festival install app                     # Festival App, installed the standard way for this system
+festival install app --format appimage   # Linux: the AppImage even where apt is available
+festival update app
+festival uninstall app
 festival update obey --no-restart        # defer restart of an active daemon
 festival update festival
 festival outdated --json
@@ -203,7 +206,7 @@ external/package-manager installs on their existing upgrade path. Successful
 updates remain installed if another fails, so the same command can retry the
 remaining packages. Bulk updates and the Updates screen defer running Obey
 daemon restarts; the result names the restart command. Festival is updated last
-and prompts you to restart the hub when its executable was replaced.
+and prompts you to restart the hub when its executable was replaced. Festival App is included: festival updates it in the format it was installed with, and never replaces a copy the App already updated itself.
 
 JSON envelopes use schema version `festival/v1alpha1`.
 
@@ -228,13 +231,64 @@ JSON envelopes use schema version `festival/v1alpha1`.
 | ---------------------------- | ---------------------------------------------------------------- |
 | `festival`, `camp`, `fest`   | Install the suite bundle `obedience-corp/festival` (camp + fest) |
 | `obey` | Install the Obey daemon and `ob` client as a separate package |
-| `app`, `festival-app` | Install Festival App the standard way for this system (`--format appimage\|deb` on Linux) |
+| `app`, `festival-app` | Install Festival App (`obedience-corp/festival-app`), the desktop app, the standard way for this system (see [Festival App](#festival-app)) |
 | `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces                    |
 
 Plugin release archives may include a top-level `assets/` directory. Festival
 installs its contents into `~/.obey/plugins/<plugin-name>/`, records every file
 in the package receipt, and removes only those receipt-owned files on
 uninstall. Other archive content is not copied into the plugin runtime tree.
+
+## Festival App
+
+`festival install app` installs Festival App, the desktop app, from the signed marketplace. It installs only
+stable releases. Until the first stable release is published, the command reports `E_APP_NOT_AVAILABLE` and
+points to fest.build/app.
+
+| System | What festival installs | Where it goes |
+| --- | --- | --- |
+| macOS (Apple silicon or Intel) | The app bundle | `/Applications/Festival App.app`. An existing copy is replaced where it is. An account that cannot write to `/Applications` gets `~/Applications`, and the output says so. A copy that belongs to another account is never touched; this account gets its own copy in `~/Applications`. |
+| Windows x64 | The App's own installer, run silently | `%LOCALAPPDATA%\Festival App`, with the Start menu entry and the Add or Remove Programs entry the App's installer creates |
+| Debian and Ubuntu family | The `.deb`, through `apt-get` | Owned by dpkg, so `apt` can remove it. The system asks for your password. |
+| Other Linux x64 | The AppImage | `~/.local/bin/festival-app`, with a menu entry and icon under your XDG data directory. No password. |
+
+On Debian and Ubuntu, `--format appimage` installs the AppImage instead and needs no password. An existing
+install keeps its format; to switch, run `festival uninstall app` first.
+
+**Verification.** Before anything is placed, festival checks the marketplace signatures, the artifact's sha256,
+and the App's own update signature (key id `A0880EE086F129E5`). Any mismatch stops the install with
+`E_APP_SIGNATURE`. On macOS festival also checks the bundle's identifier and code signature. festival does not
+add a quarantine mark to the files it downloads, never re-signs the App, and never removes quarantine marks from
+files it did not download.
+
+**Windows.** Smart App Control blocks unsigned installers no matter how they were downloaded. On a PC where it is
+on, `festival install app` reports that Windows blocked the installer (`E_APP_INSTALLER_FAILED`).
+
+**Existing copies.** A Festival App you installed another way (for example from the DMG or the browser installer)
+is replaced in place, and festival reports `Replaced the existing Festival App at <path>`. Anything at the install
+location that is not Festival App is left alone (`E_APP_FOREIGN`). festival never replaces a running App: quit it
+and run the command again (`E_APP_RUNNING`).
+
+**Updates.** Festival App also updates itself. `festival update app`, `festival outdated` and
+`festival update --all` compare the version on disk with the newest stable release, report a copy the App updated
+as `updated_by_app`, and never replace it with an older release.
+
+**Status.** `festival status --json` always reports the App in a top-level `app` object, with or without `--plugin`;
+the `tools` list is unchanged.
+
+```json
+"app": {"installed": true, "version": "0.2.1", "receipt_version": "0.2.0", "format": "app-bundle",
+        "location": "/Applications/Festival App.app", "adopted": false, "updated_by_app": true,
+        "latest": "0.2.1", "update_available": false, "note": null}
+```
+
+When festival has no record of the App, `installed` is `false` and every other field is `null`. When festival has a
+record but the App was removed another way (the Windows uninstaller, the Trash, `apt remove`), `installed` is `false`,
+`receipt_version`, `format` and `location` come from the record, and `note` is `removed outside festival`. Running
+`festival install app` installs it again; `festival uninstall app` clears the record.
+
+**Uninstall.** `festival uninstall app` removes only the location festival recorded: the app bundle on macOS, the
+App's own uninstaller on Windows, `apt-get remove` for the deb, and the AppImage with its menu entry and icon.
 
 ## Home directory
 
