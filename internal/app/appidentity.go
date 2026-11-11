@@ -254,10 +254,9 @@ func foreignAppError(path, why string) error {
 	return errpkg.New("E_APP_FOREIGN", path+" is not Festival App ("+why+"); it was left in place. Move it aside and run the command again.")
 }
 
-// Keeps the probes reachable for the unused linter until the platform installs
-// (03_platforms) and uninstall (04_lifecycle) call them.
+// The Windows registry probe is called only from app_place_windows.go, so the
+// linux and darwin lint runs need these references. 04_lifecycle may keep them.
 var (
-	_ = appImageMatchesReceipt
 	_ = readNSISRegistration
 	_ = nsisUninstallKey
 )

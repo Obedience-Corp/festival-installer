@@ -47,7 +47,3 @@ func runAppCommand(ctx context.Context, timeout time.Duration, dir string, out i
 	}
 	return res, err
 }
-
-// Keeps the runner type reachable for the unused linter until 03_platforms/02-04
-// take it as a seam.
-var _ appCommandRunner = runAppCommand
