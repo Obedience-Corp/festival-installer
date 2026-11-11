@@ -19,6 +19,33 @@ type PrerequisiteReport struct {
 	Message string `json:"message"`
 }
 
+// linuxPackageManagers is the detection order shared by Git setup and the Festival App format choice.
+var linuxPackageManagers = []string{"/usr/bin/apt-get", "/usr/bin/dnf", "/usr/bin/pacman", "/usr/bin/zypper"}
+
+// gitInstallTails are each manager's arguments for installing Git.
+var gitInstallTails = map[string][]string{
+	"/usr/bin/apt-get": {"install", "--yes", "git"},
+	"/usr/bin/dnf":     {"install", "--assumeyes", "git"},
+	"/usr/bin/pacman":  {"-S", "--needed", "--noconfirm", "git"},
+	"/usr/bin/zypper":  {"--non-interactive", "install", "git"},
+}
+
+// linuxPackageManager returns the first present manager, or "" when none is present. It does not require pkexec.
+func linuxPackageManager(exists func(string) bool) string {
+	for _, manager := range linuxPackageManagers {
+		if exists(manager) {
+			return manager
+		}
+	}
+	return ""
+}
+
+// executableExists reports whether path is a regular executable file.
+func executableExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}
+
 // prerequisiteCommand uses fixed system executables and arguments. No
 // marketplace or shell text is ever passed to a privileged interpreter.
 func prerequisiteCommand(goos string, exists func(string) bool) ([]string, bool, error) {
@@ -31,15 +58,8 @@ func prerequisiteCommand(goos string, exists func(string) bool) ([]string, bool,
 		if !exists("/usr/bin/pkexec") {
 			return nil, false, fmt.Errorf("git installation needs the desktop authorization helper (pkexec)")
 		}
-		for _, command := range [][]string{
-			{"/usr/bin/apt-get", "install", "--yes", "git"},
-			{"/usr/bin/dnf", "install", "--assumeyes", "git"},
-			{"/usr/bin/pacman", "-S", "--needed", "--noconfirm", "git"},
-			{"/usr/bin/zypper", "--non-interactive", "install", "git"},
-		} {
-			if exists(command[0]) {
-				return append([]string{"/usr/bin/pkexec"}, command...), false, nil
-			}
+		if manager := linuxPackageManager(exists); manager != "" {
+			return append([]string{"/usr/bin/pkexec", manager}, gitInstallTails[manager]...), false, nil
 		}
 	}
 	return nil, false, fmt.Errorf("automatic Git installation is unavailable on this platform")
@@ -77,11 +97,7 @@ func SetupPrerequisites(ctx context.Context) PrerequisiteReport {
 	if gitReady(ctx) {
 		return PrerequisiteReport{Ready: true, Message: "Git is available."}
 	}
-	exists := func(path string) bool {
-		info, err := os.Stat(path)
-		return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
-	}
-	args, pending, err := prerequisiteCommand(runtime.GOOS, exists)
+	args, pending, err := prerequisiteCommand(runtime.GOOS, executableExists)
 	if err != nil {
 		return PrerequisiteReport{Message: err.Error()}
 	}
