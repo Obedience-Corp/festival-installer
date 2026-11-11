@@ -26,7 +26,7 @@ func NewUpdateCommand() *cobra.Command {
 	var noRestart bool
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "update [festival|camp|fest|obey|namespace/camp-plugin|namespace/fest-plugin]",
+		Use:   "update [festival|camp|fest|obey|app|namespace/camp-plugin|namespace/fest-plugin]",
 		Short: "Update an installed package, or all managed packages with --all",
 		Long: "update brings the installed festival suite (camp + fest) to the channel-latest release.\n\n" +
 			"The target argument is optional and defaults to \"festival\", which updates the whole\n" +
@@ -40,8 +40,10 @@ func NewUpdateCommand() *cobra.Command {
 			"caller with running sessions installs the new binaries and defers the restart; the result\n" +
 			"reports service.deferred and names the restart command. A daemon that was not running is\n" +
 			"started on the new version instead of restarted, and nothing is deferred. The flag is\n" +
-			"accepted and ignored for festival, camp, and fest.",
-		ValidArgs: []string{"festival", "camp", "fest", "obey"},
+			"accepted and ignored for festival, camp, and fest.\n\n" +
+			"app updates Festival App in the format it was installed with when a newer stable release exists. " +
+			"A copy the App updated itself is reported, never replaced with an older release. Quit Festival App before updating it.",
+		ValidArgs: []string{"festival", "camp", "fest", "obey", "app"},
 		Args:      cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all {
@@ -55,6 +57,9 @@ func NewUpdateCommand() *cobra.Command {
 				target = args[0]
 			}
 			vo := source.DefaultVerifyOptions(cmd.ErrOrStderr(), allowUnverified)
+			if app.IsAppTarget(target) {
+				return runUpdateApp(cmd, channel, vo, asJSON, force)
+			}
 			switch target {
 			case "festival":
 			case "camp", "fest":
@@ -65,7 +70,7 @@ func NewUpdateCommand() *cobra.Command {
 				if _, err := app.ParsePluginTarget(target); err == nil {
 					return runUpdatePlugin(cmd, target, channel, vo, asJSON)
 				}
-				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected suite, obey, or a camp-*/fest-* plugin)")
+				return errpkg.New("E_UPDATE_TARGET", "unknown update target "+target+" (expected suite, obey, app, or a camp-*/fest-* plugin)")
 			}
 			if channel != "" {
 				if err := app.ValidateChannel(channel); err != nil {
@@ -233,4 +238,34 @@ func runUpdatePlugin(cmd *cobra.Command, target, channel string, vo source.Verif
 		return jsonout.Success(cmd.OutOrStdout(), "update", result, warnings)
 	}
 	return renderUpdateResult(cmd.OutOrStdout(), result)
+}
+
+func runUpdateApp(cmd *cobra.Command, channel string, vo source.VerifyOptions, asJSON, force bool) error {
+	if channel != "" && channel != "stable" {
+		return errpkg.New("E_APP_NOT_AVAILABLE", "Festival App is published on the stable channel only")
+	}
+	var warnings []string
+	if force {
+		warnings = append(warnings, "--force has no effect for the App")
+	}
+	opts := app.AppInstallOptions{Verify: vo}
+	if !asJSON {
+		opts.Progress = app.NewTextProgress(cmd.ErrOrStderr(), cmdStdioIsTTY(cmd))
+		opts.Output = cmd.ErrOrStderr()
+	}
+	res, err := app.UpdateApp(cmd.Context(), opts)
+	if err != nil {
+		return err
+	}
+	if force {
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: --force has no effect for the App")
+	}
+	if asJSON {
+		warnings = append(warnings, res.Notes...)
+		for _, n := range res.Notes {
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "update: "+textsafe.Line(n))
+		}
+		return jsonout.Success(cmd.OutOrStdout(), "update", res, warnings)
+	}
+	return renderAppResult(cmd.OutOrStdout(), "update", res)
 }
