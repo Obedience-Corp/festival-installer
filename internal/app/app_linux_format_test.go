@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -88,13 +89,20 @@ func TestAppDesktopExecQuoting(t *testing.T) {
 
 func TestAppXDGDataHome(t *testing.T) {
 	env := func(v string) func(string) string { return func(string) string { return v } }
-	if got := xdgDataHome(env("/xdg"), "/home/u"); got != "/xdg" {
+	// filepath.Abs makes the "absolute" values absolute on Windows too.
+	xdg, err := filepath.Abs(filepath.FromSlash("/xdg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.FromSlash("/home/u")
+	want := filepath.Join(home, ".local", "share")
+	if got := xdgDataHome(env(xdg), home); got != xdg {
 		t.Errorf("absolute: %q", got)
 	}
-	if got := xdgDataHome(env("relative/dir"), "/home/u"); got != "/home/u/.local/share" {
-		t.Errorf("relative: %q", got)
+	if got := xdgDataHome(env("relative/dir"), home); got != want {
+		t.Errorf("relative: %q, want %q", got, want)
 	}
-	if got := xdgDataHome(env(""), "/home/u"); got != "/home/u/.local/share" {
-		t.Errorf("empty: %q", got)
+	if got := xdgDataHome(env(""), home); got != want {
+		t.Errorf("empty: %q, want %q", got, want)
 	}
 }
