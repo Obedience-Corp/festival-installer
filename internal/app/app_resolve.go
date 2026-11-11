@@ -83,9 +83,6 @@ func resolveAppRelease(ctx context.Context, sourceName, format string, vo source
 	return resolveAppReleaseFor(ctx, appResolveOptions{Source: sourceName, Format: format, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Verify: vo})
 }
 
-// Keeps the resolver reachable for the unused linter until 02_core calls it.
-var _ = resolveAppRelease
-
 // resolveAppReleaseFor does the work; tests set GOOS and GOARCH.
 func resolveAppReleaseFor(ctx context.Context, opts appResolveOptions) (appRelease, error) {
 	if err := ctx.Err(); err != nil {

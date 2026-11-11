@@ -257,7 +257,6 @@ func foreignAppError(path, why string) error {
 // Keeps the probes reachable for the unused linter until the platform installs
 // (03_platforms) and uninstall (04_lifecycle) call them.
 var (
-	_ = readBundleInfo
 	_ = appImageMatchesReceipt
 	_ = readNSISRegistration
 	_ = nsisUninstallKey

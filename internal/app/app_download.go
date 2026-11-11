@@ -39,9 +39,6 @@ func (v verifiedAppArtifact) Cleanup() {
 	}
 }
 
-// Keeps the downloader reachable for the unused linter until the platform installs call it.
-var _ = downloadAppArtifact
-
 // downloadAppArtifact downloads and verifies one App artifact. It never takes
 // the installer lock; callers take the lock only after it returns.
 func downloadAppArtifact(ctx context.Context, home string, rel appRelease, opts appDownloadOptions) (verifiedAppArtifact, error) {
