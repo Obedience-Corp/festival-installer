@@ -1,12 +1,14 @@
 package cli_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestAppHelpNamesAppTarget(t *testing.T) {
-	t.Setenv("OBEY_INSTALLER_HOME", t.TempDir())
+	// Help and completion never create the home; a path that does not exist proves it.
+	t.Setenv("OBEY_INSTALLER_HOME", filepath.Join(string(filepath.Separator), "festival-app-help-never-created"))
 	for _, cmd := range []string{"install", "update", "uninstall"} {
 		out, errOut, err := runInstaller(t, cmd, "--help")
 		if err != nil {
