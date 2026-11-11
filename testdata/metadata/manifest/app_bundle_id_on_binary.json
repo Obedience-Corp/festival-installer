@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "id": "obedience-corp/festival-app",
+  "class": "product",
+  "display_name": "Festival App",
+  "summary": "Festival desktop app",
+  "releases": [
+    {
+      "version": "0.1.8",
+      "channel": "stable",
+      "published_at": "2026-11-20T00:00:00Z",
+      "compatibility": {
+        "os": [
+          "darwin",
+          "linux",
+          "windows"
+        ],
+        "arch": [
+          "amd64",
+          "arm64"
+        ]
+      },
+      "dependencies": [],
+      "artifacts": [
+        {
+          "kind": "app-bundle",
+          "os": "darwin",
+          "arch": "arm64",
+          "url": "https://github.com/Obedience-Corp/obey-releases/releases/download/app-v0.1.8/Festival.App_0.1.8_aarch64.app.tar.gz",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "Festival.App_0.1.8_aarch64.app.tar.gz",
+          "updater_signature": "c2ln"
+        },
+        {
+          "kind": "app-bundle",
+          "os": "darwin",
+          "arch": "amd64",
+          "url": "https://github.com/Obedience-Corp/obey-releases/releases/download/app-v0.1.8/Festival.App_0.1.8_x64.app.tar.gz",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "Festival.App_0.1.8_x64.app.tar.gz",
+          "updater_signature": "c2ln"
+        },
+        {
+          "kind": "nsis",
+          "os": "windows",
+          "arch": "amd64",
+          "url": "https://github.com/Obedience-Corp/obey-releases/releases/download/app-v0.1.8/Festival.App_0.1.8_x64-setup.exe",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "Festival.App_0.1.8_x64-setup.exe",
+          "updater_signature": "c2ln"
+        },
+        {
+          "kind": "deb",
+          "os": "linux",
+          "arch": "amd64",
+          "url": "https://github.com/Obedience-Corp/obey-releases/releases/download/app-v0.1.8/Festival.App_0.1.8_amd64.deb",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "Festival.App_0.1.8_amd64.deb",
+          "updater_signature": "c2ln"
+        },
+        {
+          "kind": "appimage",
+          "os": "linux",
+          "arch": "amd64",
+          "url": "https://github.com/Obedience-Corp/obey-releases/releases/download/app-v0.1.8/Festival.App_0.1.8_amd64.AppImage",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "filename": "Festival.App_0.1.8_amd64.AppImage",
+          "updater_signature": "c2ln"
+        }
+      ],
+      "install": {
+        "entries": [
+          {
+            "kind": "binary",
+            "source": "festival-app",
+            "bundle_id": "com.obediencecorp.festival-app"
+          }
+        ]
+      }
+    }
+  ]
+}
