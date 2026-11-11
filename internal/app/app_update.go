@@ -12,6 +12,16 @@ import (
 // UpdateApp updates an installed Festival App in its own format (D002).
 func UpdateApp(ctx context.Context, opts AppInstallOptions) (AppResult, error) {
 	opts.UpdateOnly, opts.Format = true, ""
+	if opts.Source == "" {
+		// An update keeps the source the App was installed from.
+		rec, err := readAppReceipt(ctx)
+		if err != nil {
+			return AppResult{}, err
+		}
+		if rec != nil {
+			opts.Source = rec.Source
+		}
+	}
 	return InstallApp(ctx, opts)
 }
 

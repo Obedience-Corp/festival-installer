@@ -20,6 +20,7 @@ type updEnv struct {
 	rel        *appfixture.Releases
 	releases   []metadata.Release
 	registered bool
+	sourceName string // "" means official-obey
 }
 
 func newUpdEnv(t *testing.T) *updEnv {
@@ -38,7 +39,11 @@ func (e *updEnv) publish(version string, body []byte) {
 	e.releases = append(e.releases, appFixtureRelease(version, "stable", e.rel.Artifact("appimage", version, body)))
 	e.f.publish(appFixtureManifest(e.releases...), appFixtureOptions{})
 	if !e.registered {
-		e.f.register("official-obey")
+		name := e.sourceName
+		if name == "" {
+			name = "official-obey"
+		}
+		e.f.register(name)
 		e.registered = true
 	}
 }
@@ -149,5 +154,19 @@ func TestAppUpdateInstalledDispatchesBeforeOwnershipCheck(t *testing.T) {
 	}
 	if res.Action != "upgraded" || res.Version != "0.2.1" || res.From != "0.2.0" {
 		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAppUpdateKeepsTheInstalledSource(t *testing.T) {
+	e := newUpdEnv(t)
+	e.sourceName = "third-party"
+	e.publish("0.2.0", []byte("appimage 0.2.0"))
+	if _, err := InstallApp(context.Background(), AppInstallOptions{Format: "appimage", Source: "third-party", Verify: e.vo()}); err != nil {
+		t.Fatal(err)
+	}
+	e.publish("0.2.1", []byte("appimage 0.2.1"))
+	res, err := UpdateApp(context.Background(), AppInstallOptions{Verify: e.vo()})
+	if err != nil || !res.Changed || res.Version != "0.2.1" {
+		t.Fatalf("%+v %v", res, err)
 	}
 }
