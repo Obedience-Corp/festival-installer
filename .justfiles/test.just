@@ -86,3 +86,20 @@ uninstall-root-container-proof:
     mkdir -p bin
     CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go test -c -tags container_fs -o bin/uninstall-root.test ./internal/cli
     docker run --rm --tmpfs /tmp:rw,exec,size=256m,mode=1777 -v "$PWD/bin/uninstall-root.test:/proof:ro" alpine:3.21 sh -c 'apk add --no-cache git >/dev/null && /proof -test.v -test.run "^TestUninstallObeyRootPreservesReceiptBinaryAndHooks$"'
+
+# Prove Festival App resolution, download, journal and swap inside a Linux container.
+app-container-proof:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkgs=(app)
+    rm -rf bin/app-proof && mkdir -p bin/app-proof
+    for pkg in "${pkgs[@]}"; do
+      CGO_ENABLED=0 GOOS=linux GOARCH="$(go env GOARCH)" go test -c -tags container_fs -o "bin/app-proof/$pkg.test" "./internal/$pkg"
+    done
+    docker run --rm --tmpfs /tmp:rw,exec,size=1g,mode=1777 -v "$PWD/bin/app-proof:/proof:ro" golang:1.26-bookworm bash -euc '
+      for t in /proof/*.test; do
+        out="$(su nobody -s /bin/bash -c "$t -test.v -test.count=1 -test.run \"^TestApp[A-Z]\"" 2>&1)" || { printf "%s\n" "$out"; exit 1; }
+        printf "%s\n" "$out"
+        printf "%s\n" "$out" | grep -q "^--- PASS: TestApp[A-Z]" || { echo "$t ran no TestApp tests" >&2; exit 1; }
+        if printf "%s\n" "$out" | grep -q -- "--- SKIP"; then echo "$t skipped a test" >&2; exit 1; fi
+      done'

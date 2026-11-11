@@ -92,7 +92,27 @@ func LoadPackageManifest(ctx context.Context, sourceName, packageID string, vo V
 	return loadPackageManifestFromDir(ctx, dest, sourceName, packageID, vo)
 }
 
+// LoadSignedPackageManifest loads packageID's manifest and refuses it unless a
+// detached signature is present and verifies, whatever the source's policy.
+func LoadSignedPackageManifest(ctx context.Context, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {
+	if err := ctx.Err(); err != nil {
+		return metadata.PackageManifest{}, errpkg.Wrap("E_PKG_CTX", err, "context cancelled before load")
+	}
+	if vo.KeyStore == nil {
+		vo.KeyStore = verify.PinnedKeyStore()
+	}
+	dest, err := CloneDir(ctx, sourceName)
+	if err != nil {
+		return metadata.PackageManifest{}, err
+	}
+	return loadPackageManifestFromDirSigned(ctx, dest, sourceName, packageID, vo, true)
+}
+
 func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID string, vo VerifyOptions) (metadata.PackageManifest, error) {
+	return loadPackageManifestFromDirSigned(ctx, dest, sourceName, packageID, vo, false)
+}
+
+func loadPackageManifestFromDirSigned(ctx context.Context, dest, sourceName, packageID string, vo VerifyOptions, requireSignature bool) (metadata.PackageManifest, error) {
 	vo = voFor(sourceName, vo)
 	mp, err := LoadMarketplace(ctx, dest, vo)
 	if err != nil {
@@ -113,6 +133,9 @@ func loadPackageManifestFromDir(ctx context.Context, dest, sourceName, packageID
 		sig, err := loadDetachedSignature(manifestPath, ref.ManifestPath, "E_PKG_SIG_READ")
 		if err != nil {
 			return metadata.PackageManifest{}, err
+		}
+		if requireSignature && sig == nil {
+			return metadata.PackageManifest{}, errpkg.Wrap("E_UNVERIFIED_REFUSED", metadata.ErrUnverifiedRefused, sourceName+"/"+packageID+" manifest is unsigned")
 		}
 		manifest, err := metadata.IngestManifest(ctx, vo.KeyStore, raw, sig, metadata.IngestOptions{
 			Policy:          vo.Policy,
