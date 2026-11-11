@@ -31,12 +31,14 @@ run *ARGS:
 fmt:
     go fmt ./...
 
-# Run go vet, including the build-tagged notty lane. Tagged files are invisible
+# Run go vet, including the build-tagged notty and app_native lanes. Tagged files are invisible
 # to a default `go vet ./...`, so without the second line a compile error inside
 # them only surfaces when somebody runs `just testing notty` by hand.
 vet:
     go vet ./...
     go vet -tags notty ./internal/cli/...
+    # The app_native lanes are also tagged files, and each is tied to one OS.
+    for os in linux darwin windows; do GOOS=$os go vet -tags app_native ./internal/cli/ ./internal/app/ ./internal/installer/ || exit 1; done
 
 # Run linter (install with: just tools install-golangci-lint)
 lint:
