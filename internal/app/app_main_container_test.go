@@ -22,6 +22,9 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	case "lock-probe":
 		os.Exit(appLockProbe(os.Getenv("FESTIVAL_HOME")))
+	case "sleep":
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
 	default:
 		fmt.Fprintln(os.Stderr, "unknown helper mode")
 		os.Exit(4)
