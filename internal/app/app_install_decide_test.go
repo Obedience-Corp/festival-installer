@@ -64,12 +64,20 @@ func TestAppInstallerRefusesRoot(t *testing.T) {
 
 func TestDefaultAppInstallerWiring(t *testing.T) {
 	ai, err := newAppInstaller(context.Background(), nil)
-	if runtime.GOOS == "darwin" {
-		if err != nil || ai.resolve == nil || ai.download == nil || ai.begin == nil || ai.refuseRunning == nil || ai.platform == nil {
-			t.Fatalf("darwin wiring incomplete: %v", err)
+	switch runtime.GOOS {
+	case "darwin", "linux", "windows":
+		if err != nil {
+			// A host without a usable home or LOCALAPPDATA reports the platform error, never a panic.
+			if errpkg.Code(err) != "E_APP_PLATFORM" {
+				t.Fatalf("%v", err)
+			}
+		} else if ai.resolve == nil || ai.download == nil || ai.begin == nil || ai.refuseRunning == nil || ai.platform == nil {
+			t.Fatal("wiring incomplete")
 		}
-	} else if errpkg.Code(err) != "E_APP_PLATFORM" {
-		t.Fatalf("unsupported host: %v", err)
+	default:
+		if errpkg.Code(err) != "E_APP_PLATFORM" {
+			t.Fatalf("unsupported host: %v", err)
+		}
 	}
 	b := newBundlePlatform("/Applications", "/Users/u/Applications", 501, nil, nil, nil)
 	if b.info == nil || b.systemApps != "/Applications" || b.tildePath("/Users/u/Applications/Festival App.app") != "~/Applications/Festival App.app" {
