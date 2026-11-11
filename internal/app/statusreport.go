@@ -58,6 +58,7 @@ type StatusReport struct {
 	Setup             SetupState           `json:"setup"`
 	Tools             []StatusToolEntry    `json:"tools"`
 	Prerequisites     []StatusPrerequisite `json:"prerequisites"`
+	App               StatusApp            `json:"app"`
 }
 
 // statusTools is the reporting order. It is fixed because festival-app indexes
@@ -128,6 +129,9 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 	}
 	origin, _ := DetectSuite(ctx)
 
+	appCh := make(chan StatusApp, 1)
+	go func() { appCh <- resolveStatusApp(ctx) }()
+
 	return StatusReport{
 		Home:              home,
 		BinDir:            binDir,
@@ -137,6 +141,7 @@ func StatusReportFor(ctx context.Context) (StatusReport, error) {
 		Setup:             setup,
 		Tools:             resolveStatusTools(ctx, origin),
 		Prerequisites:     resolvePrerequisites(ctx),
+		App:               <-appCh,
 	}, nil
 }
 

@@ -83,7 +83,12 @@ type appPlatform interface { // one implementation per format family
 	discover(ctx context.Context, format string, existing *appReceipt, rel appRelease) (appCopy, error)
 	target(format string, cp appCopy) (string, error) // where it lives or will live; used for the run scope
 	place(ctx context.Context, txn appTxn, req appPlaceRequest) (appPlacement, error)
+	// onDisk reports the receipt's copy as it is now (status and update); no discovery.
+	onDisk(ctx context.Context, rec appReceipt, latest appLatest) (appCopy, error)
 }
+
+// appLatest is the newest stable release from the cached catalog; zero when unknown.
+type appLatest struct{ Version, SHA string }
 
 type appInstaller struct {
 	goos          string
@@ -118,6 +123,13 @@ func decideAppAction(hasReceipt bool, cp appCopy, latest string) appAction {
 	return appActionPlace
 }
 
+// downloadWithAppKey downloads with the pinned updater key (swappable only by tests).
+func downloadWithAppKey(ctx context.Context, home string, rel appRelease, opts appDownloadOptions) (verifiedAppArtifact, error) {
+	key := appUpdaterKey()
+	opts.UpdaterKey = &key
+	return downloadAppArtifact(ctx, home, rel, opts)
+}
+
 func beginAppTxn(ctx context.Context, db *sql.DB, home string) (appTxn, error) {
 	tx, err := installer.BeginApp(ctx, db, home)
 	if err != nil {
@@ -135,7 +147,7 @@ func newAppInstaller(ctx context.Context, receipts func(db *sql.DB) appReceiptSt
 	}
 	return appInstaller{
 		goos: runtime.GOOS, euid: os.Geteuid, platform: platform,
-		resolve: resolveAppRelease, download: downloadAppArtifact, begin: beginAppTxn,
+		resolve: resolveAppRelease, download: downloadWithAppKey, begin: beginAppTxn,
 		refuseRunning: refuseRunningApp, receipts: receipts,
 	}, nil
 }

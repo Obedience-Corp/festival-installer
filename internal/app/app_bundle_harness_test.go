@@ -5,6 +5,8 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -52,3 +54,17 @@ func openTestDB(t *testing.T, home string) *sql.DB {
 	t.Cleanup(func() { _ = db.Close(context.Background()) })
 	return db.Raw()
 }
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+const (
+	runtimeGOOS   = runtime.GOOS
+	runtimeGOARCH = runtime.GOARCH
+)

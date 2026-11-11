@@ -156,3 +156,17 @@ func (p nsisPlatform) place(ctx context.Context, txn appTxn, req appPlaceRequest
 func nsisPostCheck(what string) error {
 	return errpkg.New("E_APP_INSTALLER_FAILED", "the Festival App installer exited 0 but "+what)
 }
+
+func (p nsisPlatform) onDisk(_ context.Context, rec appReceipt, _ appLatest) (appCopy, error) {
+	reg, ok, err := p.readReg()
+	if err != nil {
+		return appCopy{Found: true, Location: rec.Location}, err
+	}
+	if !ok {
+		return appCopy{}, nil
+	}
+	return appCopy{
+		Found: true, FromReceipt: true, Location: reg.InstallLocation, Version: reg.DisplayVersion,
+		UpdatedByApp: installer.VersionLess(rec.Version, reg.DisplayVersion),
+	}, nil
+}

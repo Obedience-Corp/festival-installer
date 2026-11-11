@@ -363,8 +363,20 @@ func TestStatus_UnparseableVersionIsReportedNotFailed(t *testing.T) {
 	if !strings.Contains(got.Error, "unparseable") {
 		t.Fatalf("ob error = %q, want it to name the unparseable output", got.Error)
 	}
-	if strings.Contains(out, `"version"`) {
-		t.Fatalf("the version key must be omitted when empty:\n%s", out)
+	// The top-level app object reports "version": null by contract (D009), so
+	// the omission rule applies to the tools array only.
+	var raw struct {
+		Data struct {
+			Tools []map[string]any `json:"tools"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, tool := range raw.Data.Tools {
+		if _, has := tool["version"]; has {
+			t.Fatalf("the version key must be omitted when empty in tools:\n%s", out)
+		}
 	}
 }
 

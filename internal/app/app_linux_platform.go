@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"os"
+	"strings"
 
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
+	"github.com/Obedience-Corp/festival-installer/internal/installer"
 	"github.com/Obedience-Corp/festival-installer/internal/metadata"
 )
 
@@ -74,4 +78,37 @@ func (p linuxPlatform) place(ctx context.Context, txn appTxn, req appPlaceReques
 		return p.deb.place(ctx, txn, req)
 	}
 	return p.appimage.place(ctx, txn, req)
+}
+
+func (p linuxPlatform) onDisk(ctx context.Context, rec appReceipt, latest appLatest) (appCopy, error) {
+	if rec.Format == metadata.ArtifactKindDeb {
+		inst, err := p.deb.probe(ctx)
+		if err != nil {
+			return appCopy{Found: true, Location: rec.Location}, err
+		}
+		if !inst.Installed {
+			return appCopy{}, nil
+		}
+		return appCopy{Found: true, FromReceipt: true, Location: rec.Location, Version: inst.Version, UpdatedByApp: installer.VersionLess(rec.Version, inst.Version)}, nil
+	}
+	if _, err := os.Lstat(rec.Location); err != nil {
+		if os.IsNotExist(err) {
+			return appCopy{}, nil
+		}
+		return appCopy{Found: true, Location: rec.Location}, err
+	}
+	cp := appCopy{Found: true, FromReceipt: true, Location: rec.Location}
+	got, err := artifacts.SHA256(ctx, rec.Location)
+	if err != nil {
+		return cp, err
+	}
+	switch {
+	case strings.EqualFold(got, rec.ArtifactSHA256):
+		cp.Version = rec.Version
+	case latest.SHA != "" && strings.EqualFold(got, latest.SHA):
+		cp.Version = latest.Version
+	default:
+		cp.UpdatedByApp = true
+	}
+	return cp, nil
 }

@@ -59,6 +59,10 @@ func renderStatusTable(out io.Writer, rep app.StatusReport) error {
 			textsafe.Line(statusVersion(t)),
 			textsafe.Line(string(t.Origin)))
 	}
+	_, _ = fmt.Fprintf(tw, "Festival App\t%s\t%s\t%s\n",
+		textsafe.Line(statusAppLocation(rep.App)),
+		textsafe.Line(statusAppVersion(rep.App)),
+		textsafe.Line(statusAppOrigin(rep.App)))
 	if err := tw.Flush(); err != nil {
 		return errpkg.Wrap("E_CLI_RENDER", err, "render status table")
 	}
@@ -74,6 +78,40 @@ func renderStatusTable(out io.Writer, rep app.StatusReport) error {
 
 	_, err := fmt.Fprint(out, buf.String())
 	return err
+}
+
+func statusAppLocation(a app.StatusApp) string {
+	if a.Location != nil && *a.Location != "" {
+		return *a.Location
+	}
+	return "-"
+}
+
+func statusAppVersion(a app.StatusApp) string {
+	text := "-"
+	switch {
+	case a.Version != nil:
+		text = *a.Version
+	case a.ReceiptVersion != nil:
+		text = "(receipt " + *a.ReceiptVersion + ")"
+	}
+	if a.UpdatedByApp != nil && *a.UpdatedByApp {
+		text += " (updated by the App)"
+	}
+	if a.UpdateAvailable != nil && *a.UpdateAvailable && a.Latest != nil {
+		text += " (" + *a.Latest + " available)"
+	}
+	return text
+}
+
+func statusAppOrigin(a app.StatusApp) string {
+	switch {
+	case a.Installed:
+		return "managed"
+	case a.Note != nil:
+		return *a.Note
+	}
+	return "absent"
 }
 
 func statusLocation(t app.StatusToolEntry) string {

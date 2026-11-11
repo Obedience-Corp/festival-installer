@@ -257,6 +257,6 @@ func foreignAppError(path, why string) error {
 // The Windows registry probe is called only from app_place_windows.go, so the
 // linux and darwin lint runs need these references. 04_lifecycle may keep them.
 var (
-	_ = readNSISRegistration
-	_ = nsisUninstallKey
+	_ = readNSISRegistration // only caller: app_place_windows.go
+	_ = nsisUninstallKey     // only caller: app_place_windows.go
 )

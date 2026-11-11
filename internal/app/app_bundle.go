@@ -196,3 +196,20 @@ func (b bundlePlatform) checkStaged(ctx context.Context, stage, payload, dest st
 	}
 	return nil
 }
+
+func (b bundlePlatform) onDisk(_ context.Context, rec appReceipt, _ appLatest) (appCopy, error) {
+	if _, err := os.Lstat(rec.Location); err != nil {
+		if os.IsNotExist(err) {
+			return appCopy{}, nil
+		}
+		return appCopy{Found: true, Location: rec.Location}, err
+	}
+	cp := appCopy{Found: true, FromReceipt: true, Location: rec.Location}
+	info, err := b.info(rec.Location)
+	if err != nil {
+		return cp, err
+	}
+	cp.Version = info.ShortVersion
+	cp.UpdatedByApp = installer.VersionLess(rec.Version, info.ShortVersion)
+	return cp, nil
+}
