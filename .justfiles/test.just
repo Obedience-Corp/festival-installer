@@ -91,7 +91,7 @@ uninstall-root-container-proof:
 app-container-proof:
     #!/usr/bin/env bash
     set -euo pipefail
-    pkgs=(app artifacts)
+    pkgs=(app artifacts installer)
     rm -rf bin/app-proof && mkdir -p bin/app-proof
     for pkg in "${pkgs[@]}"; do
       CGO_ENABLED=0 GOOS=linux GOARCH="$(go env GOARCH)" go test -c -tags container_fs -o "bin/app-proof/$pkg.test" "./internal/$pkg"
