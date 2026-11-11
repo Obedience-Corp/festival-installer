@@ -15,8 +15,21 @@ import (
 const defaultDownloadTimeout = 5 * time.Minute
 
 type Downloader struct {
-	Client   *http.Client
-	MaxBytes int64
+	Client       *http.Client
+	MaxBytes     int64
+	StallTimeout time.Duration              // >0: fail when no bytes arrive for this long
+	Progress     func(written, total int64) // optional; total is -1 when unknown
+}
+
+// NewStallDownloader has no total timeout. It fails only after stall with no
+// bytes received, which is what a 105 MB App artifact on a slow link needs.
+func NewStallDownloader(stall time.Duration, progress func(written, total int64)) *Downloader {
+	return &Downloader{
+		Client:       &http.Client{CheckRedirect: CheckRedirect},
+		MaxBytes:     DefaultExtractLimits.MaxTotalBytes,
+		StallTimeout: stall,
+		Progress:     progress,
+	}
 }
 
 func NewDownloader() *Downloader {
@@ -44,13 +57,15 @@ func (d *Downloader) Download(ctx context.Context, url, destDir string) (string,
 		return "", errpkg.Wrap("E_ARTIFACT_MKDIR", err, "create download dir")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	watch := newStallWatch(ctx, d.StallTimeout)
+	defer watch.stop()
+	req, err := http.NewRequestWithContext(watch.ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", errpkg.Wrap("E_ARTIFACT_REQ", err, "build request for "+url)
 	}
 	resp, err := d.Client.Do(req)
 	if err != nil {
-		return "", errpkg.Wrap("E_ARTIFACT_DO", err, "GET "+url)
+		return "", watch.classify(err, url, errpkg.Wrap("E_ARTIFACT_DO", err, "GET "+url))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -78,10 +93,12 @@ func (d *Downloader) Download(ctx context.Context, url, destDir string) (string,
 		_ = os.Remove(tmpName)
 	}
 
-	written, err := io.Copy(tmp, io.LimitReader(resp.Body, limit+1))
+	body := watch.wrap(resp.Body, resp.ContentLength, d.Progress)
+	written, err := io.Copy(tmp, io.LimitReader(body, limit+1))
+	watch.stopTimer()
 	if err != nil {
 		cleanup()
-		return "", errpkg.Wrap("E_ARTIFACT_COPY", err, "stream body to disk")
+		return "", watch.classify(err, url, errpkg.Wrap("E_ARTIFACT_COPY", err, "stream body to disk"))
 	}
 	if written > limit {
 		cleanup()
