@@ -31,3 +31,12 @@ func WithUpdaterKeyForTest(k verify.MinisignPublicKey) (restore func()) {
 	appUpdaterKey = func() verify.MinisignPublicKey { return k }
 	return func() { appUpdaterKey = prev }
 }
+
+// installResult maps an AppResult to the shared InstallResult used by the TUI.
+func (r AppResult) installResult() InstallResult {
+	res := InstallResult{Package: AppPackageID, Version: r.Version, Channel: appChannel}
+	if r.Changed {
+		res.Files = []string{r.Location}
+	}
+	return res
+}

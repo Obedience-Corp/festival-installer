@@ -263,6 +263,10 @@ func installFestival(ctx context.Context, opts InstallOptions) (InstallResult, e
 
 // InstallTarget installs festival suite or a camp-*/fest-* plugin.
 func InstallTarget(ctx context.Context, target string, opts InstallOptions) (InstallResult, error) {
+	if IsAppTarget(target) {
+		res, err := InstallApp(ctx, AppInstallOptions{Source: opts.Source, Verify: opts.Verify, Progress: opts.Progress})
+		return res.installResult(), err
+	}
 	if strings.Contains(target, "/") {
 		selected, err := ParsePluginTarget(target)
 		if err != nil {
@@ -280,6 +284,6 @@ func InstallTarget(ctx context.Context, target string, opts InstallOptions) (Ins
 	case "obey":
 		return InstallObey(ctx, opts)
 	default:
-		return InstallResult{}, errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, fest, obey, or a camp-*/fest-* plugin)")
+		return InstallResult{}, errpkg.New("E_INSTALL_TARGET", "unknown install target "+target+" (expected festival, camp, fest, obey, app, or a camp-*/fest-* plugin)")
 	}
 }

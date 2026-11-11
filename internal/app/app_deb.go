@@ -128,7 +128,13 @@ func (d debPlacer) copyDeb(ctx context.Context, req appPlaceRequest) (dir, dst s
 func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (appPlacement, error) {
 	rel := req.Release
 	if !d.exists(pkexecPath) {
-		return appPlacement{}, debElevationError(-1, exec.ErrNotFound, req.Artifact.Path)
+		// The downloaded file is removed when this call returns, so the manual
+		// hint must name a kept copy, as it does for the other elevation failures.
+		_, kept, err := d.copyDeb(ctx, req)
+		if err != nil {
+			return appPlacement{}, err
+		}
+		return appPlacement{}, debElevationError(-1, exec.ErrNotFound, kept)
 	}
 	err := txn.RecordExternal(ctx, installer.AppPlacement{PackageID: AppPackageID, Version: rel.Version, Format: metadata.ArtifactKindDeb, ArtifactSHA256: rel.Artifact.Sha256, Dest: debLocation})
 	if err != nil {

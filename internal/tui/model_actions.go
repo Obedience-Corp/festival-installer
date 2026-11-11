@@ -599,6 +599,9 @@ func browseInstallTarget(entry app.BrowseEntry) string {
 func runTargetInstall(ctx context.Context, target, entryID string, allowUnverified bool, ps *progressStream) tea.Cmd {
 	return func() tea.Msg {
 		defer ps.close()
+		if app.IsAppTarget(target) {
+			return runAppInstall(ctx, entryID, allowUnverified, ps)
+		}
 		res, err := app.InstallTarget(ctx, target, app.InstallOptions{
 			Channel:  "stable",
 			Verify:   tuiVerifyOptions(ps, allowUnverified),
@@ -617,6 +620,23 @@ func runTargetInstall(ctx context.Context, target, entryID string, allowUnverifi
 		}
 		return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 	}
+}
+
+// runAppInstall installs Festival App from the browse screen. The result body
+// carries the notes, which the shared InstallResult has no room for.
+func runAppInstall(ctx context.Context, entryID string, allowUnverified bool, ps *progressStream) tea.Msg {
+	res, err := app.InstallApp(ctx, app.AppInstallOptions{Verify: tuiVerifyOptions(ps, allowUnverified), Progress: ps.report})
+	if err != nil {
+		if !allowUnverified && hasErrorCode(err, "E_UNVERIFIED_REFUSED") {
+			return consentNeededMsg{action: "browse-install-unverified", cause: err}
+		}
+		return opFailed(ps, "Install failed", err, "(selected "+entryID+")")
+	}
+	body := fmt.Sprintf("installed %s %s\n  %s\n", res.Package, res.Version, res.Location)
+	for _, note := range res.Notes {
+		body += note + "\n"
+	}
+	return opDoneMsg{stream: ps, title: "Install complete", body: body, success: true}
 }
 
 func (m model) submitMarketplaceAdd() (tea.Model, tea.Cmd) {

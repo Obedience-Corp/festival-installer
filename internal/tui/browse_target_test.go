@@ -20,6 +20,7 @@ func TestBrowseInstallTargetPreservesProductIdentity(t *testing.T) {
 		{"acme/other-product", "product", "other-product"},
 		{"acme/festival-helper", "plugin", "festival-helper"},
 		{"obey", "product", "obey"},
+		{"obedience-corp/festival-app", "product", "festival-app"},
 	} {
 		t.Run(tc.id+"/"+tc.class, func(t *testing.T) {
 			if got := browseInstallTarget(app.BrowseEntry{ID: tc.id, Class: tc.class}); got != tc.want {

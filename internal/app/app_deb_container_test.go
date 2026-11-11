@@ -209,12 +209,21 @@ func TestAppDebAptFailureDoesNotBlockNextInstall(t *testing.T) {
 	e.assertNextInstallStarts(tx)
 }
 
-func TestAppDebMissingPkexecNeverCopies(t *testing.T) {
+func TestAppDebMissingPkexecKeepsCopyForManualInstall(t *testing.T) {
 	e := newDebEnv(t)
 	e.pkexec = false
 	_, tx, err := e.place()
-	if errpkg.Code(err) != "E_APP_ELEVATION" || !strings.Contains(err.Error(), "pkexec is not installed") || e.tempEntries() != 0 || len(e.calls) != 0 {
-		t.Fatalf("err=%v temp=%d calls=%d", err, e.tempEntries(), len(e.calls))
+	if errpkg.Code(err) != "E_APP_ELEVATION" || !strings.Contains(err.Error(), "pkexec is not installed") || len(e.calls) != 0 {
+		t.Fatalf("err=%v calls=%d", err, len(e.calls))
+	}
+	const marker = "sudo apt-get install --yes "
+	i := strings.Index(err.Error(), marker)
+	if i < 0 {
+		t.Fatalf("no manual hint: %v", err)
+	}
+	path := strings.TrimSuffix(strings.Fields(err.Error()[i+len(marker):])[0], ",")
+	if _, statErr := os.Stat(path); statErr != nil {
+		t.Fatalf("the path in the hint does not exist: %v", statErr)
 	}
 	e.assertNextInstallStarts(tx)
 }

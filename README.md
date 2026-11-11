@@ -174,6 +174,7 @@ Progress animations respect `FESTIVAL_REDUCED_MOTION=1`.
 ```bash
 festival install festival --channel stable
 festival install obey                    # agent daemon + ob client
+festival install app                     # Festival App, the desktop app
 festival update obey --no-restart        # defer restart of an active daemon
 festival update festival
 festival outdated --json
@@ -206,12 +207,28 @@ and prompts you to restart the hub when its executable was replaced.
 
 JSON envelopes use schema version `festival/v1alpha1`.
 
+### Festival App error codes
+
+| Code | When it happens | What to do |
+| --- | --- | --- |
+| `E_APP_NOT_AVAILABLE` | The marketplace has no stable Festival App yet, or `--channel` is not `stable` | Install from fest.build/app, or retry after the first stable release |
+| `E_APP_PLATFORM` | There is no Festival App build for this operating system and architecture | Use a supported system: macOS (Apple silicon or Intel), Windows x64, Linux x64 |
+| `E_APP_FORMAT_UNSUPPORTED` | `--format` outside Linux, `--format deb` without apt-get, or a format other than the installed one | Drop `--format`, or run `festival uninstall app` before switching formats |
+| `E_APP_SIGNATURE` | A marketplace signature, a sha256, or the App's update signature did not match; nothing was placed | Retry later and report it if it persists |
+| `E_APP_BUNDLE_INVALID` | The downloaded macOS bundle failed its bundle id, version or code signature check | Report it; nothing was replaced |
+| `E_APP_RUNNING` | Festival App is running from the location festival would change, or festival could not check | Quit Festival App and run the command again |
+| `E_APP_FOREIGN` | Something at the install location is not Festival App, or festival's record disagrees with what is there | Move that item aside, then run the command again |
+| `E_APP_ELEVATION` | The command ran as root, or the Linux password prompt was missing or dismissed | Follow the message: run as your normal user, use `--format appimage`, or run the printed `sudo apt-get` command |
+| `E_APP_INSTALLER_FAILED` | The Windows installer or uninstaller, or apt-get, failed or did not leave the expected version; Windows blocked the installer | Read the message; Smart App Control blocks unsigned installers |
+| `E_APP_DOWNLOAD_STALLED` | The download received no data for 60 seconds | Check the network and retry |
+
 ### Install targets
 
 | Target                       | Effect                                                           |
 | ---------------------------- | ---------------------------------------------------------------- |
 | `festival`, `camp`, `fest`   | Install the suite bundle `obedience-corp/festival` (camp + fest) |
 | `obey` | Install the Obey daemon and `ob` client as a separate package |
+| `app`, `festival-app` | Install Festival App the standard way for this system (`--format appimage\|deb` on Linux) |
 | `camp-<name>`, `fest-<name>` | Install a plugin from registered marketplaces                    |
 
 Plugin release archives may include a top-level `assets/` directory. Festival
