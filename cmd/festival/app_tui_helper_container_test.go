@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Obedience-Corp/festival-installer/internal/app"
@@ -36,5 +37,9 @@ func TestAppTUIHelperProcess(t *testing.T) {
 	)), appfixture.PublishOptions{})
 	c.Register("official-obey")
 	os.Args = []string{"festival"}
+	// The release-compatibility proof runs plain CLI commands through the same helper.
+	if args := os.Getenv("FESTIVAL_APP_HELPER_ARGS"); args != "" {
+		os.Args = append(os.Args, strings.Fields(args)...)
+	}
 	main()
 }
