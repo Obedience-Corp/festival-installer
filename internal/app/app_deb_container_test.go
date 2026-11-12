@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Obedience-Corp/festival-installer/internal/artifacts"
 	errpkg "github.com/Obedience-Corp/festival-installer/internal/errors"
 	"github.com/Obedience-Corp/festival-installer/internal/installer"
 )
@@ -167,8 +169,8 @@ func TestAppDebElevatedScriptInstallsFromARootOwnedCopy(t *testing.T) {
 	}
 	defer func() { _ = tx.Close(context.Background()) }()
 	got, rerr := os.ReadFile(marker)
-	if rerr != nil || string(got) != "700\ndeb payload" {
-		t.Fatalf("apt-get saw %q (%v), want a 0700 directory and the verified bytes", got, rerr)
+	if rerr != nil || string(got) != "755\ndeb payload" {
+		t.Fatalf("apt-get saw %q (%v), want a 0755 root-owned directory and the verified bytes", got, rerr)
 	}
 	if entries, _ := os.ReadDir(scratch); len(entries) != 0 {
 		t.Fatalf("the script left %d entries in its temp dir", len(entries))
@@ -324,4 +326,57 @@ func TestAppDebMissingPkexecKeepsCopyForManualInstall(t *testing.T) {
 		t.Fatalf("the path in the hint does not exist: %v", statErr)
 	}
 	e.assertNextInstallStarts(tx)
+}
+
+func TestAppDebOtherPkexecStartErrorsMakeNoCopy(t *testing.T) {
+	e := newDebEnv(t)
+	e.runErr = errors.New("fork/exec /usr/bin/pkexec: resource temporarily unavailable")
+	_, tx, err := e.place()
+	if errpkg.Code(err) != "E_APP_INSTALLER_FAILED" || e.tempEntries() != 0 {
+		t.Fatalf("err=%v temp=%d", err, e.tempEntries())
+	}
+	e.assertNextInstallStarts(tx)
+}
+
+func TestAppDebHintCarriesTheHashAndACheckCommand(t *testing.T) {
+	e := newDebEnv(t)
+	e.res = appCommandResult{ExitCode: 127}
+	_, tx, err := e.place()
+	defer func() { _ = tx.Close(context.Background()) }()
+	if errpkg.Code(err) != "E_APP_ELEVATION" {
+		t.Fatalf("err = %v", err)
+	}
+	entries, _ := os.ReadDir(e.tempRoot)
+	files, _ := os.ReadDir(filepath.Join(e.tempRoot, entries[0].Name()))
+	path := filepath.Join(e.tempRoot, entries[0].Name(), files[0].Name())
+	want := "check with `sha256sum " + path + "` that it prints " + e.rel.Artifact.Sha256 + ", then run sudo apt-get install --yes " + path + ", then"
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("hint lacks the check:\n%v\nwant %s", err, want)
+	}
+	// The kept copy really has the printed hash.
+	sum, _ := artifacts.SHA256(context.Background(), path)
+	if sum != e.rel.Artifact.Sha256 {
+		t.Fatalf("kept copy hash %s != %s", sum, e.rel.Artifact.Sha256)
+	}
+}
+
+func TestAppDebPruneLeavesAnotherUsersCopies(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "festival-app-deb-old")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-25 * time.Hour)
+	if err := os.Chtimes(dir, old, old); err != nil {
+		t.Fatal(err)
+	}
+	// Matches by name and age, owned by this user, but "the current user" is someone else.
+	pruneStaleDebCopiesOwnedBy(root, time.Now(), os.Getuid()+1)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("a copy owned by another uid was pruned: %v", err)
+	}
+	pruneStaleDebCopiesOwnedBy(root, time.Now(), os.Getuid())
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the user's own stale copy was not pruned: %v", err)
+	}
 }

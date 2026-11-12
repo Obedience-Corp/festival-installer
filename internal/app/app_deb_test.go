@@ -83,17 +83,18 @@ func TestAppDebElevationErrors(t *testing.T) {
 		{"apt failure", 100, nil, "E_APP_INSTALLER_FAILED", "apt-get exited 100", false},
 	}
 	for _, tc := range cases {
-		err := debElevationError(tc.code, tc.start, path)
+		err := debElevationError(tc.code, tc.start, path, "ABC123")
 		if errpkg.Code(err) != tc.want || !strings.HasPrefix(err.Error(), tc.want+": "+tc.start2) {
 			t.Errorf("%s: %v", tc.name, err)
 			continue
 		}
-		hasHints := strings.Contains(err.Error(), "--format appimage") && strings.Contains(err.Error(), "sudo apt-get install --yes "+path)
+		hasHints := strings.Contains(err.Error(), "--format appimage") && strings.Contains(err.Error(), "sudo apt-get install --yes "+path) &&
+			strings.Contains(err.Error(), "check with `sha256sum "+path+"` that it prints abc123")
 		if hasHints != tc.hints {
 			t.Errorf("%s: hints present = %v, want %v: %v", tc.name, hasHints, tc.hints, err)
 		}
 	}
-	if debElevationError(0, nil, path) != nil {
+	if debElevationError(0, nil, path, "ABC123") != nil {
 		t.Error("exit 0 must be nil")
 	}
 }

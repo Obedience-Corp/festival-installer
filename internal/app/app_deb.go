@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	debPackage     = "festival-app"
-	debLocation    = "dpkg:festival-app"
-	pkexecPath     = "/usr/bin/pkexec"
-	aptGetPath     = "/usr/bin/apt-get"
-	debAptTimeout  = 9 * time.Minute
-	debElevateHint = "Install the AppImage instead with: festival install app --format appimage. Or install the package yourself with: sudo apt-get install --yes %s, then run festival install app to record it."
+	debPackage    = "festival-app"
+	debLocation   = "dpkg:festival-app"
+	pkexecPath    = "/usr/bin/pkexec"
+	aptGetPath    = "/usr/bin/apt-get"
+	debAptTimeout = 9 * time.Minute
+	// debElevateHint takes the quoted path, the signed sha256 and the quoted path again.
+	debElevateHint = "Install the AppImage instead with: festival install app --format appimage. Or install the package yourself: check with `sha256sum %s` that it prints %s, then run sudo apt-get install --yes %s, then run festival install app to record it."
 
 	shPath          = "/bin/sh"
 	debCopyPrefix   = "festival-app-deb-"
@@ -37,7 +38,8 @@ const (
 // debInstallScript is the one thing pkexec runs. It is a constant: the package
 // path, the expected sha256 and the apt-get path arrive as positional arguments
 // and are never spliced into the text. The package is copied into a root-owned
-// 0700 directory, hashed there, and installed from there, so the bytes that are
+// directory (0755 and 0644, so apt's _apt user can read it and only root can
+// write it), hashed there, and installed from there, so the bytes that are
 // checked are the bytes root installs. The directory is removed on every exit.
 const debInstallScript = `set -eu
 src=$1
@@ -45,8 +47,9 @@ want=$2
 apt=$3
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT HUP INT TERM
-chmod 700 "$dir"
+chmod 755 "$dir"
 cp -- "$src" "$dir/package.deb"
+chmod 644 "$dir/package.deb"
 got=$(sha256sum "$dir/package.deb")
 got=${got%% *}
 if [ "$got" != "$want" ]; then
@@ -74,6 +77,12 @@ func shellQuote(s string) string {
 
 // pruneStaleDebCopies removes kept manual-install copies older than a day.
 func pruneStaleDebCopies(root string, now time.Time) {
+	pruneStaleDebCopiesOwnedBy(root, now, os.Getuid())
+}
+
+// pruneStaleDebCopiesOwnedBy only removes directories owned by uid, so another
+// user's copy in the shared temp dir is left alone.
+func pruneStaleDebCopiesOwnedBy(root string, now time.Time, uid int) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return
@@ -82,7 +91,7 @@ func pruneStaleDebCopies(root string, now time.Time) {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), debCopyPrefix) {
 			continue
 		}
-		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > debCopyStale {
+		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > debCopyStale && ownedByUID(info, uid) {
 			_ = os.RemoveAll(filepath.Join(root, e.Name()))
 		}
 	}
@@ -104,10 +113,11 @@ func debInstallArgv(debPath, sha256 string) []string {
 
 // debElevationError maps a pkexec start failure or exit code to the D008 errors.
 // Exit 0 with no start error returns nil.
-func debElevationError(exitCode int, startErr error, debPath string) error {
-	hint := " " + fmt.Sprintf(debElevateHint, shellQuote(debPath))
+func debElevationError(exitCode int, startErr error, debPath, sha256 string) error {
+	q := shellQuote(debPath)
+	hint := " " + fmt.Sprintf(debElevateHint, q, strings.ToLower(sha256), q)
 	switch {
-	case startErr != nil && (errors.Is(startErr, exec.ErrNotFound) || errors.Is(startErr, fs.ErrNotExist)):
+	case startErr != nil && pkexecMissing(startErr):
 		return errpkg.New("E_APP_ELEVATION", "pkexec is not installed."+hint)
 	case startErr != nil:
 		return errpkg.Wrap("E_APP_INSTALLER_FAILED", startErr, "could not start pkexec")
@@ -119,6 +129,10 @@ func debElevationError(exitCode int, startErr error, debPath string) error {
 		return errpkg.New("E_APP_INSTALLER_FAILED", fmt.Sprintf("apt-get exited %d", exitCode))
 	}
 	return nil
+}
+
+func pkexecMissing(err error) bool {
+	return errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist)
 }
 
 func lastLine(s string) string {
@@ -196,7 +210,7 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 		if err != nil {
 			return appPlacement{}, err
 		}
-		return appPlacement{}, debElevationError(-1, exec.ErrNotFound, kept)
+		return appPlacement{}, debElevationError(-1, exec.ErrNotFound, kept, rel.Artifact.Sha256)
 	}
 	err := txn.RecordExternal(ctx, installer.AppPlacement{PackageID: AppPackageID, Version: rel.Version, Format: metadata.ArtifactKindDeb, ArtifactSHA256: rel.Artifact.Sha256, Dest: debLocation})
 	if err != nil {
@@ -207,6 +221,9 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 	switch {
 	case err != nil && errpkg.Code(err) == "E_INSTALL_CTX":
 		return appPlacement{}, err
+	case err != nil && !pkexecMissing(err):
+		// No hint is shown for other start errors, so no copy is made.
+		return appPlacement{}, debElevationError(-1, err, "", "")
 	case err != nil || res.ExitCode == 126 || res.ExitCode == 127:
 		// The download is removed when this call returns, so the manual hint
 		// names a verified copy that is kept for the user's own command.
@@ -214,7 +231,7 @@ func (d debPlacer) place(ctx context.Context, txn appTxn, req appPlaceRequest) (
 		if cerr != nil {
 			return appPlacement{}, cerr
 		}
-		return appPlacement{}, debElevationError(res.ExitCode, err, kept)
+		return appPlacement{}, debElevationError(res.ExitCode, err, kept, rel.Artifact.Sha256)
 	case res.ExitCode == debExitMismatch:
 		return appPlacement{}, errpkg.New("E_APP_SIGNATURE", "the Festival App package changed after it was verified; nothing was installed")
 	case res.ExitCode != 0:
