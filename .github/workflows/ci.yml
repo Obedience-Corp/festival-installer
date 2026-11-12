@@ -28,6 +28,11 @@ jobs:
         run: go vet ./...
       - name: Vet the notty lane
         run: go vet -tags notty ./internal/cli/...
+      - name: Vet the app_native lanes for every target OS
+        run: |
+          for os in linux darwin windows; do
+            GOOS=$os go vet -tags app_native ./internal/cli/ ./internal/app/ ./internal/installer/
+          done
       - name: Test
         run: go test ./...
       - name: Prove signed plugin discovery and update all in a container
@@ -40,6 +45,8 @@ jobs:
         run: just testing integration-reconcile-container-proof
       - name: Prove root Obey uninstall preserves hooks and receipt
         run: just testing uninstall-root-container-proof
+      - name: Prove Festival App resolution, download, journal and swap in a container
+        run: just testing app-container-proof
       - name: Prove PowerShell interactive-only integration
         run: |
           CGO_ENABLED=0 go test -c -tags container_fs -o "$RUNNER_TEMP/festival-shellsetup.test" ./internal/shellsetup
@@ -99,3 +106,158 @@ jobs:
         shell: pwsh
         run: just testing windows-install-container-proof
 
+  app-native-macos:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    steps:
+      - name: Require a fresh GitHub-hosted runner
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: CLI journey - install, status, adopt, uninstall the real App 0.1.7
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppNativeMacOS' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-journey.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-journey.log"
+      - name: Package tests - RENAME_SWAP crash table, process scan, real bundle
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestApp[A-Z]' -skip 'NativeRemove' ./internal/installer ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-packages.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-packages.log"
+      - name: Package remove tests
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppBundleNativeRemove$' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-remove.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-remove.log"
+      - name: Upload native logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-native-macos-${{ matrix.runner }}
+          path: ${{ runner.temp }}/app-native-*.log
+          retention-days: 14
+
+  app-native-windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Require a fresh GitHub-hosted runner
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: CLI journey - install, status, adopt, uninstall the real App 0.1.7
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppNativeWindows' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-journey.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-journey.log"
+      - name: Package tests - process scan, real NSIS installer
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestApp[A-Z]' -skip 'NativeRealUninstall' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-packages.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-packages.log"
+      - name: Package remove tests
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppNSISNativeRealUninstall$' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-remove.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-remove.log"
+      - name: Upload native logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-native-windows
+          path: ${{ runner.temp }}/app-native-*.log
+          retention-days: 14
+
+  app-native-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        format: [deb, appimage]
+    steps:
+      - name: Require a fresh GitHub-hosted runner
+        run: test "$RUNNER_ENVIRONMENT" = github-hosted
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install pkexec and polkitd
+        if: matrix.format == 'deb'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkexec polkitd
+      - name: Prove the deb path refuses cleanly with no password prompt
+        if: matrix.format == 'deb'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 15m -run '^TestAppNativeDebElevationWithoutAgent$' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-elevation.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-elevation.log"
+      - name: Allow this runner user to run apt-get and the installer's fixed shell script through pkexec
+        if: matrix.format == 'deb'
+        run: |
+          user="$(id -un)"
+          sudo install -d -m 0755 /etc/polkit-1/rules.d
+          sudo tee /etc/polkit-1/rules.d/49-festival-installer-ci.rules >/dev/null <<EOF
+          polkit.addRule(function (action, subject) {
+            if (action.id == "org.freedesktop.policykit.exec" &&
+                subject.user == "${user}" &&
+                ["/usr/bin/apt-get", "/bin/sh", "/usr/bin/sh", "/bin/dash", "/usr/bin/dash"].indexOf(action.lookup("program")) >= 0) {
+              return polkit.Result.YES;
+            }
+          });
+          EOF
+          sudo chmod 0644 /etc/polkit-1/rules.d/49-festival-installer-ci.rules
+          sudo systemctl restart polkit
+          pkexec /bin/sh -c 'echo polkit rule ok'
+      - name: CLI journey (deb) - install, status, adopt, uninstall the real App 0.1.7
+        if: matrix.format == 'deb'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppNativeDebInstallStatusAdoptUninstall$' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-journey.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-journey.log"
+      - name: Package tests (deb)
+        if: matrix.format == 'deb'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestApp[A-Z]' -skip 'NativeRemove|^TestAppImageNative' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-packages.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-packages.log"
+      - name: Package remove tests (deb)
+        if: matrix.format == 'deb'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppDebNativeRemove$' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-remove.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-remove.log"
+      - name: CLI journey (AppImage) - install, status, reinstall, foreign copy, uninstall
+        if: matrix.format == 'appimage'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppNativeAppImageInstallStatusReinstallUninstall$' ./internal/cli 2>&1 | tee "$RUNNER_TEMP/app-native-journey.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-journey.log"
+      - name: Package test (AppImage)
+        if: matrix.format == 'appimage'
+        run: |
+          set -o pipefail
+          go test -tags app_native -count=1 -v -timeout 25m -run '^TestAppImageNative' ./internal/app 2>&1 | tee "$RUNNER_TEMP/app-native-packages.log"
+          bash scripts/ci/require-native-pass.sh "$RUNNER_TEMP/app-native-packages.log"
+      - name: Upload native logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-native-linux-${{ matrix.format }}
+          path: ${{ runner.temp }}/app-native-*.log
+          retention-days: 14

@@ -93,13 +93,14 @@ type Dependency struct {
 }
 
 type Artifact struct {
-	Kind     string   `json:"kind"`
-	OS       string   `json:"os"`
-	Arch     string   `json:"arch"`
-	URL      string   `json:"url"`
-	Sha256   string   `json:"sha256"`
-	Filename string   `json:"filename,omitempty"`
-	Binaries []string `json:"binaries,omitempty"`
+	Kind             string   `json:"kind"`
+	OS               string   `json:"os"`
+	Arch             string   `json:"arch"`
+	URL              string   `json:"url"`
+	Sha256           string   `json:"sha256"`
+	Filename         string   `json:"filename,omitempty"`
+	Binaries         []string `json:"binaries,omitempty"`
+	UpdaterSignature string   `json:"updater_signature,omitempty"`
 }
 
 type Install struct {
@@ -112,4 +113,6 @@ type InstallEntry struct {
 	ExecutableName string `json:"executable_name,omitempty"`
 	ExtensionName  string `json:"extension_name,omitempty"`
 	SkillSlug      string `json:"skill_slug,omitempty"`
+	BundleID       string `json:"bundle_id,omitempty"`
+	ProductName    string `json:"product_name,omitempty"`
 }

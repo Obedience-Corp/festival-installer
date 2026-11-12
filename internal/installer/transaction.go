@@ -60,28 +60,41 @@ func BeginWithTimeout(ctx context.Context, db *sql.DB, home string, lockTimeout 
 	if err := ctx.Err(); err != nil {
 		return nil, errpkg.Wrap("E_INSTALL_CTX", err, "context cancelled before begin")
 	}
-	fl, err := lock.NewFileLock(home)
+	rel, err := lockAndReconcile(ctx, db, home, lockTimeout)
 	if err != nil {
 		return nil, err
 	}
-	rel, err := fl.Acquire(ctx, lockTimeout)
-	if err != nil {
-		return nil, err
-	}
-	// Reconcile only while holding the install lock. Otherwise a second
-	// installer can roll back a live transaction's journal before it waits for
-	// the lock.
-	if err := Reconcile(ctx, home, db); err != nil {
-		_ = rel()
-		return nil, err
-	}
-	pruneOrphanBackups(home)
 	staging, err := os.MkdirTemp(home, "staging-")
 	if err != nil {
 		_ = rel()
 		return nil, errpkg.Wrap("E_INSTALL_STAGING", err, "create staging dir")
 	}
 	return &Transaction{db: db, home: home, stagingDir: staging, release: rel}, nil
+}
+
+// lockAndReconcile takes the installer lock and reverses incomplete work from
+// both journals before any new activation starts. Reconcile runs only while
+// holding the install lock. Otherwise a second installer can roll back a live
+// transaction's journal before it waits for the lock.
+func lockAndReconcile(ctx context.Context, db *sql.DB, home string, timeout time.Duration) (lock.Release, error) {
+	fl, err := lock.NewFileLock(home)
+	if err != nil {
+		return nil, err
+	}
+	rel, err := fl.Acquire(ctx, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if err := Reconcile(ctx, home, db); err != nil {
+		_ = rel()
+		return nil, err
+	}
+	if err := ReconcileApp(ctx, home, db); err != nil {
+		_ = rel()
+		return nil, err
+	}
+	pruneOrphanBackups(home)
+	return rel, nil
 }
 
 func (t *Transaction) StagingDir() string { return t.stagingDir }

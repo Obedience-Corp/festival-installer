@@ -11,4 +11,5 @@ var (
 	ErrArchiveTooLarge  = errpkg.New("E_ARTIFACT_ARCHIVE_TOO_LARGE", "archive exceeds decompression limits")
 	ErrTooManyRedirects = errpkg.New("E_ARTIFACT_TOO_MANY_REDIRECTS", "stopped after 10 redirects")
 	ErrDownloadTooLarge = errpkg.New("E_ARTIFACT_DOWNLOAD_TOO_LARGE", "download exceeds size limit")
+	ErrDownloadStalled  = errpkg.New("E_ARTIFACT_STALLED", "download received no bytes within the stall timeout")
 )

@@ -89,14 +89,21 @@
               "additionalProperties": false,
               "required": ["kind", "os", "arch", "url", "sha256"],
               "properties": {
-                "kind": { "type": "string", "enum": ["suite-archive", "tar.gz", "binary"] },
+                "kind": { "type": "string", "enum": ["suite-archive", "tar.gz", "binary", "app-bundle", "nsis", "deb", "appimage"] },
                 "os": { "type": "string", "enum": ["darwin", "linux", "windows"] },
                 "arch": { "type": "string", "enum": ["amd64", "arm64", "all"] },
                 "url": { "type": "string", "format": "uri" },
                 "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
                 "filename": { "type": "string" },
-                "binaries": { "type": "array", "items": { "type": "string", "minLength": 1 } }
-              }
+                "binaries": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "updater_signature": { "type": "string", "minLength": 1 }
+              },
+              "allOf": [
+                {
+                  "if": { "required": ["kind"], "properties": { "kind": { "enum": ["app-bundle", "nsis", "deb", "appimage"] } } },
+                  "else": { "properties": { "updater_signature": false } }
+                }
+              ]
             }
           },
           "install": {
@@ -112,12 +119,21 @@
                   "additionalProperties": false,
                   "required": ["kind", "source"],
                   "properties": {
-                    "kind": { "type": "string", "enum": ["binary", "extension_dir", "skill_bundle"] },
+                    "kind": { "type": "string", "enum": ["binary", "extension_dir", "skill_bundle", "desktop_app"] },
                     "source": { "type": "string", "minLength": 1 },
                     "executable_name": { "type": "string" },
                     "extension_name": { "type": "string" },
-                    "skill_slug": { "type": "string" }
-                  }
+                    "skill_slug": { "type": "string" },
+                    "bundle_id": { "type": "string", "minLength": 1 },
+                    "product_name": { "type": "string", "minLength": 1 }
+                  },
+                  "allOf": [
+                    {
+                      "if": { "required": ["kind"], "properties": { "kind": { "const": "desktop_app" } } },
+                      "then": { "required": ["bundle_id", "product_name"] },
+                      "else": { "properties": { "bundle_id": false, "product_name": false } }
+                    }
+                  ]
                 }
               }
             }

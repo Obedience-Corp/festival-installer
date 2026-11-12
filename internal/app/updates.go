@@ -112,7 +112,7 @@ func checkInstalledUpdates(ctx context.Context, entries []ListEntry, check func(
 		}
 		if err != nil {
 			p.Status, p.Detail = UpdateCheckFailed, err.Error()
-			if errors.Is(err, installer.ErrNoArtifactForPlatform) || errpkg.Code(err) == "E_NO_ARTIFACT" {
+			if errors.Is(err, installer.ErrNoArtifactForPlatform) || errpkg.Code(err) == "E_NO_ARTIFACT" || errpkg.Code(err) == "E_APP_PLATFORM" {
 				p.Status = UpdateUnsupported
 			}
 		}
@@ -140,6 +140,9 @@ func checkPackageUpdate(ctx context.Context, entry ListEntry, vo source.VerifyOp
 			return p, err
 		}
 		return p, nil
+	}
+	if entry.PackageID == AppPackageID {
+		return checkAppUpdate(ctx, entry, vo)
 	}
 	if err := ValidateChannel(p.Channel); err != nil {
 		return p, err
@@ -269,6 +272,12 @@ func UpdateInstalled(ctx context.Context, packageID string, opts UpdateOptions) 
 	}
 	if !exists {
 		return UpdateResult{}, "", errpkg.New("E_UPDATE_RECEIPT", "package is no longer installed through Festival; refresh updates")
+	}
+	if packageID == AppPackageID {
+		// Before pluginReceiptIntact: the App receipt has hash "" (D006), which
+		// the plugin ownership check treats as foreign.
+		res, err := UpdateApp(ctx, AppInstallOptions{Verify: opts.Verify, Progress: opts.Progress})
+		return res.updateResult(), joinNotes(res.Notes), err
 	}
 	if _, err := pluginReceiptIntact(ctx, receipt); err != nil {
 		return UpdateResult{}, "", err

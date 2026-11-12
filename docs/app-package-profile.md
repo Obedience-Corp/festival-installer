@@ -79,3 +79,46 @@ cancelled repair, foreign replacement preservation and namespace tampering.
 The fixture signing key is generated for the test; it is not official production
 marketplace acceptance. Separate PowerShell/native-platform lanes remain separate
 claims and are not implied by these Linux tests.
+
+## Festival App package
+
+**Identity and catalog entry.** Package id `obedience-corp/festival-app`. The catalog entry is exactly
+`{"id","display_name":"Festival App","class":"product","summary","channels":["stable"],"manifest_path":"packages/obedience-corp/festival-app/obey-package.json"}`:
+no `release_source`, no `targets`, no new catalog fields. The catalog schema is closed and every released
+installer reads the whole catalog, including v0.3.12 bundled in Festival App 0.1.7; one unknown field breaks
+every operation on the official source (the 0.3.6 note above is the same failure). The marketplace's
+`festival-app` preparer writes this entry from published `app-vX.Y.Z` releases only.
+
+**Manifest kinds.** Artifact kinds `app-bundle` (macOS `.app.tar.gz`), `nsis` (Windows `_x64-setup.exe`),
+`deb`, `appimage`; optional `updater_signature` holding the Tauri `.sig` file contents as published; install
+entry kind `desktop_app` with `bundle_id` (`com.obediencecorp.festival-app`) and `product_name` (`Festival App`).
+Artifacts are chosen by kind (`SelectAppArtifact`), so the deb and the AppImage can both target linux/amd64.
+An App install refuses an artifact without `updater_signature` (`E_APP_SIGNATURE`).
+
+**Compatibility rule.** New kinds and fields live only in the App's manifest. Manifests load per package, so an
+installer that predates App support never loads it and fails only for the App (`E_INSTALL_TARGET`). The suite
+manifest must never use these kinds, and `SelectArtifact` for every other package is unchanged.
+
+**Receipt.** One receipt row for the App's main executable with an empty hash, and the metadata keys
+`app.format`, `app.location`, `app.bundle_id`, `app.artifact_sha256`, `app.adopted`, `manifest_url`, in the
+shared receipts database without a migration, so the App's bundled installer keeps reading the same state.
+Released installer v0.3.12 reports the App as `external`, skips it in `update --all`, and its TUI uninstall
+refuses it (`E_UNINSTALL_PATH`) without removing anything.
+
+**Updater key and rotation.** festival pins the App's updater public key from festival-app
+`src-tauri/tauri.conf.json` (key id `A0880EE086F129E5`) and checks the minisign signature over each artifact.
+Rotating that key needs an installer release: publish an installer that pins the new key before the first App
+release signed with it. Installers that only know the old key fail that release with `E_APP_SIGNATURE` and
+leave the installed App in place until festival is updated.
+
+**Verification.** `just testing app-container-proof` runs the resolver, download, journal and swap, receipt,
+status, update, uninstall and CLI tests in a Linux container as an unprivileged user; it proves the logic and the
+crash recovery, not a real OS installer. `just testing windows-install-container-proof` runs the Windows
+container tests, including the NSIS flow against a fake installer. The `app_native` tests run only on fresh
+hosted macOS, Windows and Ubuntu runners and place the real 0.1.7 artifacts: the macOS code signature and
+quarantine state, the real NSIS installer and uninstaller, the real deb through pkexec, and the real AppImage.
+
+**Deb install is verified as root.** `pkexec` runs one fixed shell script (a constant in `internal/app/app_deb.go`; the package path, the signed sha256 and the apt-get path are positional arguments). The script copies the package into a root-owned directory made by `mktemp -d` (mode `0755`, the copy `0644`, so apt's `_apt` user can read it and nobody but root can write or swap it), hashes that copy, exits 97 on a mismatch (`E_APP_SIGNATURE`, nothing installed), installs from the copy, and removes the directory on every exit. The polkit prompt therefore names the shell, not apt-get. When pkexec is missing or the prompt is dismissed, a verified copy is kept in a `festival-app-deb-*` directory under the system temp dir for the user's own command; the error prints its sha256 and a `sha256sum` check to run before `sudo apt-get install`, because that copy is user-owned. Those directories are pruned after 24 hours, only when the current user owns them. Other pkexec start errors keep no copy.
+
+**Windows staging.** The `0700` mode on `app-downloads` has no meaning on Windows; its privacy relies on the per-user ACL that `%FESTIVAL_HOME%` inherits from the user profile.
+

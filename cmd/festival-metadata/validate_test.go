@@ -179,3 +179,18 @@ func writeFile(t *testing.T, path string, data []byte) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateAppManifest(t *testing.T) {
+	dir := filepath.Join("..", "..", "testdata", "metadata", "manifest")
+	var out bytes.Buffer
+	if err := run([]string{"validate", "--kind", "manifest", filepath.Join(dir, "app_valid.json")}, &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("app_valid.json rejected: %v", err)
+	}
+	if !strings.Contains(out.String(), "validated") {
+		t.Fatalf("output %q lacks \"validated\"", out.String())
+	}
+	err := run([]string{"validate", "--kind", "manifest", filepath.Join(dir, "app_missing_bundle_id.json")}, &bytes.Buffer{}, &bytes.Buffer{})
+	if !errors.Is(err, metadata.ErrSchemaInvalid) {
+		t.Fatalf("expected metadata.ErrSchemaInvalid, got %v", err)
+	}
+}
