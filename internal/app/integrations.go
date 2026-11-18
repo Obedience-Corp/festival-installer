@@ -429,7 +429,12 @@ type integrationBridgeStatus struct {
 	Provider      string `json:"provider"`
 	Installed     bool   `json:"installed"`
 	InstallStatus string `json:"install_status"`
+	// ToolPresent is nil when the obey build predates the field; the provider
+	// is then treated as required, which matches the old behaviour.
+	ToolPresent *bool `json:"tool_present"`
 }
+
+var bridgeProviderNames = map[string]string{"claude-code": "Claude Code", "codex": "Codex", "grok": "Grok"}
 
 func reconcileBridge(ctx context.Context, r *IntegrationReport, check bool) {
 	path, err := ResolveTool(ctx, "obey")
@@ -446,20 +451,36 @@ func reconcileBridge(ctx context.Context, r *IntegrationReport, check bool) {
 		return status, err
 	}
 	status, err := read()
-	current := func() bool {
+	// A provider whose tool is not installed on this machine is not required:
+	// obey skips it on purpose, and it is picked up on a later run once the
+	// tool appears.
+	current := func() ([]string, bool) {
 		if err != nil || len(status) == 0 {
-			return false
+			return nil, false
 		}
-		found := map[string]bool{}
+		byProvider := map[string]integrationBridgeStatus{}
 		for _, item := range status {
-			switch item.Provider {
-			case "claude-code", "codex", "grok":
-				found[item.Provider] = item.Installed && item.InstallStatus == "current"
+			if _, ok := bridgeProviderNames[item.Provider]; ok {
+				byProvider[item.Provider] = item
 			}
 		}
-		return found["claude-code"] && found["codex"] && found["grok"]
+		var ready []string
+		for _, provider := range []string{"claude-code", "codex", "grok"} {
+			item, ok := byProvider[provider]
+			if !ok {
+				return nil, false
+			}
+			if item.ToolPresent != nil && !*item.ToolPresent {
+				continue
+			}
+			if !item.Installed || item.InstallStatus != "current" {
+				return nil, false
+			}
+			ready = append(ready, bridgeProviderNames[provider])
+		}
+		return ready, true
 	}
-	if !current() && !check {
+	if _, ok := current(); !ok && !check {
 		if _, err := shellsetup.Run(ctx, path, "bridge", "install", "all", "--scope", "user"); err != nil {
 			r.add("bridge", "failed", "Provider hook setup failed: "+err.Error(), path, true)
 			return
@@ -467,9 +488,31 @@ func reconcileBridge(ctx context.Context, r *IntegrationReport, check bool) {
 		r.Changed = true
 		status, err = read()
 	}
-	if !current() {
+	ready, ok := current()
+	if !ok {
 		r.add("bridge", "stale", "Provider hooks need setup or repair.", path, true)
 		return
 	}
-	r.add("bridge", "ready", "Claude Code, Codex and Grok have current Obey hooks.", path, false)
+	if len(ready) == 0 {
+		r.add("bridge", "ready", "No Claude Code, Codex or Grok found yet. Obey hooks are added when one is installed.", path, false)
+		return
+	}
+	r.add("bridge", "ready", joinNames(ready)+" "+haveVerb(len(ready))+" current Obey hooks.", path, false)
+}
+
+func joinNames(names []string) string {
+	switch len(names) {
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
+
+func haveVerb(n int) string {
+	if n == 1 {
+		return "has"
+	}
+	return "have"
 }

@@ -312,3 +312,94 @@ func TestUnsupportedShellCanOptOutAndRemoveTrackedBlocks(t *testing.T) {
 		}
 	}
 }
+
+// writeBridgeObey replaces the fixture obey with one whose status reports the
+// given tool presence. Installing creates a marker; only present providers
+// become current, like obey bridge install all --scope user.
+func writeBridgeObey(t *testing.T, home, managed string, present map[string]bool) string {
+	t.Helper()
+	marker := filepath.Join(home, "installs")
+	var rows []string
+	for _, p := range []string{"claude-code", "codex", "grok"} {
+		have := "false"
+		if present[p] {
+			have = "true"
+		}
+		rows = append(rows, fmt.Sprintf(`{"provider":"%s","tool_present":%s,"installed":'"$inst_%s"',"install_status":"'"$st_%s"'"}`, p, have, strings.ReplaceAll(p, "-", "_"), strings.ReplaceAll(p, "-", "_")))
+	}
+	script := "#!/bin/sh\ncase \"$*\" in\n'bridge install all --scope user') echo x >> '" + marker + "';;\n'bridge status --json')\n"
+	for _, p := range []string{"claude_code", "codex", "grok"} {
+		script += "inst_" + p + "=false; st_" + p + "=absent\n"
+	}
+	for _, p := range []string{"claude-code", "codex", "grok"} {
+		if present[p] {
+			v := strings.ReplaceAll(p, "-", "_")
+			script += "if [ -f '" + marker + "' ]; then inst_" + v + "=true; st_" + v + "=current; fi\n"
+		}
+	}
+	script += "echo '[" + strings.Join(rows, ",") + "]'\n;;\nesac\n"
+	path := filepath.Join(managed, "bin", "obey")
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return marker
+}
+
+func bridgeCheck(t *testing.T, r *IntegrationReport) IntegrationCheck {
+	t.Helper()
+	for _, c := range r.Checks {
+		if c.ID == "bridge" {
+			return c
+		}
+	}
+	t.Fatalf("no bridge check in %+v", r.Checks)
+	return IntegrationCheck{}
+}
+
+func TestBridgeIgnoresProvidersWhoseToolIsAbsent(t *testing.T) {
+	cases := []struct {
+		name    string
+		present map[string]bool
+		message string
+	}{
+		{"claude only", map[string]bool{"claude-code": true}, "Claude Code has current"},
+		{"codex and grok", map[string]bool{"codex": true, "grok": true}, "Codex and Grok have current"},
+		{"none", nil, "No Claude Code, Codex or Grok found yet"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home, managed := integrationFixture(t, "bash")
+			marker := writeBridgeObey(t, home, managed, tc.present)
+			ctx := context.Background()
+			var r IntegrationReport
+			r.Ready = true
+			reconcileBridge(ctx, &r, false)
+			c := bridgeCheck(t, &r)
+			if c.Status != "ready" || !r.Ready || !strings.HasPrefix(c.Message, tc.message) {
+				t.Fatalf("bridge check = %+v", c)
+			}
+			// A second pass is read-only: ready without another install.
+			before, _ := os.ReadFile(marker)
+			var again IntegrationReport
+			again.Ready = true
+			reconcileBridge(ctx, &again, true)
+			if c := bridgeCheck(t, &again); c.Status != "ready" {
+				t.Fatalf("check-only pass = %+v", c)
+			}
+			if after, _ := os.ReadFile(marker); string(after) != string(before) {
+				t.Fatal("check-only pass installed hooks")
+			}
+		})
+	}
+}
+
+func TestBridgeStaleWhenPresentToolHasNoHook(t *testing.T) {
+	home, managed := integrationFixture(t, "bash")
+	writeBridgeObey(t, home, managed, map[string]bool{"codex": true})
+	var r IntegrationReport
+	r.Ready = true
+	reconcileBridge(context.Background(), &r, true)
+	if c := bridgeCheck(t, &r); c.Status != "stale" || r.Ready {
+		t.Fatalf("check with codex present and no hook = %+v ready=%v", c, r.Ready)
+	}
+}
