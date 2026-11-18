@@ -91,7 +91,21 @@ func TestAppNativeMacOSInstallStatusAdoptUninstall(t *testing.T) {
 	appNativeToolOrder(t, "status_reports_app", s)
 
 	appNativeStep(t, "running_app_blocks_uninstall")
-	if err := exec.Command("open", "-n", "-g", nativeBundle, "--env", "HOME="+t.TempDir(), "--env", "FESTIVAL_APP_DISABLE_DAEMON_SPAWN=1").Run(); err != nil {
+	// The App checks the live app-stable feed at startup and installs a newer
+	// release over the bundle in place, which leaves nothing to adopt below. It
+	// has no switch to turn that off, so send its HTTP traffic to a closed
+	// local port; the check then fails and the bundle stays at the installed
+	// version. Only the launched App gets these variables.
+	args := []string{"-n", "-g", nativeBundle, "--env", "HOME=" + t.TempDir(), "--env", "FESTIVAL_APP_DISABLE_DAEMON_SPAWN=1"}
+	for _, kv := range []string{
+		"HTTPS_PROXY=http://127.0.0.1:9", "https_proxy=http://127.0.0.1:9",
+		"HTTP_PROXY=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9",
+		"ALL_PROXY=http://127.0.0.1:9", "all_proxy=http://127.0.0.1:9",
+		"NO_PROXY=", "no_proxy=",
+	} {
+		args = append(args, "--env", kv)
+	}
+	if err := exec.Command("open", args...).Run(); err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { appNativeStop(t) })
@@ -116,6 +130,9 @@ func TestAppNativeMacOSInstallStatusAdoptUninstall(t *testing.T) {
 		t.Fatalf("the bundle was touched while running: %v", err)
 	}
 	appNativeStop(t)
+	if out, err := exec.Command("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", filepath.Join(nativeBundle, "Contents", "Info.plist")).Output(); err != nil || strings.TrimSpace(string(out)) != "0.1.7" {
+		t.Fatalf("the launched App changed the bundle to %q (%v); it must not self-update during this test", strings.TrimSpace(string(out)), err)
+	}
 
 	appNativeStep(t, "adopts_identified_copy")
 	appNativeHome(t, good)
